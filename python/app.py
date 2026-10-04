@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import joblib
+from pathlib import Path
 
-saved = joblib.load("model.pkl")
+saved = joblib.load(Path(__file__).resolve().parents[1] / "model.pkl")
 
 model = saved["model"]
 weapon_options = saved["weapon_options"]

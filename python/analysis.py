@@ -249,24 +249,22 @@ model_results.to_csv("tableau/model_accuracy.csv", index=False)
 
 print("\nExported tableau/model_accuracy.csv")
 
-#app
-import streamlit as st
-import pandas as pd
+# Save the fitted pipeline and categorical input values for the API/UI.
+from pathlib import Path
 import joblib
 
-saved = joblib.load("model.pkl")
-
-model = saved["model"]
-weapon_options = saved["weapon_options"]
-map_options = saved["map_options"]
+categorical_encoder = model.named_steps["preprocessor"].named_transformers_["cat"]
+map_options = categorical_encoder.categories_[0].tolist()
+weapon_options = categorical_encoder.categories_[2].tolist()
+model_path = Path(__file__).resolve().parents[1] / "model.pkl"
 
 joblib.dump(
     {
         "model": model,
         "weapon_options": weapon_options,
-        "map_options": map_options
+        "map_options": map_options,
     },
-    "model.pkl"
+    model_path,
 )
 
-print("Saved model.pkl")
+print(f"Saved model artifact to {model_path}")
