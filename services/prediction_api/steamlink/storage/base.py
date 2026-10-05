@@ -134,6 +134,10 @@ class Storage(ABC):
         must be a unique upload key (e.g. ``upload:<sha256>``). Returns
         ``(match_id, inserted)``; re-uploading the same file is a no-op."""
 
+    @abstractmethod
+    def find_match_id_by_share_code(self, user_id: str, share_code: str) -> str | None:
+        """Match id for this user's share code / upload key, or None (lets uploads skip re-parsing)."""
+
     # Reports ---------------------------------------------------------------
     @abstractmethod
     def list_matches(self, user_id: str, *, limit: int, offset: int) -> list[MatchRecord]: ...

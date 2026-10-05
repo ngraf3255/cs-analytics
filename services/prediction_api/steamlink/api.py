@@ -102,9 +102,11 @@ def _sync_view(ctx: SteamContext, user: User) -> dict:
 
 
 def _match_view(match) -> dict:
+    uploaded = match.share_code.startswith("upload:")
     return {
         "id": match.id,
-        "share_code": match.share_code,
+        "source": "upload" if uploaded else "steam_sync",
+        "share_code": None if uploaded else match.share_code,
         "status": match.status,
         "status_reason": match.status_reason,
         "map_name": match.map_name,

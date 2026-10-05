@@ -14,6 +14,9 @@ from .valve import DemoTooLarge, DemoUnavailable, decompress_bz2
 
 CS2_DEMO_MAGIC = b"PBDEMS2\0"
 BZIP2_MAGIC = b"BZh"
+# Uploaded matches have no share code; the upload key (hash of the decompressed
+# .dem) is stored in matches.share_code so UNIQUE(user_id, share_code) dedupes.
+UPLOAD_KEY_PREFIX = "upload:"
 
 # Parsing is memory-heavy; allow one upload parse per process at a time.
 _parse_slot = threading.BoundedSemaphore(1)
@@ -63,7 +66,10 @@ def import_uploaded_demo(
     if head != CS2_DEMO_MAGIC:
         raise UploadRejected("not_a_cs2_demo")
 
-    key = "upload:" + _sha256(demo_path)
+    key = UPLOAD_KEY_PREFIX + _sha256(demo_path)
+    existing = storage.find_match_id_by_share_code(user.id, key)
+    if existing:  # same demo (plain or .bz2) already imported: don't parse again
+        return UploadResult(existing, False)
     if not _parse_slot.acquire(blocking=False):
         raise UploadRejected("upload_busy", 429)
     try:
@@ -72,6 +78,8 @@ def import_uploaded_demo(
         raise UploadRejected("demo_parse_failed") from None
     finally:
         _parse_slot.release()
+    if not parsed.rounds:
+        raise UploadRejected("demo_has_no_rounds")
     match = NewMatch(share_code=key, valve_match_id="upload", status="imported", status_reason=None,
                      map_name=parsed.map_name, rounds=tuple(extract_rounds(parsed)))
     match_id, created = storage.record_uploaded_match(user.id, match=match, now=now)

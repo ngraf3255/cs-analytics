@@ -293,6 +293,11 @@ class SqlStorage(Storage):
                     and_(matches.c.user_id == user_id, matches.c.share_code == match.share_code))).one()
                 return row.id, False
 
+    def find_match_id_by_share_code(self, user_id: str, share_code: str) -> str | None:
+        with self.engine.begin() as conn:
+            return conn.execute(select(matches.c.id).where(
+                and_(matches.c.user_id == user_id, matches.c.share_code == share_code))).scalar_one_or_none()
+
     @staticmethod
     def _insert_match(conn, user_id: str, match: NewMatch, now: datetime) -> str:
         match_id = uuid.uuid4().hex
