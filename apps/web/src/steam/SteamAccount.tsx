@@ -159,6 +159,7 @@ export function AutoSyncStatus({ me, onChange }: { me: Me; onChange: () => Promi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [override, setOverride] = useState<AutoSync | null>(null);
+  const [pending, setPending] = useState<boolean | null>(null);  // the switch flips at once
   const auto = override ?? me.sync.auto_sync;
   useEffect(() => setOverride(null), [me]);
   if (!auto) return null;  // older API without automatic sync
@@ -168,12 +169,14 @@ export function AutoSyncStatus({ me, onChange }: { me: Me; onChange: () => Promi
   async function toggle(enabled: boolean) {
     setBusy(true);
     setError("");
+    setPending(enabled);
     try {
       setOverride(await steamApi.putAutoSync(enabled));
       await onChange();
     } catch (reason) {
       setError(errorText(reason, "Could not change automatic sync."));
     } finally {
+      setPending(null);
       setBusy(false);
     }
   }
@@ -193,7 +196,7 @@ export function AutoSyncStatus({ me, onChange }: { me: Me; onChange: () => Promi
       )}
       {!serverOff && (
         <label className="steam-consent auto-sync-toggle">
-          <input type="checkbox" role="switch" checked={auto.enabled} disabled={busy}
+          <input type="checkbox" role="switch" checked={pending ?? auto.enabled} disabled={busy}
             onChange={(event) => void toggle(event.target.checked)} />
           <span>
             Sync new matches automatically{auto.interval_seconds ? ` (checks Valve ${everyText(auto.interval_seconds)})` : ""}.
