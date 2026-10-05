@@ -145,3 +145,36 @@ def test_logout_revokes_session(app_client):
     client, _ = app_client
     assert client.post("/auth/logout", headers=H).status_code == 204
     assert client.get("/me").status_code == 401
+
+
+def test_upload_demo_plain_and_bz2_dedupe(app_client):
+    import bz2
+    client, _ = app_client
+    demo = b"PBDEMS2\0" + b"x" * 2000
+    assert client.post("/matches/upload", content=demo).status_code == 403  # CSRF header
+    headers = {**H, "Content-Type": "application/octet-stream"}
+    first = client.post("/matches/upload", content=demo, headers=headers)
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["created"] is True and body["match"]["status"] == "imported"
+    assert body["match"]["map_name"] == "de_mirage"
+    again = client.post("/matches/upload", content=bz2.compress(demo), headers=headers).json()
+    assert again["created"] is False and again["match"]["id"] == body["match"]["id"]
+    report = client.get(f"/matches/{body['match']['id']}").json()
+    assert len(report["rounds"]) == 2
+
+
+@pytest.mark.parametrize("payload,detail", [(b"", "not_a_cs2_demo"), (b"HL2DEMO\0old-csgo", "not_a_cs2_demo")])
+def test_upload_rejects_non_cs2_demo(app_client, payload, detail):
+    client, _ = app_client
+    response = client.post("/matches/upload", content=payload, headers={**H, "Content-Type": "application/octet-stream"})
+    assert response.status_code == 422 and response.json()["detail"] == detail
+
+
+def test_upload_too_large(app_client):
+    from dataclasses import replace
+    client, ctx = app_client
+    ctx.settings = replace(ctx.settings, demo_max_decompressed_bytes=100)
+    response = client.post("/matches/upload", content=b"PBDEMS2\0" + b"x" * 500,
+                           headers={**H, "Content-Type": "application/octet-stream"})
+    assert response.status_code == 413
