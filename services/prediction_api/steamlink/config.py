@@ -100,6 +100,10 @@ class Settings:
     def validate(self) -> None:
         if "*" in self.allowed_origins:
             raise ConfigError("ALLOWED_ORIGINS cannot contain '*' because credentials are allowed")
+        if (self.steam_bot_username or self.steam_bot_password) and not self.demo_bot_configured:
+            raise ConfigError(
+                "STEAM_BOT_USERNAME/STEAM_BOT_PASSWORD need STEAM_BOT_SHARED_SECRET (or use STEAM_BOT_REFRESH_TOKEN)"
+            )
         if not self.steam_enabled:
             return
         missing = [
@@ -127,10 +131,6 @@ class Settings:
             raise ConfigError("SESSION_COOKIE_SAMESITE must be lax, strict, or none")
         if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
             raise ConfigError("SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true")
-        if (self.steam_bot_username or self.steam_bot_password) and not self.demo_bot_configured:
-            raise ConfigError(
-                "STEAM_BOT_USERNAME/STEAM_BOT_PASSWORD need STEAM_BOT_SHARED_SECRET (or use STEAM_BOT_REFRESH_TOKEN)"
-            )
         if self.sync_max_matches_per_request < 1 or self.sync_max_matches_per_request > 10:
             raise ConfigError("SYNC_MAX_MATCHES_PER_REQUEST must be between 1 and 10")
 
