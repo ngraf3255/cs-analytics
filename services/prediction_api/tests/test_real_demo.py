@@ -14,6 +14,7 @@ import os
 import pytest
 
 from steamlink.demo_parser import Demoparser2Parser
+from steamlink.valve import decompress_bz2
 
 from test_api_steam import H, login, make_client
 
@@ -69,7 +70,12 @@ def test_real_demo_upload_parse_score_report(tmp_path):
     assert again["created"] is False and again["match"]["id"] == match["id"]
 
 
-def test_subprocess_and_in_process_parse_identically():
-    isolated = Demoparser2Parser(isolation="subprocess").parse(DEMO)
-    assert isolated == Demoparser2Parser(isolation="inprocess").parse(DEMO)
+def test_subprocess_and_in_process_parse_identically(tmp_path):
+    demo = DEMO
+    with open(DEMO, "rb") as fh:
+        if fh.read(3) == b"BZh":  # the parser takes a plain .dem; upload decompresses first
+            demo = str(tmp_path / "demo.dem")
+            decompress_bz2(DEMO, demo, 1 << 32)
+    isolated = Demoparser2Parser(isolation="subprocess").parse(demo)
+    assert isolated == Demoparser2Parser(isolation="inprocess").parse(demo)
     assert isolated.rounds and isolated.deaths
