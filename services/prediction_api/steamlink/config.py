@@ -66,6 +66,10 @@ class Settings:
     sync_min_interval_seconds: int = 30
     demo_max_download_bytes: int = 300 * 1024 * 1024
     demo_max_decompressed_bytes: int = 1024 * 1024 * 1024
+    # Max request body for POST /matches/upload (.dem or .dem.bz2 as sent).
+    # Render itself does not cap request bodies; lower this if a proxy does
+    # (e.g. Cloudflare-proxied hostnames: 100 MB on Free/Pro plans).
+    upload_max_bytes: int = 1024 * 1024 * 1024
     http_timeout_seconds: float = 20.0
     # Dedicated Steam bot for CS2 Game Coordinator demo URL lookups. Preferred:
     # a refresh token (STEAM_BOT_REFRESH_TOKEN or STEAM_BOT_REFRESH_TOKEN_FILE).
@@ -131,6 +135,8 @@ class Settings:
             raise ConfigError("SESSION_COOKIE_SAMESITE must be lax, strict, or none")
         if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
             raise ConfigError("SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true")
+        if self.upload_max_bytes < 1:
+            raise ConfigError("UPLOAD_MAX_BYTES must be positive")
         if self.sync_max_matches_per_request < 1 or self.sync_max_matches_per_request > 10:
             raise ConfigError("SYNC_MAX_MATCHES_PER_REQUEST must be between 1 and 10")
 
@@ -164,6 +170,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         sync_min_interval_seconds=_int(env, "SYNC_MIN_INTERVAL_SECONDS", 30),
         demo_max_download_bytes=_int(env, "DEMO_MAX_DOWNLOAD_BYTES", 300 * 1024 * 1024),
         demo_max_decompressed_bytes=_int(env, "DEMO_MAX_DECOMPRESSED_BYTES", 1024 * 1024 * 1024),
+        upload_max_bytes=_int(env, "UPLOAD_MAX_BYTES", 1024 * 1024 * 1024),
         steam_bot_refresh_token=(env.get("STEAM_BOT_REFRESH_TOKEN") or None)
         or _read_secret_file(env.get("STEAM_BOT_REFRESH_TOKEN_FILE")),
         steam_bot_username=env.get("STEAM_BOT_USERNAME") or None,

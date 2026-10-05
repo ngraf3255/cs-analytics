@@ -2,7 +2,8 @@
 
 Usage (from services/prediction_api, with DATABASE_URL set)::
 
-    python -m steamlink.migrate
+    python -m steamlink.migrate                  # fails if DATABASE_URL is unset
+    python -m steamlink.migrate --if-configured  # no-op if DATABASE_URL is unset
 
 Each file runs in its own transaction and is recorded in ``schema_migrations``.
 On PostgreSQL a session advisory lock serialises concurrent runners (e.g. two
@@ -73,11 +74,19 @@ def _apply(engine: Engine, migrations_dir: Path) -> list[str]:
     return newly_applied
 
 
-def main() -> int:  # pragma: no cover - CLI
+def main(argv: list[str] | None = None) -> int:
+    """``--if-configured``: exit 0 without doing anything when DATABASE_URL is
+    unset (used in the Render start command, so the API still boots with Steam
+    features disabled)."""
+
     from .storage.sql import make_engine
 
+    args = sys.argv[1:] if argv is None else argv
     url = os.environ.get("DATABASE_URL")
     if not url:
+        if "--if-configured" in args:
+            print("DATABASE_URL is not set; skipping migrations")
+            return 0
         print("DATABASE_URL is not set", file=sys.stderr)
         return 2
     applied = apply_migrations(make_engine(url))

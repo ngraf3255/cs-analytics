@@ -150,3 +150,22 @@ def test_share_code_query_param_links_the_upload(up):
     assert response.status_code == 200, response.text
     assert response.json()["match"]["share_code"] == code(7) and response.json()["match"]["source"] == "upload"
     assert ctx.sync.parser.calls == 1
+
+
+def test_upload_max_bytes_caps_the_request_body(up):
+    client, ctx, scratch = up
+    ctx.settings = replace(ctx.settings, upload_max_bytes=1024)
+    response = post(client, DEMO)  # 4 KiB body, decompressed limit still 1 GiB
+    assert response.status_code == 413 and response.json()["detail"] == "demo_too_large"
+    ctx.settings = replace(ctx.settings, upload_max_bytes=1 << 20)
+    assert post(client, DEMO).status_code == 200
+    assert os.listdir(scratch) == []
+
+
+def test_upload_max_bytes_from_env():
+    from steamlink.config import ConfigError, load_settings
+
+    assert load_settings({"UPLOAD_MAX_BYTES": "104857600"}).upload_max_bytes == 100 * 1024 * 1024
+    assert load_settings({}).upload_max_bytes == 1024 * 1024 * 1024
+    with pytest.raises(ConfigError):
+        load_settings({"UPLOAD_MAX_BYTES": "abc"})

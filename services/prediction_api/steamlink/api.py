@@ -297,7 +297,8 @@ async def upload_demo(
     share_code = (share_code or "").strip() or None
     if share_code and not is_valid_share_code(share_code):
         raise HTTPException(status_code=422, detail="invalid_share_code_format")
-    limit = ctx.settings.demo_max_decompressed_bytes
+    # A plain .dem body is the demo itself, so it is also bound by the decompressed limit.
+    limit = min(ctx.settings.upload_max_bytes, ctx.settings.demo_max_decompressed_bytes)
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > limit:
         raise HTTPException(status_code=413, detail="demo_too_large")
@@ -317,7 +318,7 @@ async def upload_demo(
             result = await run_in_threadpool(
                 import_uploaded_demo, storage=ctx.storage, parser=ctx.sync.parser, user=user, raw_path=raw_path,
                 workdir=workdir, max_compressed_bytes=ctx.settings.demo_max_download_bytes,
-                max_demo_bytes=limit, now=ctx.clock(), share_code=share_code,
+                max_demo_bytes=ctx.settings.demo_max_decompressed_bytes, now=ctx.clock(), share_code=share_code,
             )
         except UploadRejected as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from None

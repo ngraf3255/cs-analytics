@@ -1,13 +1,83 @@
+# Render Blueprint: prediction API + managed PostgreSQL.
+# Deploy steps, env vars and limits: docs/deploy-render.md.
+#
+# Not here on purpose: the web app. The frontend is a static Vite build served
+# by a Cloudflare Worker at csgooner.com (.github/workflows/deploy-frontend.yml);
+# point it at this API with the GitHub repo variable VITE_API_BASE_URL.
+#
+# Secrets are never stored in this file: `sync: false` = Render asks for the
+# value when the Blueprint is first created (add it by hand on later syncs);
+# `generateValue` = Render generates a random value once.
+
+databases:
+  - name: csgooners-db
+    # free: 1 GB, NO backups, expires 30 days after creation (14-day grace).
+    # Switch to a paid plan (e.g. basic-256mb) before storing real users' data.
+    plan: free
+    # Must match the API's region so DATABASE_URL (internal URL) works.
+    # The live API (cs-analytics-cwmo.onrender.com) is in Oregon.
+    region: oregon
+    postgresMajorVersion: "17"
+    databaseName: csgooners
+    user: csgooners
+    # Private network only. To connect from a laptop (psql/pg_dump), add your
+    # IP here or in the dashboard (Access Control) temporarily.
+    ipAllowList: []
+
 services:
   - type: web
+    # If the existing dashboard service has a different name (its URL is
+    # cs-analytics-cwmo.onrender.com, so probably "cs-analytics"), rename this
+    # to match BEFORE the first Blueprint sync, or Render creates a second service.
     name: csgooners-prediction-api
     runtime: python
+    # free: 512 MB RAM, sleeps after 15 min idle (~1 min cold start), no shell,
+    # no pre-deploy command. Demo parsing runs in-request; see the resource
+    # notes in docs/deploy-render.md before allowing full-length demos.
     plan: free
     buildCommand: pip install -r services/prediction_api/requirements.txt
-    startCommand: uvicorn main:app --app-dir services/prediction_api --host 0.0.0.0 --port $PORT
+    # Migrations run on start because preDeployCommand needs a paid plan. They
+    # are idempotent and serialised with a PostgreSQL advisory lock; with no
+    # DATABASE_URL they are skipped and the API boots with Steam features off.
+    # On a paid plan, prefer:
+    #   preDeployCommand: cd services/prediction_api && python -m steamlink.migrate
+    startCommand: cd services/prediction_api && python -m steamlink.migrate --if-configured && exec uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
+    domains:
+      - api.csgooner.com
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.11
       - key: ALLOWED_ORIGINS
         value: https://csgooner.com,https://www.csgooner.com,http://localhost:5173,http://127.0.0.1:5173
+      # --- Database (internal connection string of csgooners-db) ---
+      - key: DATABASE_URL
+        fromDatabase:
+          name: csgooners-db
+          property: connectionString
+      # --- Steam features: on when DATABASE_URL + TOKEN_ENCRYPTION_KEYS are set;
+      # then SESSION_SECRET, PUBLIC_API_URL, FRONTEND_URL, STEAM_WEB_API_KEY are
+      # required or the service refuses to start. ---
+      - key: TOKEN_ENCRYPTION_KEYS
+        # Fernet key(s), newest first. Generate locally:
+        # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true # random 256-bit value (44 chars), never in git
+      - key: STEAM_WEB_API_KEY
+        sync: false # https://steamcommunity.com/dev/apikey
+      - key: PUBLIC_API_URL
+        value: https://api.csgooner.com
+      - key: FRONTEND_URL
+        value: https://csgooner.com
+      # --- Optional: demo bot for Steam sync downloads (leave empty for now;
+      # sync then stops with demo_retrieval_not_configured, uploads still work) ---
+      - key: STEAM_BOT_REFRESH_TOKEN
+        sync: false
+      # --- Limits ---
+      - key: SYNC_MAX_MATCHES_PER_REQUEST
+        value: "1"
+      - key: UPLOAD_MAX_BYTES
+        # 1 GiB: Render doesn't cap request bodies. Lower to 100000000 if
+        # api.csgooner.com is ever proxied through Cloudflare (100 MB cap).
+        value: "1073741824"

@@ -131,3 +131,29 @@ def test_concurrent_migration_runs_apply_once(tmp_path):
     all_versions = sorted(p.stem for p in MIGRATIONS_DIR.glob("*.sql"))
     # Every migration applied exactly once across the racing runners.
     assert sorted(v for r in results for v in r) == all_versions
+
+
+def test_migrate_cli_if_configured(monkeypatch, capsys):
+    from steamlink.migrate import main
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    assert main(["--if-configured"]) == 0
+    assert "skipping" in capsys.readouterr().out
+    assert main([]) == 2
+
+
+def test_migrate_cli_applies_then_is_up_to_date(tmp_path, monkeypatch, capsys):
+    from dbutil import postgres_url
+
+    from steamlink.migrate import main
+
+    if postgres_url():
+        engine = make_test_engine(tmp_path, "cli")
+        url = engine.url.render_as_string(hide_password=False)
+    else:
+        url = f"sqlite:///{tmp_path / 'cli.db'}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    assert main(["--if-configured"]) == 0
+    assert "0002_cross_source_dedupe" in capsys.readouterr().out
+    assert main([]) == 0
+    assert "up to date" in capsys.readouterr().out
