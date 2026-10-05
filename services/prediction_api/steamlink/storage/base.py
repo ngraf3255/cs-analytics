@@ -16,6 +16,7 @@ class User:
     id: str
     steam_id: str
     created_at: datetime
+    auto_sync_enabled: bool = True  # the user's automatic background sync toggle (steamlink.autosync)
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,13 @@ class SyncState:
     last_error: str | None = None
     last_imported_count: int = 0
     locked: bool = False
+    last_synced_at: datetime | None = None  # last sync (manual or automatic) that finished OK
+    # Automatic sync (steamlink.autosync): when it may run next (None: once last_finished_at
+    # is older than the interval), consecutive failures (backoff), and its last run.
+    next_auto_sync_at: datetime | None = None
+    auto_sync_failures: int = 0
+    last_auto_sync_at: datetime | None = None
+    last_auto_sync_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -227,6 +235,41 @@ class Storage(ABC):
     def release_sync_lock(
         self, user_id: str, token: str, now: datetime, *, status: str, error: str | None, imported: int
     ) -> None: ...
+
+    # Automatic sync (steamlink.autosync) -----------------------------------
+    @abstractmethod
+    def set_auto_sync_enabled(self, user_id: str, enabled: bool, now: datetime) -> None: ...
+
+    @abstractmethod
+    def list_auto_sync_candidates(
+        self, now: datetime, *, last_finished_before: datetime, limit: int, relink_errors: tuple[str, ...],
+    ) -> list[tuple[User, datetime | None]]:
+        """Users the scheduler should sync now, longest-waiting first, at most ``limit``:
+        match history linked, auto sync on, no sync running, not waiting for a re-link
+        (last sync failed with one of ``relink_errors`` and the codes were not updated
+        since), and due: ``next_auto_sync_at`` passed, or (never scheduled) the last sync
+        finished before ``last_finished_before`` or never ran. Returns ``(user,
+        next_auto_sync_at as seen)`` for :meth:`claim_auto_sync`."""
+
+    @abstractmethod
+    def claim_auto_sync(self, user_id: str, *, seen: datetime | None, hold_until: datetime, now: datetime) -> bool:
+        """Compare-and-set: move ``next_auto_sync_at`` from ``seen`` to ``hold_until``
+        (no sync running). False if another scheduler (or a manual sync) got there first."""
+
+    @abstractmethod
+    def record_auto_sync_schedule(
+        self, user_id: str, *, next_at: datetime, failures: int, ran_at: datetime | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Store when to sync next and the failure count; ``ran_at`` (an automatic run)
+        also records ``last_auto_sync_at`` / ``last_auto_sync_error``."""
+
+    @abstractmethod
+    def try_acquire_lease(self, name: str, holder: str, now: datetime, ttl_seconds: float) -> bool:
+        """Take or renew the named lease (all processes); False while another holder has it."""
+
+    @abstractmethod
+    def release_lease(self, name: str, holder: str) -> None: ...
 
     # Dedupe (all sources and all users). Matches are shared: one ``matches`` row
     # per real match, listed for every user who owns it (``match_owners``). A

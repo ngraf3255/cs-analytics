@@ -204,7 +204,8 @@ def test_migration_backfills_uploads_stored_before_dedupe(tmp_path):
                 "VALUES (:id, 'u', :share, :vid, 'imported', 0, '2026-10-04 12:00:00+00')"),
                 {"id": mid, "share": share, "vid": "upload" if share.startswith("upload:") else "1001"})
     assert apply_migrations(engine) == ["0002_cross_source_dedupe", "0003_upload_jobs", "0004_sync_jobs",
-                                        "0005_shared_matches", "0006_match_score", "0007_player_rounds", "0008_parse_version"]
+                                        "0005_shared_matches", "0006_match_score", "0007_player_rounds", "0008_parse_version",
+                                        "0009_auto_sync"]
     storage = SqlStorage(engine)
     up = storage.find_match("u", demo_sha256="abc123")
     assert up is not None and up.id == "m1" and up.source == "upload" and not up.has_share_code

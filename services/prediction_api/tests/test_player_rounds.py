@@ -211,7 +211,7 @@ def test_matches_from_before_the_migration_are_marked_unknown(tmp_path):
             {"t": NOW})
         conn.execute(text("INSERT INTO match_owners (user_id, match_id, source, added_at) VALUES ('u', 'm', 'upload', :t)"),
                      {"t": NOW})
-    assert apply_migrations(engine) == ["0007_player_rounds", "0008_parse_version"]
+    assert apply_migrations(engine) == ["0007_player_rounds", "0008_parse_version", "0009_auto_sync"]
     record = SqlStorage(engine).get_match("u", "m")[0]
     assert (record.players_recorded, record.played_at, record.played_at_source) == (False, None, None)
     assert (record.parse_version, record.outdated_reason) == (0, "players_not_recorded")
@@ -243,7 +243,7 @@ def test_migration_0008_flags_matches_parsed_before_warmup_rounds_were_left_out(
                 {"id": mid, "code": "upload:" + mid, "status": status, "r": recorded, "t": NOW})
             conn.execute(text("INSERT INTO match_owners (user_id, match_id, source, added_at) VALUES ('u', :id, 'upload', :t)"),
                          {"id": mid, "t": NOW})
-    assert apply_migrations(engine) == ["0008_parse_version"]
+    assert apply_migrations(engine) == ["0008_parse_version", "0009_auto_sync"]
     storage = SqlStorage(engine)
     got = {mid: storage.get_match("u", mid)[0] for mid in ("v1", "v0", "stub")}
     assert {mid: (m.parse_version, m.outdated_reason, m.rounds_count) for mid, m in got.items()} == {

@@ -77,6 +77,7 @@ users = Table(
     Column("steam_id", String, nullable=False, unique=True),
     Column("created_at", UTCDateTime, nullable=False),
     Column("updated_at", UTCDateTime, nullable=False),
+    Column("auto_sync_enabled", Integer, nullable=False, default=1),
 )
 sessions = Table(
     "sessions", metadata,
@@ -104,6 +105,18 @@ sync_state = Table(
     Column("last_finished_at", UTCDateTime),
     Column("last_error", String),
     Column("last_imported_count", Integer, nullable=False, default=0),
+    Column("last_synced_at", UTCDateTime),
+    Column("next_auto_sync_at", UTCDateTime),
+    Column("auto_sync_failures", Integer, nullable=False, default=0),
+    Column("last_auto_sync_at", UTCDateTime),
+    Column("last_auto_sync_error", String),
+)
+# Periodic tasks (steamlink.autosync): only the holder of an unexpired lease runs a tick.
+scheduler_leases = Table(
+    "scheduler_leases", metadata,
+    Column("name", String, primary_key=True),
+    Column("holder", String, nullable=False),
+    Column("expires_at", UTCDateTime, nullable=False),
 )
 matches = Table(
     "matches", metadata,
@@ -194,6 +207,11 @@ def _upload_job(row) -> UploadJob:
     )
 
 
+def _user(row) -> User:
+    return User(id=row.id, steam_id=row.steam_id, created_at=row.created_at,
+                auto_sync_enabled=bool(row.auto_sync_enabled))
+
+
 def normalize_database_url(url: str) -> str:
     """Use the psycopg 3 driver for postgres URLs (Render/homelab style URLs)."""
 
@@ -264,7 +282,7 @@ class SqlStorage(Storage):
         with self.engine.begin() as conn:
             row = conn.execute(select(users).where(users.c.steam_id == steam_id)).first()
             if row:
-                return User(id=row.id, steam_id=row.steam_id, created_at=row.created_at)
+                return _user(row)
         try:
             with self.engine.begin() as conn:
                 user_id = uuid.uuid4().hex
@@ -273,7 +291,7 @@ class SqlStorage(Storage):
         except IntegrityError:  # concurrent first login
             with self.engine.begin() as conn:
                 row = conn.execute(select(users).where(users.c.steam_id == steam_id)).one()
-                return User(id=row.id, steam_id=row.steam_id, created_at=row.created_at)
+                return _user(row)
 
     def create_session(self, token_hash: str, user_id: str, now: datetime, expires_at: datetime) -> None:
         with self.engine.begin() as conn:
@@ -287,7 +305,7 @@ class SqlStorage(Storage):
                 select(users).join(sessions, sessions.c.user_id == users.c.id)
                 .where(and_(sessions.c.token_hash == token_hash, sessions.c.expires_at > now))
             ).first()
-        return User(id=row.id, steam_id=row.steam_id, created_at=row.created_at) if row else None
+        return _user(row) if row else None
 
     def delete_session(self, token_hash: str) -> None:
         with self.engine.begin() as conn:
@@ -326,16 +344,23 @@ class SqlStorage(Storage):
         locked = row.lock_token is not None and row.lock_expires_at is not None and row.lock_expires_at > now
         return SyncState(user_id=user_id, status=row.status, last_started_at=row.last_started_at,
                          last_finished_at=row.last_finished_at, last_error=row.last_error,
-                         last_imported_count=row.last_imported_count, locked=locked)
+                         last_imported_count=row.last_imported_count, locked=locked,
+                         last_synced_at=row.last_synced_at, next_auto_sync_at=row.next_auto_sync_at,
+                         auto_sync_failures=row.auto_sync_failures, last_auto_sync_at=row.last_auto_sync_at,
+                         last_auto_sync_error=row.last_auto_sync_error)
 
-    def try_acquire_sync_lock(self, user_id: str, token: str, now: datetime, ttl_seconds: int) -> bool:
+    def _ensure_sync_state(self, user_id: str) -> None:
         try:
             with self.engine.begin() as conn:
                 exists = conn.execute(select(sync_state.c.user_id).where(sync_state.c.user_id == user_id)).first()
                 if not exists:
-                    conn.execute(insert(sync_state).values(user_id=user_id, status="idle", last_imported_count=0))
+                    conn.execute(insert(sync_state).values(user_id=user_id, status="idle", last_imported_count=0,
+                                                           auto_sync_failures=0))
         except IntegrityError:
             pass  # another request created the row first
+
+    def try_acquire_sync_lock(self, user_id: str, token: str, now: datetime, ttl_seconds: int) -> bool:
+        self._ensure_sync_state(user_id)
         with self.engine.begin() as conn:
             result = conn.execute(
                 update(sync_state)
@@ -349,13 +374,88 @@ class SqlStorage(Storage):
             return result.rowcount == 1
 
     def release_sync_lock(self, user_id, token, now, *, status, error, imported) -> None:
+        extra = {"last_synced_at": now} if status == "ok" else {}
         with self.engine.begin() as conn:
             conn.execute(
                 update(sync_state)
                 .where(and_(sync_state.c.user_id == user_id, sync_state.c.lock_token == token))
                 .values(lock_token=None, lock_expires_at=None, status=status, last_error=error,
-                        last_finished_at=now, last_imported_count=imported)
+                        last_finished_at=now, last_imported_count=imported, **extra)
             )
+
+    # Automatic sync ------------------------------------------------------------
+    def set_auto_sync_enabled(self, user_id: str, enabled: bool, now: datetime) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(update(users).where(users.c.id == user_id)
+                         .values(auto_sync_enabled=int(bool(enabled)), updated_at=now))
+
+    def list_auto_sync_candidates(self, now, *, last_finished_before, limit, relink_errors):
+        ss, ma = sync_state.c, match_access.c
+        due = or_(
+            and_(ss.next_auto_sync_at.is_not(None), ss.next_auto_sync_at <= now),
+            and_(ss.next_auto_sync_at.is_(None),
+                 or_(ss.last_finished_at.is_(None), ss.last_finished_at <= last_finished_before)),
+        )
+        # Waiting for new codes (same rule as the API's needs_relink): skip until re-linked.
+        relinkable = or_(ss.last_error.is_(None), ss.last_finished_at.is_(None), ma.updated_at > ss.last_finished_at)
+        if relink_errors:
+            relinkable = or_(relinkable, ss.last_error.not_in(list(relink_errors)))
+        not_running = or_(ss.lock_token.is_(None), ss.lock_expires_at.is_(None), ss.lock_expires_at < now)
+        query = (
+            select(users, ss.next_auto_sync_at.label("seen_next"))
+            .join(match_access, ma.user_id == users.c.id)
+            .outerjoin(sync_state, ss.user_id == users.c.id)
+            .where(and_(users.c.auto_sync_enabled == 1, due, relinkable, not_running))
+            .order_by(func.coalesce(ss.next_auto_sync_at, ss.last_finished_at, users.c.created_at), users.c.id)
+            .limit(limit)
+        )
+        with self.engine.begin() as conn:
+            return [(_user(row), row.seen_next) for row in conn.execute(query)]
+
+    def claim_auto_sync(self, user_id, *, seen, hold_until, now) -> bool:
+        self._ensure_sync_state(user_id)
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                update(sync_state)
+                .where(and_(
+                    sync_state.c.user_id == user_id,
+                    sync_state.c.next_auto_sync_at.is_(None) if seen is None else sync_state.c.next_auto_sync_at == seen,
+                    or_(sync_state.c.lock_token.is_(None), sync_state.c.lock_expires_at < now),
+                ))
+                .values(next_auto_sync_at=hold_until)
+            )
+            return result.rowcount == 1
+
+    def record_auto_sync_schedule(self, user_id, *, next_at, failures, ran_at=None, error=None) -> None:
+        values = dict(next_auto_sync_at=next_at, auto_sync_failures=failures)
+        if ran_at is not None:
+            values.update(last_auto_sync_at=ran_at, last_auto_sync_error=error)
+        self._ensure_sync_state(user_id)
+        with self.engine.begin() as conn:
+            conn.execute(update(sync_state).where(sync_state.c.user_id == user_id).values(**values))
+
+    def try_acquire_lease(self, name: str, holder: str, now: datetime, ttl_seconds: float) -> bool:
+        expires = now + timedelta(seconds=ttl_seconds)
+        try:
+            with self.engine.begin() as conn:
+                if conn.execute(select(scheduler_leases.c.name).where(scheduler_leases.c.name == name)).first() is None:
+                    conn.execute(insert(scheduler_leases).values(name=name, holder=holder, expires_at=expires))
+                    return True
+        except IntegrityError:
+            pass  # another process created it first: fall through to the conditional update
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                update(scheduler_leases)
+                .where(and_(scheduler_leases.c.name == name,
+                            or_(scheduler_leases.c.holder == holder, scheduler_leases.c.expires_at < now)))
+                .values(holder=holder, expires_at=expires)
+            )
+            return result.rowcount == 1
+
+    def release_lease(self, name: str, holder: str) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(delete(scheduler_leases).where(
+                and_(scheduler_leases.c.name == name, scheduler_leases.c.holder == holder)))
 
     def _check_cursor(self, conn, user_id: str, expected_cursor: str) -> None:
         current = conn.execute(
