@@ -1,4 +1,4 @@
-"""SQLite-backed exercises of the storage interface and migrations."""
+"""SQLite (default) or PostgreSQL (CSA_TEST_DATABASE_URL) exercises of the storage interface and migrations."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -6,7 +6,9 @@ import pytest
 
 from steamlink.migrate import apply_migrations
 from steamlink.storage.base import CursorConflict, NewMatch, RoundRecord
-from steamlink.storage.sql import SqlStorage, make_engine, metadata
+from steamlink.storage.sql import SqlStorage, metadata
+
+from dbutil import make_test_engine
 
 
 NOW = datetime(2026, 10, 4, 12, 0, 0, tzinfo=timezone.utc)
@@ -14,7 +16,7 @@ NOW = datetime(2026, 10, 4, 12, 0, 0, tzinfo=timezone.utc)
 
 @pytest.fixture()
 def storage(tmp_path):
-    engine = make_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    engine = make_test_engine(tmp_path)
     applied = apply_migrations(engine)
     assert applied == ["0001_steam_sync"]
     # Metadata tables must match the migration (re-create is a no-op if identical).
@@ -87,7 +89,7 @@ def test_sync_lock_and_delete_user(storage):
 def test_migration_columns_match_sqlalchemy_metadata(tmp_path):
     from sqlalchemy import inspect
 
-    engine = make_engine(f"sqlite:///{tmp_path / 'drift.db'}")
+    engine = make_test_engine(tmp_path, 'drift')
     apply_migrations(engine)
     inspector = inspect(engine)
     for table in metadata.sorted_tables:
@@ -104,3 +106,28 @@ def test_uploaded_match_is_idempotent_and_leaves_cursor(storage):
     assert inserted and not again and first_id == again_id
     assert storage.get_match_access(user.id) is None
     assert len(storage.get_match(user.id, first_id)[1]) == 1
+
+
+def test_backend_is_the_one_requested(storage):
+    """Guards the opt-in PostgreSQL mode against silently falling back to SQLite."""
+
+    from dbutil import postgres_url
+
+    assert storage.engine.dialect.name == ("postgresql" if postgres_url() else "sqlite")
+
+
+def test_concurrent_migration_runs_apply_once(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from dbutil import postgres_url
+
+    engine = make_test_engine(tmp_path, "race")
+    if not postgres_url():
+        pytest.skip("advisory-lock race only meaningful on PostgreSQL")
+    with ThreadPoolExecutor(4) as pool:
+        results = list(pool.map(lambda _: apply_migrations(engine), range(4)))
+    from steamlink.migrate import MIGRATIONS_DIR
+
+    all_versions = sorted(p.stem for p in MIGRATIONS_DIR.glob("*.sql"))
+    # Every migration applied exactly once across the racing runners.
+    assert sorted(v for r in results for v in r) == all_versions

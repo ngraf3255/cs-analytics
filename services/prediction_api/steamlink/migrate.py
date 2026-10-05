@@ -5,12 +5,15 @@ Usage (from services/prediction_api, with DATABASE_URL set)::
     python -m steamlink.migrate
 
 Each file runs in its own transaction and is recorded in ``schema_migrations``.
+On PostgreSQL a session advisory lock serialises concurrent runners (e.g. two
+instances starting at once), so a migration is never applied twice.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,7 +28,31 @@ def _statements(sql: str) -> list[str]:
     return [stmt.strip() for stmt in "\n".join(lines).split(";") if stmt.strip()]
 
 
+# Arbitrary constant key for pg_advisory_lock ("csa" + migrations).
+_PG_LOCK_KEY = 0x637361_6D6967
+
+
+@contextmanager
+def _migration_lock(engine: Engine):
+    if engine.dialect.name != "postgresql":
+        yield
+        return
+    with engine.connect() as lock_conn:
+        lock_conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _PG_LOCK_KEY})
+        lock_conn.commit()
+        try:
+            yield
+        finally:
+            lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _PG_LOCK_KEY})
+            lock_conn.commit()
+
+
 def apply_migrations(engine: Engine, migrations_dir: Path = MIGRATIONS_DIR) -> list[str]:
+    with _migration_lock(engine):
+        return _apply(engine, migrations_dir)
+
+
+def _apply(engine: Engine, migrations_dir: Path) -> list[str]:
     with engine.begin() as conn:
         conn.execute(text(
             "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"

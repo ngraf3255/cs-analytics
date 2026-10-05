@@ -8,7 +8,9 @@ from cryptography.fernet import Fernet
 from steamlink import sharecode
 from steamlink.demo_parser import DemoParser, ParsedDeath, ParsedDemo, ParsedRound
 from steamlink.migrate import apply_migrations
-from steamlink.storage.sql import SqlStorage, make_engine
+from steamlink.storage.sql import SqlStorage
+
+from dbutil import make_test_engine
 from steamlink.valve import DemoLocator, MatchHistoryClient, NextCodeResult
 
 KEY = Fernet.generate_key().decode()
@@ -89,6 +91,6 @@ class FakeParser(DemoParser):
 
 
 def make_storage(tmp_path):
-    engine = make_engine(f"sqlite:///{tmp_path / 'sync.db'}")
+    engine = make_test_engine(tmp_path, 'sync')
     apply_migrations(engine)
     return SqlStorage(engine)
