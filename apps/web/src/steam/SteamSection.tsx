@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useMe, useSteamStatus } from "./hooks";
+import { useHashScroll, useMe, useSteamStatus } from "./hooks";
 import { Matches } from "./Matches";
 import { SteamAccount } from "./SteamAccount";
 
@@ -17,6 +17,8 @@ export function SteamSection() {
     if (failure) window.history.replaceState(null, "", window.location.pathname + window.location.hash);
   }, [failure]);
 
+  useHashScroll(!loading && enabled);
+
   if (loading || !enabled) return null;
 
   return (
@@ -28,7 +30,8 @@ export function SteamSection() {
       {failure && <div className="steam-error" role="alert">Steam sign-in could not be verified. Please try again.</div>}
       {error && <div className="steam-error" role="alert">{error}</div>}
       <SteamAccount me={me} onChange={refresh} onSignedOut={() => setMe(null)} />
-      {me && <Matches me={me} onMeChange={refresh} />}
+      {/* keyed by account: a different user signed in (e.g. in another tab) gets a fresh list */}
+      {me && <Matches key={me.steam_id} me={me} onMeChange={refresh} />}
     </section>
   );
 }
