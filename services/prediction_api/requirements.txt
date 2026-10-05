@@ -9,3 +9,7 @@ SQLAlchemy>=2.0,<3
 psycopg[binary]>=3.2,<4
 cryptography>=43,<51
 demoparser2==0.42.0
+# CS2 Game Coordinator client for demo URL resolution (steam.py v1).
+steamio==1.1.3
+# steamio 1.1.3 imports aiohttp.streams.AsyncStreamReaderMixin, which newer aiohttp removed.
+aiohttp==3.11.18
