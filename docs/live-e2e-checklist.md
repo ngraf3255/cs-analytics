@@ -5,7 +5,7 @@ things left before `python -m steamlink.live_check` can pass against real Steam,
 and then before it works on csgooner.com. Do them in order. Each step says who
 does it, where, and what to run afterwards.
 
-Status (Oct 5, 2026, 6:30 AM CT): none of these steps is done yet. Step 1 is stuck: Steam's sign-up page showed an hCaptcha, so a person has to create the bot account. Everything else is built and passes offline: all tests on SQLite and PostgreSQL, and `live_check --fake` (7/7 PASS).
+Status (Oct 5, 2026, 6:30 AM CT): none of these steps is done yet. Step 1 is stuck: Steam's sign-up page showed an hCaptcha, so a person has to create the bot account. Everything else is built and passes offline: all tests on SQLite and PostgreSQL, and `live_check --fake` (7/7 PASS). Deploy baseline: homelab API + Postgres (`docs/deploy-homelab.md`), not Render Postgres.
 
 | # | What | Who / where | Then run |
 | --- | --- | --- | --- |
@@ -14,8 +14,8 @@ Status (Oct 5, 2026, 6:30 AM CT): none of these steps is done yet. Step 1 is stu
 | 3 | **Steam Web API key.** Create it at https://steamcommunity.com/dev/apikey, domain `csgooner.com`. Steam only gives keys to non-limited accounts (at least $5 spent), so use **Noah's main account**, not the bot. | Noah, in a browser | `echo '<key>' > ~/.config/csa/steam-web-api-key && chmod 600 ~/.config/csa/steam-web-api-key` |
 | 4 | **Player codes.** (a) Game authentication code: https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128 → *Create authentication code* (`XXXX-XXXXX-XXXX`). (b) A share code of a **recent** match (under about 2 weeks old, so the demo still exists): CS2 → *Watch* → *Your Matches* → copy the share link, or the same help page (`CSGO-xxxxx-…`). | Noah, as the player | `echo '<auth code>' > ~/.config/csa/auth-code && chmod 600 ~/.config/csa/auth-code` |
 | 5 | **Run the live check.** Use any fresh Fernet key. Storage is a throwaway SQLite file. | Noah or a bot, on the machine with the files from steps 2-4 | the command below. All 7 steps should say PASS |
-| 6 | **Render.** Set `TOKEN_ENCRYPTION_KEYS` (a new key, kept in a password manager), `STEAM_WEB_API_KEY` and `STEAM_BOT_REFRESH_TOKEN` (the token file's contents) in the service's Environment tab, then deploy. Attach `api.csgooner.com` (Settings → Custom Domains). Set the GitHub variable `VITE_API_BASE_URL=https://api.csgooner.com`. Details: `docs/deploy-render.md`. | Noah, Render + GitHub dashboards | `curl https://api.csgooner.com/health` → `{"status":"ok"}` and `curl https://api.csgooner.com/steam/status` → `"enabled":true` |
-| 7 | **Merge PR #1** (`feat/steam-match-sync` → `main`). Render's Blueprint and the frontend deploy read `main`. | Noah only | after the deploy: on csgooner.com, *Sign in with Steam* → link the auth code + share code (step 4) → *Sync matches*. The match appears with a round report. Optional: the check against Render's DB with `--database-url` (below) |
+| 6 | **Homelab API + Postgres.** Baseline: Proxmox VM, 2 vCPU (R5 5600X host), 8 GB RAM — FastAPI and Postgres on the same VM (Postgres not public). Point `api.csgooner.com` at home with HTTPS. Set `TOKEN_ENCRYPTION_KEYS`, `STEAM_WEB_API_KEY`, `STEAM_BOT_REFRESH_TOKEN`, and GitHub `VITE_API_BASE_URL=https://api.csgooner.com`. Details: `docs/deploy-homelab.md`. | Noah, home + Cloudflare DNS + GitHub | `curl https://api.csgooner.com/health` → `{"status":"ok"}` and `curl https://api.csgooner.com/steam/status` → `"enabled":true` |
+| 7 | **Site check.** PR #1 is already on `main`. After step 6: on csgooner.com, *Sign in with Steam* → link the auth code + share code (step 4) → *Sync matches*. The match appears with a round report. Optional: live check against the homelab DB with `--database-url` (below). | Noah | browser smoke on csgooner.com |
 
 Live check command (step 5):
 
@@ -39,13 +39,13 @@ If a step fails, the message names the cause and the fix. The usual ones:
 - **Step 4:** the bot login was rejected (run step 2 again), the bot never reached the GC (no CS2 on the account, or Steam is down), or the match has expired.
 - **Step 5:** the replay host answered 404 (the demo expired).
 
-Against Render's database instead of SQLite (optional, after step 6), use the
-**external** connection string from Render → `csgooners-db` → *Connect*. The
-check links that Steam ID in the database for the run, then puts back the
+Against the homelab database instead of SQLite (optional, after step 6), use a
+URL reachable from the machine running the check (LAN or tunnel — do not expose
+`5432` publicly). The check links that Steam ID for the run, then restores the
 previous link:
 
 ```sh
-python -m steamlink.live_check ... --database-url 'postgresql://...render.com/...'
+python -m steamlink.live_check ... --database-url 'postgresql://...'
 ```
 
 Offline (no Steam, runs anywhere; CI runs it in `tests/test_live_check.py`):

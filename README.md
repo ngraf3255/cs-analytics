@@ -35,6 +35,8 @@ The local frontend calls the API through the Vite development proxy. API documen
 
 ### Deploy
 
+**Baseline:** FastAPI + Postgres on a home Proxmox VM (2 vCPU / 8 GB); site on Cloudflare; API at `api.csgooner.com`. See [`docs/deploy-homelab.md`](docs/deploy-homelab.md). The Render blueprint below is optional/legacy.
+
 1. Create the API service in Render from the repository's `render.yaml` blueprint. The service uses the repository root so it can load `model.pkl`.
 2. The frontend defaults to the Render API URL `https://cs-analytics-cwmo.onrender.com`. Adding `api.csgooner.com` as a Render custom domain is optional; to use it, set the GitHub variable `VITE_API_BASE_URL` to `https://api.csgooner.com`.
 3. The Wrangler config attaches `csgooner.com` and `www.csgooner.com` to the `cs-analytics` Worker as custom domains when it deploys. Cloudflare creates the DNS records and certificates. Remove conflicting DNS records first if Cloudflare reports a conflict.
@@ -51,7 +53,7 @@ The analysis uses 16,527 professional CS2 rounds to study round outcomes and tra
 
 - PostgreSQL, SQL, Python, pandas, and scikit-learn
 - React, TypeScript, and Vite
-- FastAPI and Render for the prediction service
+- FastAPI (homelab) for the prediction service; Cloudflare for the site
 - Cloudflare Workers for frontend hosting
 - Tableau for the analytics dashboard
 
