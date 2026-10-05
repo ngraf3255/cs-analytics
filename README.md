@@ -29,14 +29,14 @@ python -m pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-The local frontend calls the API through the Vite development proxy. API documentation is available at `http://localhost:8000/docs`. Frontend commands (`dev`, `build`, and `preview`) are available from the root through pnpm. The devcontainer installs Node 20 and pnpm 10.30.3.
+The local frontend calls the API through the Vite development proxy. API documentation is available at `http://localhost:8000/docs`. Frontend commands (`dev`, `build`, and `preview`) are available from the root through pnpm. The devcontainer installs Node 22 and pnpm 10.30.3.
 
 ### Deploy
 
 1. Create the API service in Render from the repository's `render.yaml` blueprint. The service uses the repository root so it can load `model.pkl`.
-2. Attach `api.csgooners.com` to the Render service and add the DNS record Render specifies in Cloudflare.
-3. In Cloudflare, open the `cs-analytics` Worker and add `csgooners.com` and `www.csgooners.com` under **Settings → Domains & Routes → Add → Custom Domain**. Cloudflare creates the DNS records and certificates. Remove any conflicting CNAME records first if Cloudflare reports a conflict.
-4. In GitHub repository **Settings → Secrets and variables → Actions**, add secrets `CLOUDFLARE_API_TOKEN` (with the **Edit Cloudflare Workers** permission scoped to your account) and `CLOUDFLARE_ACCOUNT_ID`. Optionally set the repository variable `VITE_API_BASE_URL`; it defaults to `https://api.csgooners.com`.
+2. Attach `api.csgooner.com` to the Render service and add the DNS record Render specifies in Cloudflare.
+3. In Cloudflare, open the `cs-analytics` Worker and add `csgooner.com` and `www.csgooner.com` under **Settings → Domains & Routes → Add → Custom Domain**. Cloudflare creates the DNS records and certificates. Remove any conflicting CNAME records first if Cloudflare reports a conflict.
+4. In GitHub repository **Settings → Secrets and variables → Actions**, add secrets `CLOUDFLARE_API_TOKEN` (with the **Edit Cloudflare Workers** permission scoped to your account) and `CLOUDFLARE_ACCOUNT_ID`. Optionally set the repository variable `VITE_API_BASE_URL`; it defaults to `https://api.csgooner.com`.
 5. Push frontend changes to `main` to build and deploy automatically, or run **Deploy frontend to Cloudflare Worker** manually from the Actions tab. If Cloudflare Workers Builds is also connected to this repository, disable its automatic production deployment to avoid duplicate deploys.
 
 The Render free service sleeps after 15 minutes without traffic, so the first API request after idle may take about a minute to wake it.

@@ -26,7 +26,7 @@ model = saved_model["model"]
 map_options = [str(value) for value in saved_model["map_options"]]
 weapon_options = [str(value) for value in saved_model["weapon_options"]]
 
-default_origins = "http://localhost:5173,http://127.0.0.1:5173,https://csgooners.com,https://www.csgooners.com"
+default_origins = "http://localhost:5173,http://127.0.0.1:5173,https://csgooner.com,https://www.csgooner.com"
 allowed_origins = [
     origin.strip()
     for origin in os.environ.get("ALLOWED_ORIGINS", default_origins).split(",")
