@@ -323,10 +323,10 @@ function EmptyMatches({ linked, relink, uploading, onFile }: { linked: boolean; 
           <span className="section-kicker">SYNC FROM STEAM</span>
           <p>
             {!linked
-              ? "Link your match history above (step 2), then press Sync matches. We import your Competitive, Premier and Wingman matches newer than the share code you give."
+              ? "Link your match history above (step 2), then press Sync matches. We import the match of the share code you give and your newer Competitive, Premier and Wingman matches."
               : relink
                 ? "Sync is paused until you update your codes above."
-                : "Press Sync matches above. We import your Competitive, Premier and Wingman matches newer than your share code; each one downloads and parses in the background."}
+                : "Press Sync matches above. We import the match you linked with and your newer Competitive, Premier and Wingman matches; each one downloads and parses in the background."}
           </p>
         </div>
         <div className="empty-option">

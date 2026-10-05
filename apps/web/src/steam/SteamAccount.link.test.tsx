@@ -38,6 +38,7 @@ describe("link match history (Leetify-style onboarding)", () => {
       "href", "https://developer.valvesoftware.com/wiki/Counter-Strike:_Global_Offensive_Access_Match_History");
     expect(form).toHaveTextContent("Your most recently completed match token");
     expect(form).toHaveTextContent("upload the demo file below");
+    expect(form).toHaveTextContent("We import that match and every newer one");
     expect(screen.getByRole("button", { name: /LINK MATCH HISTORY/ })).toBeDisabled();
     expect(screen.getByText("Tick the box above to enable linking.")).toBeInTheDocument();
   });

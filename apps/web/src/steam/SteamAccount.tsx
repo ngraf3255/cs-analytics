@@ -228,7 +228,7 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
           Premier or Wingman match first.
         </li>
         <li>
-          We import matches <em>newer</em> than that code, not your whole history: Valve’s codes expire after about 30 days.
+          We import that match and every <em>newer</em> one, not your whole history: Valve’s codes expire after about 30 days.
           For older matches, FACEIT or pro games, upload the demo file below.{" "}
           <a href={SHARE_CODE_GUIDE_URL} target="_blank" rel="noreferrer">How share codes work ↗</a>{" · "}
           <a href={VALVE_MATCH_HISTORY_DOCS_URL} target="_blank" rel="noreferrer">Valve’s docs ↗</a>
