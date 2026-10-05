@@ -92,6 +92,8 @@ def test_fake_mode_end_to_end(tmp_path, demo_file):
     assert "3 newer share code(s) walked" in out
     assert "sync: status=partial queued=1" in out
     assert "Round report (de_mirage" in out
+    # Cross-match summary of the checked user's stored matches (GET /matches/summary).
+    assert "Previous matches (GET /matches/summary): 1 imported of 1, 2 rounds, 1 scored; model hit rate 100%" in out
     assert "RESULT: PASS (7/7 steps, FAKE" in out
     report = json.loads(report_path.read_text())
     assert report["match"]["status"] == "imported" and report["match"]["source"] == "steam_sync"
@@ -357,6 +359,7 @@ def test_database_url_stores_match_and_restores_the_users_link(tmp_path, demo_fi
     code, out = run(["--database-url", url], env=live_env(), **doubles)
     assert code == 0, out
     assert "skipped=1" in out and "already stored" in out
+    assert "Previous matches (GET /matches/summary): 1 imported of 1," in out
     assert len(storage.list_matches(user.id, limit=10, offset=0)) == 1
     engine.dispose()
 

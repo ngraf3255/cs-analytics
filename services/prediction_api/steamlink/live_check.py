@@ -364,6 +364,7 @@ class Run:
     demo_path: str | None = None
     parsed: Any = None
     report: dict | None = None
+    summary: dict | None = None  # GET /matches/summary for the checked user (all their stored matches)
 
 
 def step_web_api_key(run: Run) -> str:
@@ -670,6 +671,9 @@ def step_store_report(run: Run, scorer) -> str:
             if match["status"] != "imported":
                 raise Failed(f"the match was stored as {match['status']} ({match['status_reason']})")
             run.report = report
+            from .analytics import build_user_summary
+
+            run.summary = build_user_summary(storage, scorer, user.id)
             summary = report["summary"]
             backend = "PostgreSQL" if engine.dialect.name == "postgresql" else "SQLite"
             return (f"match {match_id} stored in {backend} ({'new' if created else 'already stored'}, "
@@ -710,6 +714,22 @@ def print_report(r: Reporter, report: dict) -> None:
     accuracy = (f"{summary['correct_predictions'] / summary['scored']:.0%}" if summary["scored"] else "n/a")
     r.line(f"  {summary['rounds']} rounds, {summary['scored']} scored, {summary['correct_predictions']} correct "
            f"({accuracy}). {report['model']['note']}")
+
+
+def print_summary(r: Reporter, summary: dict) -> None:
+    """One paragraph of GET /matches/summary (cross-match analytics) for the checked user."""
+
+    def pct(value):
+        return "n/a" if value is None else f"{value:.0%}"
+
+    totals, pred, sides = summary["totals"], summary["prediction"], summary["sides"]
+    brier = "n/a" if pred["brier_score"] is None else f"{pred['brier_score']:.3f}"
+    r.line()
+    r.line(f"Previous matches (GET /matches/summary): {totals['imported_matches']} imported of {totals['matches']}, "
+           f"{totals['rounds']} rounds, {totals['scored_rounds']} scored; model hit rate {pct(pred['hit_rate'])} "
+           f"(opening-kill baseline {pct(pred['opening_kill_baseline_hit_rate'])}), Brier {brier} "
+           f"(coin flip {summary['model']['coin_flip_brier_score']}); CT side won {pct(sides['ct_win_rate'])} "
+           f"of {sides['rounds_with_winner']} rounds")
 
 
 # --- main --------------------------------------------------------------------------
@@ -817,6 +837,8 @@ def run_check(argv: list[str] | None = None, *, env: Mapping[str, str] | None = 
                 return 1
             r.result(index, key, "PASS", message)
         print_report(r, run.report)
+        if run.summary is not None:
+            print_summary(r, run.summary)
         if inputs.report_json:
             with open(inputs.report_json, "w", encoding="utf-8") as fh:
                 json.dump(run.report, fh, indent=2)
