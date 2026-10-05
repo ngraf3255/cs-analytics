@@ -13,6 +13,7 @@ from .demo_parser import DemoParseError, DemoParser, extract_rounds
 from .gc import DemoBotAuthFailed
 from .sharecode import decode
 from .storage.base import CursorConflict, NewMatch, Storage, User
+from .upload import sha256_file
 from .valve import (
     DemoFetcher,
     DemoLocator,
@@ -115,6 +116,17 @@ class SyncService:
             if result.status != "ok" or not result.next_code:
                 return SyncOutcome("error", imported, processed, error=result.status)
 
+            share = decode(result.next_code)
+            try:
+                # Already stored (e.g. uploaded with this share code): don't download it again.
+                if self.storage.skip_known_match(
+                    user.id, expected_cursor=access.cursor_share_code, share_code=result.next_code,
+                    valve_match_id=str(share.match_id), now=self.clock(),
+                ):
+                    processed += 1
+                    continue
+            except CursorConflict:
+                return SyncOutcome("error", imported, processed, error="cursor_changed")
             match = self._import_one(result.next_code)
             if match is None:
                 return SyncOutcome("error", imported, processed, error="demo_retrieval_not_configured")
@@ -140,6 +152,8 @@ class SyncService:
         try:
             url = self.locator.demo_url(share)
             with self.fetcher.fetch(url) as demo_path:
+                # Cross-source dedupe key: same hash as a manual upload of this demo.
+                base["demo_sha256"] = sha256_file(demo_path)
                 parsed = self.parser.parse(demo_path)
         except DemoLocatorNotConfigured:
             return None

@@ -102,11 +102,10 @@ def _sync_view(ctx: SteamContext, user: User) -> dict:
 
 
 def _match_view(match) -> dict:
-    uploaded = match.share_code.startswith("upload:")
     return {
         "id": match.id,
-        "source": "upload" if uploaded else "steam_sync",
-        "share_code": None if uploaded else match.share_code,
+        "source": match.source,  # how the match first arrived: upload | steam_sync
+        "share_code": match.share_code if match.has_share_code else None,
         "status": match.status,
         "status_reason": match.status_reason,
         "map_name": match.map_name,
@@ -279,14 +278,25 @@ def list_matches(
 
 
 @router.post("/matches/upload", dependencies=[Depends(_csrf)])
-async def upload_demo(request: Request, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
-    """Body: the raw ``.dem`` or ``.dem.bz2`` bytes (Content-Type: application/octet-stream)."""
+async def upload_demo(
+    request: Request, share_code: str | None = None,
+    user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
+) -> dict:
+    """Body: the raw ``.dem`` or ``.dem.bz2`` bytes (Content-Type: application/octet-stream).
+
+    Optional ``?share_code=CSGO-...``: the match's sharing code. It lets a later
+    Steam sync of the same match skip the download (dedupe by Valve match id);
+    without it, dedupe relies on the demo's SHA-256.
+    """
 
     import shutil
     import tempfile
 
     from .upload import UploadRejected, import_uploaded_demo
 
+    share_code = (share_code or "").strip() or None
+    if share_code and not is_valid_share_code(share_code):
+        raise HTTPException(status_code=422, detail="invalid_share_code_format")
     limit = ctx.settings.demo_max_decompressed_bytes
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > limit:
@@ -307,7 +317,7 @@ async def upload_demo(request: Request, user: User = Depends(_current_user), ctx
             result = await run_in_threadpool(
                 import_uploaded_demo, storage=ctx.storage, parser=ctx.sync.parser, user=user, raw_path=raw_path,
                 workdir=workdir, max_compressed_bytes=ctx.settings.demo_max_download_bytes,
-                max_demo_bytes=limit, now=ctx.clock(),
+                max_demo_bytes=limit, now=ctx.clock(), share_code=share_code,
             )
         except UploadRejected as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from None

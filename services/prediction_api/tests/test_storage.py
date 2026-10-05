@@ -18,7 +18,7 @@ NOW = datetime(2026, 10, 4, 12, 0, 0, tzinfo=timezone.utc)
 def storage(tmp_path):
     engine = make_test_engine(tmp_path)
     applied = apply_migrations(engine)
-    assert applied == ["0001_steam_sync"]
+    assert applied == ["0001_steam_sync", "0002_cross_source_dedupe"]
     # Metadata tables must match the migration (re-create is a no-op if identical).
     metadata.create_all(engine)
     return SqlStorage(engine)

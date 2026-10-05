@@ -9,14 +9,17 @@ import threading
 from dataclasses import dataclass
 
 from .demo_parser import DemoParseError, DemoParser, extract_rounds
-from .storage.base import NewMatch, Storage, User
+from .sharecode import InvalidShareCode, decode
+from .storage.base import UNKNOWN_MATCH_ID, UPLOAD_KEY_PREFIX, NewMatch, Storage, User
 from .valve import DemoTooLarge, DemoUnavailable, decompress_bz2
 
 CS2_DEMO_MAGIC = b"PBDEMS2\0"
 BZIP2_MAGIC = b"BZh"
-# Uploaded matches have no share code; the upload key (hash of the decompressed
-# .dem) is stored in matches.share_code so UNIQUE(user_id, share_code) dedupes.
-UPLOAD_KEY_PREFIX = "upload:"
+# Dedupe keys (see Storage): the SHA-256 of the decompressed .dem always, plus
+# the Valve match id when the user supplies the match's share code. Without a
+# share code, matches.share_code holds "upload:<sha256>". The same match later
+# arriving via Steam sync is matched on the share code / match id, or on the
+# demo hash once sync downloads it (Valve serves the same file the client saves).
 
 # Parsing is memory-heavy; allow one upload parse per process at a time.
 _parse_slot = threading.BoundedSemaphore(1)
@@ -35,7 +38,7 @@ class UploadResult:
     created: bool
 
 
-def _sha256(path: str) -> str:
+def sha256_file(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as fh:
         while chunk := fh.read(1 << 20):
@@ -45,8 +48,14 @@ def _sha256(path: str) -> str:
 
 def import_uploaded_demo(
     *, storage: Storage, parser: DemoParser, user: User, raw_path: str, workdir: str,
-    max_compressed_bytes: int, max_demo_bytes: int, now,
+    max_compressed_bytes: int, max_demo_bytes: int, now, share_code: str | None = None,
 ) -> UploadResult:
+    valve_match_id = UNKNOWN_MATCH_ID
+    if share_code:
+        try:
+            valve_match_id = str(decode(share_code).match_id)
+        except InvalidShareCode:
+            raise UploadRejected("invalid_share_code_format") from None
     with open(raw_path, "rb") as fh:
         head = fh.read(8)
     demo_path = raw_path
@@ -66,10 +75,12 @@ def import_uploaded_demo(
     if head != CS2_DEMO_MAGIC:
         raise UploadRejected("not_a_cs2_demo")
 
-    key = UPLOAD_KEY_PREFIX + _sha256(demo_path)
-    existing = storage.find_match_id_by_share_code(user.id, key)
-    if existing:  # same demo (plain or .bz2) already imported: don't parse again
-        return UploadResult(existing, False)
+    digest = sha256_file(demo_path)
+    existing = storage.find_match(user.id, share_code=share_code, valve_match_id=valve_match_id,
+                                  demo_sha256=digest)
+    if existing and existing.status == "imported":
+        # Same demo (plain or .bz2), or the same match already synced from Steam: don't parse again.
+        return UploadResult(existing.id, False)
     if not _parse_slot.acquire(blocking=False):
         raise UploadRejected("upload_busy", 429)
     try:
@@ -80,7 +91,8 @@ def import_uploaded_demo(
         _parse_slot.release()
     if not parsed.rounds:
         raise UploadRejected("demo_has_no_rounds")
-    match = NewMatch(share_code=key, valve_match_id="upload", status="imported", status_reason=None,
-                     map_name=parsed.map_name, rounds=tuple(extract_rounds(parsed)))
+    match = NewMatch(share_code=share_code or UPLOAD_KEY_PREFIX + digest, valve_match_id=valve_match_id,
+                     status="imported", status_reason=None, map_name=parsed.map_name,
+                     rounds=tuple(extract_rounds(parsed)), demo_sha256=digest, source="upload")
     match_id, created = storage.record_uploaded_match(user.id, match=match, now=now)
     return UploadResult(match_id, created)

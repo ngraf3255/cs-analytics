@@ -29,6 +29,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 
 from .base import (
+    UNKNOWN_MATCH_ID,
+    UPLOAD_KEY_PREFIX,
     CursorConflict,
     MatchAccess,
     MatchRecord,
@@ -107,6 +109,8 @@ matches = Table(
     Column("map_name", String),
     Column("rounds_count", Integer, nullable=False, default=0),
     Column("imported_at", UTCDateTime, nullable=False),
+    Column("source", String, nullable=False, default="steam_sync"),
+    Column("demo_sha256", String),
 )
 rounds = Table(
     "rounds", metadata,
@@ -151,7 +155,7 @@ def _match_record(row) -> MatchRecord:
     return MatchRecord(
         id=row.id, share_code=row.share_code, valve_match_id=row.valve_match_id, status=row.status,
         status_reason=row.status_reason, map_name=row.map_name, rounds_count=row.rounds_count,
-        imported_at=row.imported_at,
+        imported_at=row.imported_at, source=row.source, demo_sha256=row.demo_sha256,
     )
 
 
@@ -257,55 +261,105 @@ class SqlStorage(Storage):
                         last_finished_at=now, last_imported_count=imported)
             )
 
+    def _check_cursor(self, conn, user_id: str, expected_cursor: str) -> None:
+        current = conn.execute(
+            select(match_access.c.cursor_share_code)
+            .where(match_access.c.user_id == user_id).with_for_update()
+        ).scalar_one_or_none()
+        if current is None or current != expected_cursor:
+            raise CursorConflict()
+
+    def _advance_cursor(self, conn, user_id: str, share_code: str, now: datetime) -> None:
+        conn.execute(update(match_access).where(match_access.c.user_id == user_id)
+                     .values(cursor_share_code=share_code, updated_at=now))
+
     def record_match(self, user_id: str, *, expected_cursor: str, match: NewMatch, now: datetime) -> bool:
         with self.engine.begin() as conn:
-            current = conn.execute(
-                select(match_access.c.cursor_share_code)
-                .where(match_access.c.user_id == user_id).with_for_update()
-            ).scalar_one_or_none()
-            if current is None or current != expected_cursor:
-                raise CursorConflict()
-            existing = conn.execute(
-                select(matches.c.id).where(and_(matches.c.user_id == user_id, matches.c.share_code == match.share_code))
-            ).first()
-            inserted = False
-            if not existing:
-                self._insert_match(conn, user_id, match, now)
-                inserted = True
-            conn.execute(
-                update(match_access).where(match_access.c.user_id == user_id)
-                .values(cursor_share_code=match.share_code, updated_at=now)
-            )
+            self._check_cursor(conn, user_id, expected_cursor)
+            _, inserted = self._store_deduped(conn, user_id, match, now)
+            self._advance_cursor(conn, user_id, match.share_code, now)
             return inserted
+
+    def skip_known_match(self, user_id, *, expected_cursor, share_code, valve_match_id, now) -> bool:
+        with self.engine.begin() as conn:
+            self._check_cursor(conn, user_id, expected_cursor)
+            rows = self._find_rows(conn, user_id, share_code=share_code, valve_match_id=valve_match_id)
+            if len(rows) != 1 or rows[0].status != "imported":
+                return False
+            self._merge_keys(conn, rows[0], NewMatch(
+                share_code=share_code, valve_match_id=valve_match_id, status="imported",
+                status_reason=None, map_name=None))
+            self._advance_cursor(conn, user_id, share_code, now)
+            return True
 
     def record_uploaded_match(self, user_id: str, *, match: NewMatch, now: datetime) -> tuple[str, bool]:
         try:
             with self.engine.begin() as conn:
-                existing = conn.execute(select(matches.c.id).where(
-                    and_(matches.c.user_id == user_id, matches.c.share_code == match.share_code))).first()
-                if existing:
-                    return existing.id, False
-                match_id = self._insert_match(conn, user_id, match, now)
-                return match_id, True
-        except IntegrityError:  # concurrent duplicate upload
+                return self._store_deduped(conn, user_id, match, now)
+        except IntegrityError:  # concurrent duplicate upload / sync of the same match
             with self.engine.begin() as conn:
-                row = conn.execute(select(matches.c.id).where(
-                    and_(matches.c.user_id == user_id, matches.c.share_code == match.share_code))).one()
-                return row.id, False
+                rows = self._find_rows(conn, user_id, share_code=match.share_code,
+                                       valve_match_id=match.valve_match_id, demo_sha256=match.demo_sha256)
+                if not rows:
+                    raise
+                return rows[0].id, False
 
-    def find_match_id_by_share_code(self, user_id: str, share_code: str) -> str | None:
+    def find_match(self, user_id, *, share_code=None, valve_match_id=None, demo_sha256=None):
         with self.engine.begin() as conn:
-            return conn.execute(select(matches.c.id).where(
-                and_(matches.c.user_id == user_id, matches.c.share_code == share_code))).scalar_one_or_none()
+            rows = self._find_rows(conn, user_id, share_code=share_code, valve_match_id=valve_match_id,
+                                   demo_sha256=demo_sha256)
+        return _match_record(rows[0]) if rows else None
+
+    # Dedupe helpers ------------------------------------------------------------
+    @staticmethod
+    def _find_rows(conn, user_id, *, share_code=None, valve_match_id=None, demo_sha256=None) -> list:
+        keys = []
+        if share_code:
+            keys.append(matches.c.share_code == share_code)
+        if valve_match_id and valve_match_id != UNKNOWN_MATCH_ID:
+            keys.append(matches.c.valve_match_id == valve_match_id)
+        if demo_sha256:
+            keys.append(matches.c.demo_sha256 == demo_sha256)
+        if not keys:
+            return []
+        return conn.execute(
+            select(matches).where(and_(matches.c.user_id == user_id, or_(*keys)))
+            .order_by(matches.c.imported_at, matches.c.id)
+        ).all()
+
+    def _store_deduped(self, conn, user_id: str, match: NewMatch, now: datetime) -> tuple[str, bool]:
+        rows = self._find_rows(conn, user_id, share_code=match.share_code,
+                               valve_match_id=match.valve_match_id, demo_sha256=match.demo_sha256)
+        if not rows:
+            return self._insert_match(conn, user_id, match, now), True
+        row = rows[0]
+        if len(rows) == 1:  # >1 means the keys point at different rows; don't merge blindly
+            self._merge_keys(conn, row, match)
+        if row.status != "imported" and match.status == "imported" and match.rounds:
+            # e.g. Steam sync had no demo (unavailable), then the user uploaded it.
+            conn.execute(delete(rounds).where(rounds.c.match_id == row.id))
+            self._insert_rounds(conn, row.id, match)
+            conn.execute(update(matches).where(matches.c.id == row.id).values(
+                status=match.status, status_reason=match.status_reason, map_name=match.map_name,
+                rounds_count=len(match.rounds)))
+        return row.id, False
 
     @staticmethod
-    def _insert_match(conn, user_id: str, match: NewMatch, now: datetime) -> str:
-        match_id = uuid.uuid4().hex
-        conn.execute(insert(matches).values(
-            id=match_id, user_id=user_id, share_code=match.share_code, valve_match_id=match.valve_match_id,
-            status=match.status, status_reason=match.status_reason, map_name=match.map_name,
-            rounds_count=len(match.rounds), imported_at=now,
-        ))
+    def _merge_keys(conn, row, match: NewMatch) -> None:
+        """Fill in keys the stored row lacks (never overwrite a known key)."""
+
+        values = {}
+        if row.share_code.startswith(UPLOAD_KEY_PREFIX) and not match.share_code.startswith(UPLOAD_KEY_PREFIX):
+            values["share_code"] = match.share_code
+        if row.valve_match_id == UNKNOWN_MATCH_ID and match.valve_match_id != UNKNOWN_MATCH_ID:
+            values["valve_match_id"] = match.valve_match_id
+        if row.demo_sha256 is None and match.demo_sha256:
+            values["demo_sha256"] = match.demo_sha256
+        if values:
+            conn.execute(update(matches).where(matches.c.id == row.id).values(**values))
+
+    @staticmethod
+    def _insert_rounds(conn, match_id: str, match: NewMatch) -> None:
         if match.rounds:
             conn.execute(insert(rounds), [
                 dict(match_id=match_id, round_number=r.round_number, winner_side=r.winner_side,
@@ -313,6 +367,16 @@ class SqlStorage(Storage):
                      opening_weapon=r.opening_weapon, unscored_reason=r.unscored_reason)
                 for r in match.rounds
             ])
+
+    @classmethod
+    def _insert_match(cls, conn, user_id: str, match: NewMatch, now: datetime) -> str:
+        match_id = uuid.uuid4().hex
+        conn.execute(insert(matches).values(
+            id=match_id, user_id=user_id, share_code=match.share_code, valve_match_id=match.valve_match_id,
+            status=match.status, status_reason=match.status_reason, map_name=match.map_name,
+            rounds_count=len(match.rounds), imported_at=now, source=match.source, demo_sha256=match.demo_sha256,
+        ))
+        cls._insert_rounds(conn, match_id, match)
         return match_id
 
     # Reports ---------------------------------------------------------------

@@ -138,3 +138,15 @@ def test_busy_when_another_parse_is_running(up):
         upload._parse_slot.release()
     assert response.status_code == 429 and response.json()["detail"] == "upload_busy"
     assert post(client, DEMO).status_code == 200
+
+
+def test_share_code_query_param_links_the_upload(up):
+    from fakes import code
+
+    client, ctx, scratch = up
+    bad = client.post("/matches/upload?share_code=CSGO-nope", content=DEMO, headers=OCTET)
+    assert bad.status_code == 422 and bad.json()["detail"] == "invalid_share_code_format"
+    response = client.post(f"/matches/upload?share_code={code(7)}", content=DEMO, headers=OCTET)
+    assert response.status_code == 200, response.text
+    assert response.json()["match"]["share_code"] == code(7) and response.json()["match"]["source"] == "upload"
+    assert ctx.sync.parser.calls == 1

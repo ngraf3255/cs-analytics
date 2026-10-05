@@ -56,6 +56,12 @@ class RoundRecord:
     unscored_reason: str | None
 
 
+# valve_match_id value when the Valve match id is not known (uploads without a share code).
+UNKNOWN_MATCH_ID = "upload"
+# matches.share_code prefix for uploads without a share code: "upload:<demo sha256>".
+UPLOAD_KEY_PREFIX = "upload:"
+
+
 @dataclass(frozen=True)
 class NewMatch:
     share_code: str
@@ -64,6 +70,9 @@ class NewMatch:
     status_reason: str | None
     map_name: str | None
     rounds: tuple[RoundRecord, ...] = ()
+    # SHA-256 of the decompressed .dem when we had the file (sync download or upload).
+    demo_sha256: str | None = None
+    source: str = "steam_sync"  # steam_sync | upload (how the match first arrived)
 
 
 @dataclass(frozen=True)
@@ -76,6 +85,12 @@ class MatchRecord:
     map_name: str | None
     rounds_count: int
     imported_at: datetime
+    source: str = "steam_sync"
+    demo_sha256: str | None = None
+
+    @property
+    def has_share_code(self) -> bool:
+        return not self.share_code.startswith(UPLOAD_KEY_PREFIX)
 
 
 class CursorConflict(Exception):
@@ -121,22 +136,41 @@ class Storage(ABC):
         self, user_id: str, token: str, now: datetime, *, status: str, error: str | None, imported: int
     ) -> None: ...
 
+    # Dedupe (all sources): a match is "the same" for a user when ANY of its
+    # share code, Valve match id (if known) or demo SHA-256 (if known) is
+    # already stored. Then no second row is written; instead the stored row
+    # (a) gains keys it lacked (e.g. an upload learns its share code from sync)
+    # and (b) is upgraded with the new rounds if it was not imported yet
+    # (e.g. Steam had no demo, then the user uploaded it).
+
     @abstractmethod
     def record_match(self, user_id: str, *, expected_cursor: str, match: NewMatch, now: datetime) -> bool:
-        """In ONE transaction: insert the match + rounds (no-op if the share code is
-        already stored) and move the cursor from ``expected_cursor`` to
-        ``match.share_code``. Returns True if a new match row was inserted.
-        Raises :class:`CursorConflict` if the cursor no longer equals ``expected_cursor``."""
+        """In ONE transaction: insert the match + rounds (or dedupe as above) and
+        move the cursor from ``expected_cursor`` to ``match.share_code``. Returns
+        True if a new match row was inserted. Raises :class:`CursorConflict` if
+        the cursor no longer equals ``expected_cursor``."""
+
+    @abstractmethod
+    def skip_known_match(
+        self, user_id: str, *, expected_cursor: str, share_code: str, valve_match_id: str, now: datetime
+    ) -> bool:
+        """If this share code / Valve match id is already stored AND imported, attach
+        the share code to it if missing and advance the cursor (one transaction);
+        return True so sync can skip downloading the demo. Otherwise change nothing
+        and return False. Raises :class:`CursorConflict` like :meth:`record_match`."""
 
     @abstractmethod
     def record_uploaded_match(self, user_id: str, *, match: NewMatch, now: datetime) -> tuple[str, bool]:
-        """Store a manually uploaded match (cursor untouched). ``match.share_code``
-        must be a unique upload key (e.g. ``upload:<sha256>``). Returns
-        ``(match_id, inserted)``; re-uploading the same file is a no-op."""
+        """Store a manually uploaded match (cursor untouched), deduped as above.
+        ``match.share_code`` is the real share code if the user gave one, else
+        ``upload:<sha256>``. Returns ``(match_id, inserted)``."""
 
     @abstractmethod
-    def find_match_id_by_share_code(self, user_id: str, share_code: str) -> str | None:
-        """Match id for this user's share code / upload key, or None (lets uploads skip re-parsing)."""
+    def find_match(
+        self, user_id: str, *, share_code: str | None = None, valve_match_id: str | None = None,
+        demo_sha256: str | None = None,
+    ) -> MatchRecord | None:
+        """The user's stored match matching any given key, or None (lets uploads skip re-parsing)."""
 
     # Reports ---------------------------------------------------------------
     @abstractmethod

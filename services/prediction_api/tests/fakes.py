@@ -1,5 +1,7 @@
 """Shared fakes for Valve, demo retrieval and parsing (no network)."""
 
+import os
+import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -65,13 +67,23 @@ class FakeLocator(DemoLocator):
 
 
 class FakeFetcher:
+    """Yields a real temp file. Content defaults to a per-URL demo-like blob;
+    set ``content[url]`` to simulate Valve serving specific bytes."""
+
     def __init__(self):
         self.fetched = []
+        self.content = {}
 
     @contextmanager
     def fetch(self, url):
         self.fetched.append(url)
-        yield "/nonexistent/demo.dem"
+        fd, path = tempfile.mkstemp(suffix=".dem")
+        try:
+            with os.fdopen(fd, "wb") as out:
+                out.write(self.content.get(url, b"PBDEMS2\0" + url.encode()))
+            yield path
+        finally:
+            os.remove(path)
 
 
 class FakeParser(DemoParser):
