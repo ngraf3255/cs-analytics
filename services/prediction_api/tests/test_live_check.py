@@ -16,6 +16,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from steamlink import live_check
+from steamlink.config import Settings
 from steamlink.gc import GCAuthError, GCMatch, GCNotReady, GCTimeout, GameCoordinator
 from steamlink.live_check import FAKE_API_KEY, FAKE_AUTH_CODE, FAKE_STEAM_ID, FakeValve, fake_codes, run_check
 
@@ -142,7 +143,13 @@ REAL_DEMO = os.environ.get("CSA_TEST_DEMO")
 @pytest.mark.skipif(not REAL_DEMO or not os.path.isfile(REAL_DEMO), reason="set CSA_TEST_DEMO to a CS2 demo")
 def test_fake_mode_real_demo_real_parser_per_round_analytics(tmp_path):
     report_path = tmp_path / "report.json"
-    code, out = run(["--fake", "--demo", REAL_DEMO, "--walk", "2", "--report-json", str(report_path)])
+    # Valve serves .dem.bz2 archives (well under the 300 MiB download cap); a big plain .dem
+    # test file (e.g. the 372/441 MB FACEIT/HLTV demos) stands in for one here, so lift the cap
+    # for this run only (DEMO_* settings pass through in --fake). The cap itself is tested below.
+    env = {}
+    if os.path.getsize(REAL_DEMO) > Settings.demo_max_download_bytes:
+        env["DEMO_MAX_DOWNLOAD_BYTES"] = str(os.path.getsize(REAL_DEMO) + 1)
+    code, out = run(["--fake", "--demo", REAL_DEMO, "--walk", "2", "--report-json", str(report_path)], env=env)
     assert code == 0, out
     report = json.loads(report_path.read_text())
     assert report["summary"]["rounds"] >= 8
