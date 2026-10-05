@@ -211,9 +211,43 @@ def test_matches_from_before_the_migration_are_marked_unknown(tmp_path):
             {"t": NOW})
         conn.execute(text("INSERT INTO match_owners (user_id, match_id, source, added_at) VALUES ('u', 'm', 'upload', :t)"),
                      {"t": NOW})
-    assert apply_migrations(engine) == ["0007_player_rounds"]
+    assert apply_migrations(engine) == ["0007_player_rounds", "0008_parse_version"]
     record = SqlStorage(engine).get_match("u", "m")[0]
     assert (record.players_recorded, record.played_at, record.played_at_source) == (False, None, None)
+    assert (record.parse_version, record.outdated_reason) == (0, "players_not_recorded")
+
+
+def test_migration_0008_flags_matches_parsed_before_warmup_rounds_were_left_out(tmp_path):
+    """Matches parsed with per-player rounds (0007) but before warmup / knife rounds were
+    left out of all numbers get parse_version 1 ("parser_updated"); nothing is rewritten."""
+
+    from pathlib import Path
+    import shutil
+
+    from steamlink.migrate import MIGRATIONS_DIR
+
+    old = tmp_path / "old_migrations"
+    old.mkdir()
+    for path in Path(MIGRATIONS_DIR).iterdir():
+        if path.suffix in (".sql", ".py") and path.stem[:4].isdigit() and path.stem < "0008":
+            shutil.copy(path, old / path.name)
+    engine = make_test_engine(tmp_path, "pre0008")
+    apply_migrations(engine, old)
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (id, steam_id, created_at, updated_at) VALUES ('u', :s, :t, :t)"),
+                     {"s": A1, "t": NOW})
+        for mid, status, recorded in (("v1", "imported", 1), ("v0", "imported", 0), ("stub", "unavailable", 0)):
+            conn.execute(text(
+                "INSERT INTO matches (id, user_id, share_code, valve_match_id, status, map_name, rounds_count, imported_at,"
+                " source, players_recorded) VALUES (:id, 'u', :code, 'upload', :status, 'de_nuke', 25, :t, 'upload', :r)"),
+                {"id": mid, "code": "upload:" + mid, "status": status, "r": recorded, "t": NOW})
+            conn.execute(text("INSERT INTO match_owners (user_id, match_id, source, added_at) VALUES ('u', :id, 'upload', :t)"),
+                         {"id": mid, "t": NOW})
+    assert apply_migrations(engine) == ["0008_parse_version"]
+    storage = SqlStorage(engine)
+    got = {mid: storage.get_match("u", mid)[0] for mid in ("v1", "v0", "stub")}
+    assert {mid: (m.parse_version, m.outdated_reason, m.rounds_count) for mid, m in got.items()} == {
+        "v1": (1, "parser_updated", 25), "v0": (0, "players_not_recorded", 25), "stub": (0, None, 25)}
 
 
 # Match date from the Game Coordinator ----------------------------------------------------------
@@ -275,3 +309,89 @@ def test_reuploading_a_demo_stored_before_player_tracking_parses_it_once_more(tm
     # Now recorded: the next upload of the same demo is the instant dedupe again (no parse).
     response, job = upload_and_wait(client, ctx, demo)
     assert response.status_code == 200 and job["match"]["id"] == old_id and ctx.sync.parser.calls == 1
+
+
+# Outdated matches (an older parse_version) -------------------------------------------------
+
+def test_a_newer_parse_replaces_an_outdated_match_and_an_older_one_changes_nothing(storage):
+    """E.g. a match stored with its knife round counted (parse_version 1, 3 rounds) and the
+    same demo uploaded again: the current parse (2 rounds) replaces rounds, player rounds,
+    rounds_count and score. A parse from an older parser never overwrites a newer one."""
+
+    from dataclasses import replace
+
+    a = storage.get_or_create_user(A1, NOW)
+    knife = RoundRecord(1, "t", "t", 1.0, "knife", None)
+    shifted = tuple(replace(r, round_number=r.round_number + 1) for r in match("e" * 64).rounds)
+    v1 = replace(match("e" * 64, players=tuple(replace(p, round_number=p.round_number + 1) for p in PLAYERS),
+                       score=(2, 1)), rounds=(knife, *shifted), parse_version=1)
+    match_id, _ = storage.record_uploaded_match(a.id, match=v1, now=NOW)
+    record = storage.get_match(a.id, match_id)[0]
+    assert (record.rounds_count, record.parse_version, record.outdated_reason) == (3, 1, "parser_updated")
+
+    again, added = storage.record_uploaded_match(a.id, match=match("e" * 64, players=PLAYERS), now=NOW)
+    assert (again, added) == (match_id, False)
+    record, rounds = storage.get_match(a.id, match_id)
+    assert (record.rounds_count, record.parse_version, record.outdated_reason) == (2, 2, None)
+    assert [(r.round_number, r.opening_weapon) for r in rounds] == [(1, "ak47"), (2, "m4a1")]
+    assert (record.score_ct, record.score_t) == (1, 1)
+    assert storage.get_player_rounds(match_id, A1) == list(PLAYERS[:2])
+
+    storage.record_uploaded_match(a.id, match=v1, now=NOW)  # an older parser's result
+    record, rounds = storage.get_match(a.id, match_id)
+    assert (record.rounds_count, record.parse_version, len(rounds)) == (2, 2, 2)
+
+
+def test_reupload_of_an_outdated_match_someone_else_imported_adds_it_and_updates_it(tmp_path):
+    """The upload request adds the stored (outdated) match to the user's list and queues a
+    re-parse; the finished job reports the match as new to this user (created true)."""
+
+    import hashlib
+    from dataclasses import replace
+
+    from test_api_steam import login, make_client, upload_and_wait
+
+    client, ctx = make_client(tmp_path)
+    login(client, ctx)
+    demo = b"PBDEMS2\0" + b"w" * 3000
+    sha = hashlib.sha256(demo).hexdigest()
+    other = ctx.storage.get_or_create_user("76561198000000999", ctx.clock())
+    knife = RoundRecord(1, "t", "t", 1.0, "knife", None)
+    shifted = tuple(replace(r, round_number=r.round_number + 1) for r in match(sha).rounds)
+    old = replace(match(sha), rounds=(knife, *shifted), parse_version=1)
+    old_id, _ = ctx.storage.record_uploaded_match(other.id, match=old, now=ctx.clock())
+    assert ctx.storage.get_match(other.id, old_id)[0].rounds_count == 3
+
+    response, job = upload_and_wait(client, ctx, demo)
+    assert response.status_code == 202 and job["status"] == "done", job
+    assert job["match"]["id"] == old_id and job["created"] is True
+    assert ctx.sync.parser.calls == 1
+    assert job["match"]["outdated"] is None and job["match"]["rounds_count"] == 2
+    listed = client.get("/matches").json()["matches"]
+    assert [m["id"] for m in listed] == [old_id]
+    # The other owner sees the update too (one shared row).
+    assert ctx.storage.get_match(other.id, old_id)[0].rounds_count == 2
+    # Up to date now: the next upload is the instant dedupe (no parse, not new).
+    response, job = upload_and_wait(client, ctx, demo)
+    assert response.status_code == 200 and job["created"] is False and ctx.sync.parser.calls == 1
+
+
+def test_outdated_matches_are_flagged_in_the_api_with_reupload_as_the_fix(tmp_path):
+    from dataclasses import replace
+
+    from test_api_steam import login, make_client
+
+    client, ctx = make_client(tmp_path)
+    login(client, ctx)
+    me = ctx.storage.get_or_create_user(FAKE_PLAYER, ctx.clock())
+    ids = {}
+    for key, version, recorded in (("1", 1, True), ("0", 0, False), ("2", 2, True)):
+        ids[key], _ = ctx.storage.record_uploaded_match(
+            me.id, match=replace(match(key * 64, recorded=recorded), parse_version=version), now=ctx.clock())
+    views = {m["id"]: m for m in client.get("/matches").json()["matches"]}
+    assert views[ids["1"]]["outdated"] == {"reason": "parser_updated", "fix": "reupload"}
+    assert views[ids["0"]]["outdated"] == {"reason": "players_not_recorded", "fix": "reupload"}
+    assert views[ids["2"]]["outdated"] is None
+    assert client.get(f"/matches/{ids['1']}").json()["match"]["outdated"]["reason"] == "parser_updated"
+    summary = client.get("/matches/summary").json()
+    assert summary["totals"]["outdated_matches"] == 2 and summary["you"]["matches_unknown"] == 1

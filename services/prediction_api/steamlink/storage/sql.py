@@ -124,6 +124,7 @@ matches = Table(
     Column("players_recorded", Integer, nullable=False, default=0),
     Column("played_at", UTCDateTime),
     Column("played_at_source", String),
+    Column("parse_version", Integer, nullable=False, default=0),
 )
 # Who has a (shared) match in their list. matches.user_id = who imported it first.
 match_owners = Table(
@@ -227,6 +228,7 @@ def _match_record(row, owner=None) -> MatchRecord:
         source=owner.source if owner is not None else row.source, demo_sha256=row.demo_sha256,
         share_code_verified=bool(row.share_code_verified), score_ct=row.score_ct, score_t=row.score_t,
         players_recorded=bool(row.players_recorded), played_at=row.played_at, played_at_source=row.played_at_source,
+        parse_version=row.parse_version,
     )
 
 
@@ -542,8 +544,12 @@ class SqlStorage(Storage):
             return match_id, self._attach(conn, user_id, match_id, match.source, now)
         self._merge_keys(conn, row, share_code=match.share_code, valve_match_id=match.valve_match_id,
                          demo_sha256=match.demo_sha256, verified=verified)
-        if row.status != "imported" and match.status == "imported" and match.rounds:
-            # e.g. Steam sync had no demo (unavailable), then the user uploaded it.
+        upgrade = row.status != "imported" and match.status == "imported" and match.rounds
+        # e.g. Steam sync had no demo (unavailable), then the user uploaded it; or the match
+        # was parsed by an older parser and the same demo was uploaded again.
+        reparse = (row.status == "imported" and match.status == "imported" and match.players_recorded
+                   and (not row.players_recorded or row.parse_version < match.parse_version))
+        if upgrade or reparse:
             conn.execute(delete(rounds).where(rounds.c.match_id == row.id))
             conn.execute(delete(player_rounds).where(player_rounds.c.match_id == row.id))
             self._insert_rounds(conn, row.id, match)
@@ -551,7 +557,8 @@ class SqlStorage(Storage):
             conn.execute(update(matches).where(matches.c.id == row.id).values(
                 status=match.status, status_reason=match.status_reason, map_name=match.map_name,
                 rounds_count=len(match.rounds), score_ct=match.score_ct, score_t=match.score_t,
-                players_recorded=int(match.players_recorded)))
+                players_recorded=int(match.players_recorded),
+                parse_version=match.parse_version if match.players_recorded else 0))
         elif row.status == "imported" and match.status == "imported":
             self._fill_details(conn, row, match)
         if row.played_at is None and match.played_at is not None:
@@ -560,14 +567,10 @@ class SqlStorage(Storage):
         return row.id, self._attach(conn, user_id, row.id, match.source, now)
 
     def _fill_details(self, conn, row, match: NewMatch) -> None:
-        """A re-parse of a stored match (same demo) fills in what was not recorded
-        when it was first parsed: player rounds and the final score."""
+        """A parse of a stored, current match (same match) fills in what is missing:
+        the final score."""
 
         values = {}
-        if not row.players_recorded and match.players_recorded:
-            conn.execute(delete(player_rounds).where(player_rounds.c.match_id == row.id))
-            self._insert_player_rounds(conn, row.id, match)
-            values["players_recorded"] = 1
         if row.score_ct is None and match.score_ct is not None and match.score_t is not None:
             values.update(score_ct=match.score_ct, score_t=match.score_t)
         if values:
@@ -603,6 +606,7 @@ class SqlStorage(Storage):
             share_code_verified=int(match.share_code_verified and _real_code(match.share_code) is not None),
             score_ct=match.score_ct, score_t=match.score_t,
             players_recorded=int(match.players_recorded and match.status == "imported"),
+            parse_version=match.parse_version if match.players_recorded and match.status == "imported" else 0,
             played_at=match.played_at, played_at_source=match.played_at_source if match.played_at else None,
         ))
         cls._insert_rounds(conn, match_id, match)

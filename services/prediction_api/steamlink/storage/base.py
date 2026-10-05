@@ -71,6 +71,14 @@ class PlayerRoundRecord:
     survived: bool = True
 
 
+# What a demo parse extracts (stored per match as matches.parse_version, migration 0008).
+# Bump it when steamlink.demo_parser changes what it records; matches parsed before are
+# then flagged ("outdated") and a re-upload of the same demo re-parses and replaces them.
+# 1 = rounds + per-player rounds (migration 0007); 2 = warmup / knife rounds before the
+# last begin_new_match left out of ALL numbers and rounds numbered from the match start,
+# players of a round without any player_spawn taken from the next round.
+PARSE_VERSION = 2
+
 # valve_match_id value when the Valve match id is not known (uploads without a share code).
 UNKNOWN_MATCH_ID = "upload"
 # matches.share_code prefix for uploads without a share code: "upload:<demo sha256>".
@@ -98,6 +106,7 @@ class NewMatch:
     players_recorded: bool = False  # True when the parse recorded player rounds (even if empty)
     played_at: datetime | None = None  # when the match was played, if known (not in CS2 demos)
     played_at_source: str | None = None  # valve_gc
+    parse_version: int = PARSE_VERSION  # what the parse extracted (stubs store 0)
 
 
 @dataclass(frozen=True)
@@ -118,10 +127,26 @@ class MatchRecord:
     players_recorded: bool = False  # per-player rounds stored (False: parsed before they were)
     played_at: datetime | None = None  # when the match was played, if known
     played_at_source: str | None = None
+    parse_version: int = 0  # PARSE_VERSION of the parse that stored the rounds
 
     @property
     def has_share_code(self) -> bool:
         return not self.share_code.startswith(UPLOAD_KEY_PREFIX)
+
+    @property
+    def outdated_reason(self) -> str | None:
+        """Why an imported match's stored rounds are older than the current parser, or None:
+        ``players_not_recorded`` (parsed before per-player rounds: no personal stats) or
+        ``parser_updated`` (e.g. warmup / knife rounds may still be counted). The demo is
+        not kept on the server, so re-uploading it is the way to refresh the match."""
+
+        if self.status != "imported":
+            return None
+        if not self.players_recorded:
+            return "players_not_recorded"
+        if self.parse_version < PARSE_VERSION:
+            return "parser_updated"
+        return None
 
 
 UPLOAD_JOB_ACTIVE = ("queued", "processing")
@@ -250,8 +275,10 @@ class Storage(ABC):
         """Store a parsed (or stub) match (cursor untouched), deduped as above.
         ``match.share_code`` is the real share code if known, else
         ``upload:<sha256>``. Returns ``(match_id, newly_added_to_user)``.
-        A deduped stored match also gains details it lacked: player rounds (if not
-        recorded yet), final score and match date (``played_at``)."""
+        A deduped stored match parsed by an older parser (``MatchRecord.outdated_reason``)
+        gets the new parse: its rounds, player rounds, rounds_count, final score and
+        parse_version are replaced. Otherwise it only gains details it lacked: final
+        score and match date (``played_at``)."""
 
     @abstractmethod
     def find_match(

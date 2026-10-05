@@ -30,7 +30,7 @@ Feature definitions match the training data (``data/rounds.parquet`` /
   them see the same rounds, numbered 1..N from the match start (seen on a real
   FACEIT demo: a knife round, then the restart, then 24 rounds).
 
-``PARSE_VERSION`` is stored with each match (``matches.parse_version``): when
+``PARSE_VERSION`` (steamlink.storage.base) is stored with each match (``matches.parse_version``): when
 what the parse extracts changes, it is bumped and matches parsed before are
 flagged so a re-upload of the same demo re-parses and replaces them.
 
@@ -50,16 +50,11 @@ import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from .storage.base import PlayerRoundRecord, RoundRecord
+from .storage.base import PARSE_VERSION, PlayerRoundRecord, RoundRecord  # noqa: F401 (re-exported)
 
 logger = logging.getLogger(__name__)
 
 CS2_TICKRATE = 64
-# What a parse extracts (stored per match): 1 = rounds + per-player rounds (migration 0007),
-# 2 = warmup / knife rounds before the last begin_new_match dropped from ALL numbers (not
-# only per-player ones) and rounds renumbered from the match start; players present in a
-# round without any player_spawn (recording started mid-round) recorded from the next round.
-PARSE_VERSION = 2
 TEAM_NUM_TO_SIDE = {2: "t", 3: "ct", "2": "t", "3": "ct", "T": "t", "CT": "ct", "t": "t", "ct": "ct"}
 _OTHER_SIDE = {"ct": "t", "t": "ct"}
 

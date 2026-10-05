@@ -127,6 +127,9 @@ def _match_view(match) -> dict:
         # Final score: rounds won by the team on each side at the end (null if unknown).
         "score": None if match.score_ct is None or match.score_t is None else {"ct": match.score_ct, "t": match.score_t},
         "players_recorded": match.players_recorded,  # per-player sides/stats stored for this match
+        # Parsed by an older parser (null: up to date). The demo is not kept on the server,
+        # so the way to refresh it is to upload the same demo again (fix: "reupload").
+        "outdated": None if match.outdated_reason is None else {"reason": match.outdated_reason, "fix": "reupload"},
     }
 
 
@@ -409,11 +412,11 @@ async def upload_demo(
         if digest or share_code:
             # Already stored (same .dem, by this or another user; or this user's match by share
             # code): added to the user's list if needed, no parse, finished job. Unless it was
-            # stored before per-player rounds were recorded: then the job parses it once more.
+            # stored by an older parser (outdated): then the job parses it once more.
             known = ctx.storage.claim_known_match(
                 user.id, share_code=share_code, valve_match_id=valve_match_id, demo_sha256=digest,
                 share_code_verified=False, source="upload", now=now)
-        if known is not None and known[0].players_recorded:
+        if known is not None and known[0].outdated_reason is None:
             record, added = known
             job = UploadJob(id=job_id, user_id=user.id, status="done", demo_path=raw_path, size_bytes=written,
                             created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest,
@@ -421,8 +424,11 @@ async def upload_demo(
             ctx.storage.create_upload_job(job)
             response.status_code = 200
             return {"job": _job_view(ctx, job)}
+        # An outdated known match was just added to the user's list here (claim above), so the
+        # job's re-parse finds it already listed: remember that it is new to the user.
         job = UploadJob(id=job_id, user_id=user.id, status="queued", demo_path=raw_path, size_bytes=written,
-                        created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest)
+                        created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest,
+                        match_created=True if known is not None and known[1] else None)
         if not ctx.storage.create_upload_job(job, max_active=settings.upload_queue_max):
             raise HTTPException(status_code=429, detail="upload_queue_full")
         queued = True

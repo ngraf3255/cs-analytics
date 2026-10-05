@@ -10,7 +10,7 @@ from typing import Callable
 
 from .demo_parser import PARSE_SLOT, DemoParseError, DemoParser, extract_player_rounds, extract_rounds, final_score
 from .sharecode import InvalidShareCode, decode
-from .storage.base import UNKNOWN_MATCH_ID, UPLOAD_KEY_PREFIX, NewMatch, Storage
+from .storage.base import PARSE_VERSION, UNKNOWN_MATCH_ID, UPLOAD_KEY_PREFIX, NewMatch, Storage
 from .valve import DemoTooLarge, DemoUnavailable, decompress_bz2
 
 CS2_DEMO_MAGIC = b"PBDEMS2\0"
@@ -83,8 +83,9 @@ def import_uploaded_demo(
     ``UploadResult.created``: the match was newly added to this user's list (parsed now, or
     already stored for another user and shared without parsing again).
 
-    A known demo is not parsed again, except when it was stored before per-player
-    rounds were recorded (``players_recorded`` false): then this parse fills them in.
+    A known demo is not parsed again, except when it was stored by an older parser
+    (``MatchRecord.outdated_reason``: no per-player rounds, or an older ``parse_version``):
+    then this parse replaces its rounds and player rounds.
     """
 
     valve_match_id = UNKNOWN_MATCH_ID
@@ -133,9 +134,9 @@ def import_uploaded_demo(
                                       source=source, now=now)
     if known is not None:
         record, added = known
-        if record.players_recorded:
+        if record.outdated_reason is None:
             return UploadResult(record.id, added)
-        # Stored before player rounds were recorded: parse once more to fill them in.
+        # Stored by an older parser: parse once more to bring it up to date.
     on_stage("parsing", None)
     if not _parse_slot.acquire(blocking=wait_for_parse_slot):
         raise UploadRejected("upload_busy", 429)
@@ -154,7 +155,7 @@ def import_uploaded_demo(
                      rounds=tuple(extract_rounds(parsed)), demo_sha256=demo_sha256, source=source,
                      share_code_verified=share_code_verified, score_ct=score[0] if score else None,
                      score_t=score[1] if score else None, player_rounds=tuple(extract_player_rounds(parsed)),
-                     players_recorded=True, played_at=played_at,
+                     players_recorded=True, parse_version=PARSE_VERSION, played_at=played_at,
                      played_at_source=played_at_source if played_at else None)
     match_id, created = storage.record_uploaded_match(user_id, match=match, now=now)
     if known is not None:

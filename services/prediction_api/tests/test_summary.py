@@ -74,7 +74,7 @@ def test_zero_matches(app_client):
     body = client.get("/matches/summary").json()
     assert body["model"]["calibrated_for_matchmaking"] is False and body["model"]["note"]
     assert body["totals"] == {
-        "matches": 0, "imported_matches": 0, "not_imported_matches": 0, "rounds": 0, "rounds_with_winner": 0,
+        "matches": 0, "imported_matches": 0, "not_imported_matches": 0, "outdated_matches": 0, "rounds": 0, "rounds_with_winner": 0,
         "scored_rounds": 0, "unscored_rounds": 0, "first_imported_at": None, "last_imported_at": None}
     prediction = body["prediction"]
     assert (prediction["scored_rounds"], prediction["hit_rate"], prediction["brier_score"],

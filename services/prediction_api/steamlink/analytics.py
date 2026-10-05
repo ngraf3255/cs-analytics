@@ -15,6 +15,9 @@ Two scopes:
   K/D, opening duels and recent form. Matches the player is not in (e.g. an
   uploaded pro demo) and matches parsed before per-player rounds were recorded
   are counted separately and left out of these numbers;
+* warmup / knife rounds are not in any number (the parser leaves them out);
+  matches parsed by an older parser are counted in ``totals.outdated_matches``
+  (included as stored: re-upload the demo to bring them up to date);
 * everything else (``sides``, ``prediction``, ``opening_kills``, ``maps``,
   ``recent_form``) covers ALL players in every match: "CT win rate" there means
   "rounds won by the CT side". Rounds the model can't score (unknown weapon, no
@@ -357,6 +360,9 @@ def build_user_summary(storage: Storage, scorer: RoundScorer, user_id: str, *, s
             "matches": len(listed),
             "imported_matches": len(imported),
             "not_imported_matches": len(listed) - len(imported),
+            # Parsed by an older parser (e.g. warmup / knife rounds may still be counted, or no
+            # per-player rounds): included as stored; re-uploading the demo brings each up to date.
+            "outdated_matches": sum(1 for m, _ in imported if m.outdated_reason is not None),
             "rounds": total.rounds,
             "rounds_with_winner": total.with_winner,
             "scored_rounds": total.scored,

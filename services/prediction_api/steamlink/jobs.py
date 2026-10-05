@@ -225,7 +225,10 @@ class UploadJobWorker:
         else:
             logger.info("%s job %s done in %.1fs (match %s, created=%s)", job.kind, job.id,
                         time.monotonic() - started, result.match_id, result.created)
-            self._finish(job, status="done", match_id=result.match_id, match_created=result.created)
+            # match_created set at queue time: the upload request already added the (outdated,
+            # re-parsed here) match to the user's list.
+            self._finish(job, status="done", match_id=result.match_id,
+                         match_created=result.created or bool(job.match_created))
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
             self._remove_files(job)
