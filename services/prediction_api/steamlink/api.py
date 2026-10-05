@@ -457,11 +457,21 @@ def get_upload_job(job_id: str, user: User = Depends(_current_user), ctx: SteamC
 
 @router.get("/matches/{match_id}")
 def match_report(match_id: str, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
-    found = ctx.storage.get_match(user.id, match_id)
-    if found is None:
+    report = build_match_report(ctx.storage, ctx.scorer, user.id, match_id)
+    if report is None:
         raise HTTPException(status_code=404, detail="match_not_found")
+    return report
+
+
+def build_match_report(storage: Storage, scorer: RoundScorer, user_id: str, match_id: str) -> dict | None:
+    """The per-round analytics report of ``GET /matches/{match_id}`` (None: not in the
+    user's list). Also used by ``python -m steamlink.live_check``."""
+
+    found = storage.get_match(user_id, match_id)
+    if found is None:
+        return None
     match, rounds = found
-    scores = ctx.scorer.score_rounds(match.map_name, rounds)
+    scores = scorer.score_rounds(match.map_name, rounds)
     round_views, scored, correct = [], 0, 0
     for rnd, score in zip(rounds, scores):
         prediction = None
