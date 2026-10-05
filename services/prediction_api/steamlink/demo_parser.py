@@ -2,7 +2,11 @@
 
 Feature definitions match the training data (``data/rounds.parquet`` /
 ``python/analysis.py``):
-* opening kill = the first player death of the round;
+* opening kill = the first player death between the round's freeze end and
+  its round_end (training data: opening_kill_tick is always >= freeze_end_tick
+  and <= round_end_tick). Deaths after the previous round_end but before this
+  round's freeze end (post-round "exit frags", warmup) are ignored; a real
+  SourceTV demo has them, so counting them mislabels the opening kill;
 * ``opening_kill_side`` = the killer's side; for ``world`` deaths (fall damage,
   etc.) the training data records the victim's side, so we do the same;
 * ``opening_kill_seconds`` = (death tick - freeze-end tick) / 64;
@@ -73,7 +77,10 @@ def extract_rounds(demo: ParsedDemo) -> list[RoundRecord]:
     for rnd in sorted(demo.rounds, key=lambda r: r.end_tick):
         window_start = previous_end
         previous_end = rnd.end_tick
-        first = next((d for d in deaths if window_start < d.tick <= rnd.end_tick), None)
+        in_round = [d for d in deaths if window_start < d.tick <= rnd.end_tick]
+        if rnd.freeze_end_tick is not None:
+            in_round = [d for d in in_round if d.tick >= rnd.freeze_end_tick]
+        first = in_round[0] if in_round else None
         reason = None
         side = seconds = weapon = None
         if first is None:

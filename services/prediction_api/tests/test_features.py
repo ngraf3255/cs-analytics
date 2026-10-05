@@ -27,6 +27,17 @@ def test_opening_kill_matches_training_definition():
     assert records[1] == RoundRecord(2, "t", "t", 20.0, "ak47", None)
 
 
+def test_post_round_exit_frags_are_not_the_next_rounds_opening_kill():
+    rounds = [ParsedRound(1, 1000, 8000, "t"), ParsedRound(2, 9000, 15000, "ct")]
+    deaths = [
+        ParsedDeath(2000, "t", "ct", "ak47"),
+        ParsedDeath(8300, "ct", "t", "awp"),  # after round 1 ended, before round 2 freeze end
+        ParsedDeath(9640, "t", "ct", "glock"),  # real opening kill of round 2 -> 10s
+    ]
+    records = extract_rounds(demo(deaths, rounds))
+    assert records[1] == RoundRecord(2, "ct", "t", 10.0, "glock", None)
+
+
 def test_world_death_uses_victim_side_like_training_data():
     records = extract_rounds(demo([ParsedDeath(1640, None, "t", "world")]))
     assert records[0].opening_kill_side == "t"
@@ -36,7 +47,7 @@ def test_world_death_uses_victim_side_like_training_data():
 @pytest.mark.parametrize("deaths,rounds,reason", [
     ([], None, "no_opening_kill"),
     ([ParsedDeath(1640, None, "t", "ak47")], None, "opening_kill_side_unknown"),
-    ([ParsedDeath(500, "t", "ct", "ak47")], None, "opening_kill_before_freeze_end"),
+    ([ParsedDeath(500, "t", "ct", "ak47")], None, "no_opening_kill"),  # before freeze end: ignored
     ([ParsedDeath(1640, "t", "ct", "ak47")], [ParsedRound(1, None, 8000, "t")], "freeze_end_missing"),
     ([ParsedDeath(1640, "t", "ct", "ak47")], [ParsedRound(1, 1000, 8000, None)], "winner_unknown"),
 ])
