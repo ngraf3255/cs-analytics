@@ -94,11 +94,15 @@ class MatchRecord:
 
 
 UPLOAD_JOB_ACTIVE = ("queued", "processing")
+JOB_KIND_UPLOAD = "upload"
+JOB_KIND_SYNC = "steam_sync"
 
 
 @dataclass(frozen=True)
 class UploadJob:
-    """A manual upload waiting for / undergoing background parsing (see steamlink.jobs)."""
+    """A demo waiting for / undergoing background parsing (see steamlink.jobs):
+    a manual upload (``kind="upload"``) or one match of a Steam sync
+    (``kind="steam_sync"``: the worker downloads the demo for ``share_code``)."""
 
     id: str
     user_id: str
@@ -117,6 +121,7 @@ class UploadJob:
     match_created: bool | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    kind: str = JOB_KIND_UPLOAD
 
     @property
     def active(self) -> bool:
@@ -212,8 +217,8 @@ class Storage(ABC):
     def get_upload_job(self, user_id: str, job_id: str) -> UploadJob | None: ...
 
     @abstractmethod
-    def list_upload_jobs(self, user_id: str, *, limit: int) -> list[UploadJob]:
-        """The user's most recent jobs, newest first."""
+    def list_upload_jobs(self, user_id: str, *, limit: int, kind: str | None = None) -> list[UploadJob]:
+        """The user's most recent jobs (of ``kind``, if given), newest first."""
 
     @abstractmethod
     def list_active_upload_jobs(self) -> list[UploadJob]:
@@ -226,6 +231,26 @@ class Storage(ABC):
     @abstractmethod
     def update_upload_job(self, job_id: str, now: datetime, **fields) -> None:
         """Set any of: status, stage, progress, error, match_id, match_created, finished_at."""
+
+    @abstractmethod
+    def enqueue_sync_job(
+        self, job: UploadJob, *, expected_cursor: str, max_active: int, now: datetime
+    ) -> tuple[str, str | None]:
+        """In ONE transaction: queue a ``steam_sync`` job for ``job.share_code`` and
+        move the user's cursor from ``expected_cursor`` to that share code.
+
+        Returns ``(outcome, job_id)``: ``"queued"`` (new row, or the existing
+        finished row for this share code queued again), ``"exists"`` (an active
+        job already has this share code; only the cursor moves) or
+        ``"queue_full"`` (``max_active`` jobs, all users and kinds, are active;
+        nothing changes, ``job_id`` is None). Raises :class:`CursorConflict`."""
+
+    @abstractmethod
+    def requeue_sync_jobs(self, user_id: str, *, errors: tuple[str, ...], max_attempts: int,
+                          max_active: int, now: datetime) -> list[str]:
+        """Queue the user's failed ``steam_sync`` jobs whose error is in ``errors``
+        and that ran fewer than ``max_attempts`` times again (oldest first, while
+        fewer than ``max_active`` jobs are active). Returns their ids."""
 
     @abstractmethod
     def upload_jobs_ahead(self, job: UploadJob) -> int:

@@ -31,6 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 
 from .base import (
+    JOB_KIND_SYNC,
     UNKNOWN_MATCH_ID,
     UPLOAD_JOB_ACTIVE,
     UPLOAD_KEY_PREFIX,
@@ -145,6 +146,7 @@ upload_jobs = Table(
     Column("updated_at", UTCDateTime, nullable=False),
     Column("started_at", UTCDateTime),
     Column("finished_at", UTCDateTime),
+    Column("kind", String, nullable=False, default="upload"),
 )
 _JOB_UPDATABLE = frozenset({"status", "stage", "progress", "error", "match_id", "match_created", "finished_at"})
 
@@ -155,7 +157,7 @@ def _upload_job(row) -> UploadJob:
         created_at=row.created_at, updated_at=row.updated_at, stage=row.stage, progress=row.progress,
         share_code=row.share_code, demo_sha256=row.demo_sha256, attempts=row.attempts, error=row.error,
         match_id=row.match_id, match_created=None if row.match_created is None else bool(row.match_created),
-        started_at=row.started_at, finished_at=row.finished_at,
+        started_at=row.started_at, finished_at=row.finished_at, kind=row.kind,
     )
 
 
@@ -422,16 +424,63 @@ class SqlStorage(Storage):
             size_bytes=job.size_bytes, attempts=job.attempts, error=job.error, match_id=job.match_id,
             match_created=None if job.match_created is None else int(job.match_created),
             created_at=job.created_at, updated_at=job.updated_at, started_at=job.started_at,
-            finished_at=job.finished_at,
+            finished_at=job.finished_at, kind=job.kind,
         )
         with self.engine.begin() as conn:
-            if max_active is not None:
-                active = conn.execute(select(func.count()).select_from(upload_jobs)
-                                      .where(upload_jobs.c.status.in_(UPLOAD_JOB_ACTIVE))).scalar_one()
-                if active >= max_active:
-                    return False
+            if max_active is not None and self._active_jobs(conn) >= max_active:
+                return False
             conn.execute(insert(upload_jobs).values(**values))
         return True
+
+    @staticmethod
+    def _active_jobs(conn) -> int:
+        return conn.execute(select(func.count()).select_from(upload_jobs)
+                            .where(upload_jobs.c.status.in_(UPLOAD_JOB_ACTIVE))).scalar_one()
+
+    def enqueue_sync_job(self, job: UploadJob, *, expected_cursor: str, max_active: int, now: datetime):
+        with self.engine.begin() as conn:
+            self._check_cursor(conn, job.user_id, expected_cursor)  # row lock: serialises enqueues per user
+            existing = conn.execute(select(upload_jobs).where(and_(
+                upload_jobs.c.user_id == job.user_id, upload_jobs.c.kind == JOB_KIND_SYNC,
+                upload_jobs.c.share_code == job.share_code))).first()
+            if existing is not None and existing.status in UPLOAD_JOB_ACTIVE:
+                self._advance_cursor(conn, job.user_id, job.share_code, now)
+                return "exists", existing.id
+            if self._active_jobs(conn) >= max_active:
+                return "queue_full", None
+            if existing is not None:  # finished earlier (e.g. the cursor was rewound): run it again
+                conn.execute(update(upload_jobs).where(upload_jobs.c.id == existing.id).values(
+                    status="queued", stage=None, progress=None, attempts=0, error=None, match_id=None,
+                    match_created=None, started_at=None, finished_at=None, created_at=now, updated_at=now))
+                job_id = existing.id
+            else:
+                conn.execute(insert(upload_jobs).values(
+                    id=job.id, user_id=job.user_id, status="queued", share_code=job.share_code,
+                    demo_path=job.demo_path, size_bytes=job.size_bytes, attempts=0, kind=JOB_KIND_SYNC,
+                    created_at=now, updated_at=now))
+                job_id = job.id
+            self._advance_cursor(conn, job.user_id, job.share_code, now)
+            return "queued", job_id
+
+    def requeue_sync_jobs(self, user_id, *, errors, max_attempts, max_active, now) -> list[str]:
+        requeued: list[str] = []
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(upload_jobs.c.id).where(and_(
+                    upload_jobs.c.user_id == user_id, upload_jobs.c.kind == JOB_KIND_SYNC,
+                    upload_jobs.c.status == "failed", upload_jobs.c.error.in_(errors),
+                    upload_jobs.c.attempts < max_attempts))
+                .order_by(upload_jobs.c.created_at, upload_jobs.c.id)
+            ).all()
+            active = self._active_jobs(conn)
+            for row in rows:
+                if active >= max_active:
+                    break
+                conn.execute(update(upload_jobs).where(upload_jobs.c.id == row.id).values(
+                    status="queued", stage=None, progress=None, error=None, finished_at=None, updated_at=now))
+                requeued.append(row.id)
+                active += 1
+        return requeued
 
     def get_upload_job(self, user_id: str, job_id: str) -> UploadJob | None:
         with self.engine.begin() as conn:
@@ -439,10 +488,13 @@ class SqlStorage(Storage):
                 and_(upload_jobs.c.user_id == user_id, upload_jobs.c.id == job_id))).first()
         return _upload_job(row) if row else None
 
-    def list_upload_jobs(self, user_id: str, *, limit: int) -> list[UploadJob]:
+    def list_upload_jobs(self, user_id: str, *, limit: int, kind: str | None = None) -> list[UploadJob]:
+        where = upload_jobs.c.user_id == user_id
+        if kind is not None:
+            where = and_(where, upload_jobs.c.kind == kind)
         with self.engine.begin() as conn:
             rows = conn.execute(
-                select(upload_jobs).where(upload_jobs.c.user_id == user_id)
+                select(upload_jobs).where(where)
                 .order_by(upload_jobs.c.created_at.desc(), upload_jobs.c.id.desc()).limit(limit)
             ).all()
         return [_upload_job(row) for row in rows]
