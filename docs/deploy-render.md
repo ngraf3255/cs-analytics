@@ -97,9 +97,10 @@ free instances have no shell. On a paid plan, move it to
 | `PUBLIC_API_URL` | `https://api.csgooner.com` | exact; OpenID realm and return URL |
 | `FRONTEND_URL` | `https://csgooner.com` | redirect after login |
 | `STEAM_BOT_REFRESH_TOKEN` | `sync: false` | optional, demo bot |
-| `SYNC_MAX_MATCHES_PER_REQUEST` | `1` | raise only after measuring |
+| `SYNC_MAX_MATCHES_PER_REQUEST` | `3` | share codes walked per sync request; each new match becomes a background job (cheap request) |
+| `SYNC_JOB_MAX_ATTEMPTS` | default | 5 runs of a sync job whose demo isn't ready / download failed, then an `unavailable` stub |
 | `UPLOAD_MAX_BYTES` | `1073741824` | request-body cap for `POST /matches/upload` |
-| `UPLOAD_QUEUE_MAX` / `UPLOAD_JOB_DIR` | defaults | 3 queued-or-parsing uploads (all users) / `<tmp>/csa-upload-jobs` (must be disk, not tmpfs) |
+| `UPLOAD_QUEUE_MAX` / `UPLOAD_JOB_DIR` | defaults | 3 queued-or-running jobs (uploads + sync downloads, all users) / `<tmp>/csa-upload-jobs` (must be disk, not tmpfs) |
 | `SESSION_COOKIE_DOMAIN` | not set | host-only cookie on `api.csgooner.com` is same-site with `csgooner.com`, so not needed |
 | `SESSION_COOKIE_SAMESITE` | not set (`lax`) | only `none` if the API must stay on `onrender.com` |
 | `DEMO_MAX_DOWNLOAD_BYTES` / `DEMO_MAX_DECOMPRESSED_BYTES` | defaults | 300 MiB `.bz2` / 1 GiB `.dem` |
@@ -127,11 +128,27 @@ are set; the service then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`
   parse slot with Steam sync. At most `UPLOAD_QUEUE_MAX` (3) jobs may be queued
   or running (`429 upload_queue_full`). The job dir must be on disk, not a
   tmpfs, or the demo itself counts as RAM; Render's default is disk.
+- **Steam sync uses the same worker** (migration `0004`): `POST /steam/sync`
+  only asks Valve's match-history API for new share codes and queues one
+  `steam_sync` job per new match (`202` + jobs, cursor advanced with the
+  enqueue); the worker locates the demo (Game Coordinator), downloads it to
+  `UPLOAD_JOB_DIR`, decompresses, parses and stores it. Sync jobs count
+  towards `UPLOAD_QUEUE_MAX`; when the queue is full sync answers `queue_full`
+  without moving the cursor. The UI polls `GET /steam/sync`.
+  Measured 2026-10-05 on the free shape (512 MB + 0.1 CPU cgroup, Render
+  start command, Valve faked by copying a local demo, so real download time
+  comes on top): `POST /steam/sync` answered `202` in 0.2-0.3 s; a Valve-style
+  72 MB `.dem.bz2` (112 MB matchmaking demo, 8 rounds) was imported 121 s
+  later (12 CPU-s: ~105 s unpacking, ~13 s parsing), a 441 MB `.dem` in 53 s
+  (4.8 CPU-s; this took 49 s *inside* the request before). `/health` stayed
+  under 0.6 s, no OOM kill.
 - **Restarts / deploys:** the disk is ephemeral, so a deploy or restart while a
   demo is queued or parsing loses the file; on startup that job is marked
   `failed` / `server_restarted` and the UI asks for the upload again (where the
   file survives, e.g. locally, the job is resumed; checked by SIGKILLing the API
-  mid-parse and restarting it). Free instances sleep after 15 minutes without
+  mid-parse and restarting it). Sync jobs survive restarts: an interrupted one
+  is queued again and downloads its demo again (bounded by
+  `SYNC_JOB_MAX_ATTEMPTS`). Free instances sleep after 15 minutes without
   requests; the UI keeps polling while a parse runs, so that only bites if the
   tab is closed during a parse that outlasts 15 minutes.
 - **Memory on 512 MB plans (measured 2026-10-05, full-length demos):** the API

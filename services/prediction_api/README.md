@@ -22,12 +22,13 @@ these are also required: `SESSION_SECRET` (32+ chars), `PUBLIC_API_URL`,
 `FRONTEND_URL`, `STEAM_WEB_API_KEY`.
 
 Optional: `SESSION_COOKIE_SAMESITE` (lax), `SESSION_COOKIE_SECURE` (true),
-`SESSION_COOKIE_DOMAIN`, `SYNC_MAX_MATCHES_PER_REQUEST` (1),
+`SESSION_COOKIE_DOMAIN`, `SYNC_MAX_MATCHES_PER_REQUEST` (3), `SYNC_JOB_MAX_ATTEMPTS` (5),
 `SYNC_MIN_INTERVAL_SECONDS` (30), `DEMO_MAX_DOWNLOAD_BYTES`, `DEMO_MAX_DECOMPRESSED_BYTES`,
 `DEMO_PARSE_ISOLATION` (`subprocess`: each demo is parsed in a short-lived child
 process so its memory goes back to the OS; `inprocess` to debug),
 `DEMO_PARSE_TIMEOUT_SECONDS` (600), `DEMO_PARSE_THREADS` (2), `UPLOAD_QUEUE_MAX` (3),
-`UPLOAD_JOB_DIR` (`<tmp>/csa-upload-jobs`; uploads wait there for their parse job).
+`UPLOAD_JOB_DIR` (`<tmp>/csa-upload-jobs`; uploads wait there for their parse job,
+sync jobs download there).
 
 Memory check on a real demo (Linux): `python scripts/measure_demo_memory.py
 <demo.dem> --budget-mb 300 --max-retained-mb 30`, or `CSA_TEST_DEMO=<demo.dem>
@@ -47,6 +48,45 @@ Blueprint, managed Postgres, env vars, custom domain, upload/memory limits).
 Demo URL resolution goes through the CS2 Game Coordinator with a dedicated
 demo bot (`STEAM_BOT_REFRESH_TOKEN`, see `docs/steam-demo-bot.md`); without it
 sync stops with `demo_retrieval_not_configured` and does not advance the cursor.
+
+### Steam sync (`POST /steam/sync`)
+
+Downloading and parsing a demo takes minutes on Render's free plan, so the
+request only walks the match history and the work runs on the same background
+job worker as uploads (`steamlink/sync.py`, `steamlink/jobs.py`, migration
+`0004`):
+
+- The request (per-user lock, `SYNC_MIN_INTERVAL_SECONDS` between syncs) asks
+  Valve for up to `SYNC_MAX_MATCHES_PER_REQUEST` (3) new share codes after the
+  cursor. A match that is already stored and imported (upload with its share
+  code, earlier sync) is skipped without a download. Every other one becomes a
+  `steam_sync` job, and the cursor moves past it **in the same transaction**,
+  so a match is never queued twice (one job row per user and share code).
+- Response: `202` if any job is queued (else `200`) with `status`
+  (`up_to_date | partial | queue_full | error`), `queued`, `skipped`,
+  `has_more`, `error` and `jobs` (same shape as upload jobs, plus `kind` and
+  `share_code`). `GET /steam/sync` returns the sync status, `active_jobs` and
+  the 10 most recent sync jobs (the UI polls it and resumes after a reload);
+  `GET /matches/upload/{job_id}` works for sync jobs too.
+- Job stages: `locating` (Game Coordinator) -> `downloading` (progress 0..1)
+  -> `decompressing` (progress) -> `hashing` -> `parsing` (shared parse slot)
+  -> `storing`. If the demo turns out to be stored already (same SHA-256, or
+  uploaded while the job waited) the job is `done` with `created: false` and
+  the stored match learns the share code.
+- Queue: sync jobs count towards `UPLOAD_QUEUE_MAX` (3, all users and kinds).
+  When it is full, sync stops before queueing (cursor not advanced) and answers
+  `queue_full`; sync again later.
+- Transient failures leave the job `failed` without a match: `demo_not_ready`
+  (Valve hasn't published the demo yet, or the download failed),
+  `demo_bot_auth_failed`, `demo_retrieval_not_configured`, `internal_error`.
+  The next sync queues such jobs again, up to `SYNC_JOB_MAX_ATTEMPTS` (5) runs.
+  Permanent failures store a stub match (`unavailable`: `demo_unavailable` /
+  `demo_too_large`; `parse_failed`: `parser_error` / `demo_has_no_rounds`) and
+  finish the job; a manual upload of that demo later fills the stub in. A demo
+  still not ready on the last attempt becomes an `unavailable` stub.
+- Restarts: sync jobs don't need a surviving file. An interrupted one is
+  queued again and re-downloads (at most `SYNC_JOB_MAX_ATTEMPTS` runs, then a
+  `parse_failed` stub); queued ones simply wait for the worker.
 
 ### Manual demo upload (`POST /matches/upload`)
 
@@ -84,10 +124,11 @@ entry and per-round report as a synced match. Same feature flag, session,
   plain `.dem` is hashed while it arrives, so a re-upload (or a known
   `?share_code=`) is answered at once with `200` and a finished job
   (`"created": false`); a `.bz2` is recognised after decompressing in the job.
-- One worker thread per process works through jobs oldest first and shares the
-  parse slot with Steam sync (one parse at a time; a job waits for a running
-  sync parse). At most `UPLOAD_QUEUE_MAX` (3) jobs, all users, may be queued or
-  processing; more -> `429 upload_queue_full` (checked before the body is read).
+- One worker thread per process works through jobs (uploads and Steam sync
+  downloads) oldest first, one parse at a time. At most `UPLOAD_QUEUE_MAX` (3)
+  jobs, all users and kinds, may be queued or processing; more ->
+  `429 upload_queue_full` (checked before the body is read).
+  `GET /matches/upload` lists uploads only unless `?kind=steam_sync|all`.
 - Restarts: on startup (and when a client polls a queued job with no worker
   running) the worker resumes interrupted jobs whose file still exists (at most
   two attempts, then `demo_parse_failed`), fails jobs whose file is gone with
