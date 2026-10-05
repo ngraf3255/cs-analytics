@@ -67,3 +67,9 @@ def test_real_demo_upload_parse_score_report(tmp_path):
     again = client.post("/matches/upload", content=open(DEMO, "rb").read(),
                         headers={**H, "Content-Type": "application/octet-stream"}).json()
     assert again["created"] is False and again["match"]["id"] == match["id"]
+
+
+def test_subprocess_and_in_process_parse_identically():
+    isolated = Demoparser2Parser(isolation="subprocess").parse(DEMO)
+    assert isolated == Demoparser2Parser(isolation="inprocess").parse(DEMO)
+    assert isolated.rounds and isolated.deaths

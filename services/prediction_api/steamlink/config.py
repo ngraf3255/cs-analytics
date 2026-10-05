@@ -71,6 +71,12 @@ class Settings:
     # (e.g. Cloudflare-proxied hostnames: 100 MB on Free/Pro plans).
     upload_max_bytes: int = 1024 * 1024 * 1024
     http_timeout_seconds: float = 20.0
+    # Demo parsing (see demo_parser.Demoparser2Parser): "subprocess" (default)
+    # parses in a short-lived child so its memory goes back to the OS and an
+    # out-of-memory kill hits the child, not the API; "inprocess" for debugging.
+    demo_parse_isolation: str = "subprocess"
+    demo_parse_timeout_seconds: float = 600.0
+    demo_parse_threads: int = 2
     # Dedicated Steam bot for CS2 Game Coordinator demo URL lookups. Preferred:
     # a refresh token (STEAM_BOT_REFRESH_TOKEN or STEAM_BOT_REFRESH_TOKEN_FILE).
     # Fallback: username + password + shared_secret (no interactive Steam Guard).
@@ -135,6 +141,10 @@ class Settings:
             raise ConfigError("SESSION_COOKIE_SAMESITE must be lax, strict, or none")
         if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
             raise ConfigError("SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true")
+        if self.demo_parse_isolation not in ("subprocess", "inprocess"):
+            raise ConfigError("DEMO_PARSE_ISOLATION must be subprocess or inprocess")
+        if self.demo_parse_timeout_seconds <= 0 or self.demo_parse_threads < 1:
+            raise ConfigError("DEMO_PARSE_TIMEOUT_SECONDS and DEMO_PARSE_THREADS must be positive")
         if self.upload_max_bytes < 1:
             raise ConfigError("UPLOAD_MAX_BYTES must be positive")
         if self.sync_max_matches_per_request < 1 or self.sync_max_matches_per_request > 10:
@@ -171,6 +181,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         demo_max_download_bytes=_int(env, "DEMO_MAX_DOWNLOAD_BYTES", 300 * 1024 * 1024),
         demo_max_decompressed_bytes=_int(env, "DEMO_MAX_DECOMPRESSED_BYTES", 1024 * 1024 * 1024),
         upload_max_bytes=_int(env, "UPLOAD_MAX_BYTES", 1024 * 1024 * 1024),
+        demo_parse_isolation=(env.get("DEMO_PARSE_ISOLATION") or "subprocess").strip().lower(),
+        demo_parse_timeout_seconds=float(_int(env, "DEMO_PARSE_TIMEOUT_SECONDS", 600)),
+        demo_parse_threads=_int(env, "DEMO_PARSE_THREADS", 2),
         steam_bot_refresh_token=(env.get("STEAM_BOT_REFRESH_TOKEN") or None)
         or _read_secret_file(env.get("STEAM_BOT_REFRESH_TOKEN_FILE")),
         steam_bot_username=env.get("STEAM_BOT_USERNAME") or None,

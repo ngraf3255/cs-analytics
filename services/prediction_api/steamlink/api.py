@@ -397,7 +397,10 @@ def build_steam_context(settings: Settings, scorer: RoundScorer) -> SteamContext
         storage=storage, history=history, locator=build_demo_locator(settings),
         fetcher=DemoFetcher(http, max_download_bytes=settings.demo_max_download_bytes,
                             max_decompressed_bytes=settings.demo_max_decompressed_bytes),
-        parser=Demoparser2Parser(), cipher=cipher, clock=clock,
+        parser=Demoparser2Parser(isolation=settings.demo_parse_isolation,
+                                 timeout_seconds=settings.demo_parse_timeout_seconds,
+                                 threads=settings.demo_parse_threads),
+        cipher=cipher, clock=clock,
         max_matches=settings.sync_max_matches_per_request, lock_ttl_seconds=settings.sync_lock_ttl_seconds,
         min_interval_seconds=settings.sync_min_interval_seconds,
     )
