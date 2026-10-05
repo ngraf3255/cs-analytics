@@ -60,6 +60,10 @@ export type MatchSummary = {
   score?: { ct: number; t: number } | null;
   /** Per-player sides / stats were recorded at parse time (false: parsed before that; re-upload). */
   players_recorded?: boolean;
+  /** Parsed by an older parser (null: up to date): "players_not_recorded" (no per-player stats) or
+   * "parser_updated" (e.g. warmup / knife rounds may still be counted). The server doesn't keep
+   * demos, so the fix is always to upload the same demo again. Missing from older APIs. */
+  outdated?: { reason: "players_not_recorded" | "parser_updated" | string; fix: "reupload" | string } | null;
 };
 
 /** A demo being imported in the background: a manual upload (POST /matches/upload) or one match
@@ -79,6 +83,8 @@ export type UploadJob = {
   finished_at: string | null;
   match: MatchSummary | null;
   created: boolean | null;
+  /** The match was stored by an older parser and this job re-parsed it (now up to date). */
+  updated?: boolean;
   attempts?: number;
 };
 
@@ -201,6 +207,8 @@ export type MatchesAnalytics = {
     matches: number;
     imported_matches: number;
     not_imported_matches: number;
+    /** Imported matches parsed by an older parser (included as stored; re-upload to update). */
+    outdated_matches?: number;
     rounds: number;
     rounds_with_winner: number;
     scored_rounds: number;

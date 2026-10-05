@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouInMatch } from "./types";
-import { kdText, matchDate, resultText } from "./format";
+import { kdText, matchDate, outdatedText, resultText } from "./format";
 import { MatchesSummaryPanel } from "./MatchesSummary";
 import { weaponName } from "./weapons";
 
@@ -126,7 +126,11 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
       const rounds = `${job.match.rounds_count} round${job.match.rounds_count === 1 ? "" : "s"}`;
       setNotice({
         tone: "ok",
-        text: job.created ? `Demo imported: ${mapLabel(job.match.map_name)}, ${rounds}.` : "That demo is already in your matches. Opening its report.",
+        text: job.created
+          ? `Demo imported: ${mapLabel(job.match.map_name)}, ${rounds}.`
+          : job.updated
+            ? `Match updated from the demo: ${mapLabel(job.match.map_name)}, ${rounds}.`
+            : "That demo is already in your matches. Opening its report.",
       });
       await loadMatches();
       setSelected(job.match.id);
@@ -288,7 +292,10 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
           {matches.map((match) => (
             <li key={match.id}>
               <button type="button" className={`match-item ${selected === match.id ? "selected" : ""}`} onClick={() => setSelected(selected === match.id ? null : match.id)}>
-                <strong>{mapLabel(match.map_name)}{match.source === "upload" && <span className="source-tag">UPLOADED</span>}</strong>
+                <strong>
+                  {mapLabel(match.map_name)}{match.source === "upload" && <span className="source-tag">UPLOADED</span>}
+                  {match.outdated && <span className="source-tag outdated-tag" title={outdatedText(match) ?? undefined}>RE-UPLOAD TO UPDATE</span>}
+                </strong>
                 <span>{match.status === "imported" ? `${match.rounds_count} rounds` : MATCH_STATUS[match.status_reason ?? ""] ?? "Not imported"}</span>
                 <span className="steam-muted" title={matchDate(match).label}>
                   {matchDate(match).played ? matchDate(match).day : `Added ${matchDate(match).day}`}
@@ -336,6 +343,7 @@ function MatchReportView({ matchId }: { matchId: string }) {
         <div><dt>SOURCE</dt><dd>{match.source === "upload" ? "Upload" : "Steam sync"}</dd><small>{match.source === "upload" ? "You uploaded the demo" : "From your match history"}</small></div>
         {you && <YouTile you={you} />}
       </dl>
+      {outdatedText(match) && <div className="outdated-note" role="note">{outdatedText(match)}</div>}
       <div className="calibration-note" role="note">
         <strong>Retrospective estimate, not calibrated for your games.</strong> {report.model.note}
       </div>

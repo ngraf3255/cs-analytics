@@ -20,3 +20,12 @@ export function resultText(result: MatchResult): string | null {
 }
 
 export const kdText = (kd: number | null | undefined) => (kd == null ? "—" : kd.toFixed(2));
+
+/** Why a match should be uploaded again (it was parsed by an older version), or null. */
+export function outdatedText(match: Pick<MatchSummary, "outdated">): string | null {
+  if (!match.outdated) return null;
+  const why = match.outdated.reason === "players_not_recorded"
+    ? "Imported before per-player stats were recorded."
+    : "Parsed by an older version (warmup or knife rounds may still be counted).";
+  return `${why} Upload this demo again to update it.`;
+}

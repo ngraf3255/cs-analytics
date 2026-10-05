@@ -5,7 +5,9 @@
  * fake-Valve Steam sync of a Valve MM demo (de_ancient, 8 rounds). summary*.json / matches_four.json:
  * GET /matches/summary and the list for a user with 4 imported matches (+ ?recent=2, one match, none).
  * *_personal.json / report_not_in_match.json / summary_not_in_demos.json: per-player analytics for a
- * SteamID that is in the FACEIT de_mirage demo, and for a user in none of their demos. */
+ * SteamID that is in the FACEIT de_mirage demo, and for a user in none of their demos (recaptured after
+ * warmup / knife rounds were left out: FACEIT 24 rounds). *_outdated.json / upload_updated.json: a match
+ * parsed by an older parser version, and the re-upload that updated one. */
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
 import type { UploadJob } from "../steam/types";

@@ -149,7 +149,10 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
       <dl className="report-header summary-tiles" aria-label="Previous matches summary">
         <div>
           <dt>MATCHES</dt><dd>{totals.imported_matches}</dd>
-          <small>{plural(totals.rounds, "round")} · {totals.scored_rounds} scored{totals.not_imported_matches ? ` · ${totals.not_imported_matches} not imported` : ""}</small>
+          <small>
+            {plural(totals.rounds, "round")} · {totals.scored_rounds} scored{totals.not_imported_matches ? ` · ${totals.not_imported_matches} not imported` : ""}
+            {totals.outdated_matches ? ` · ${totals.outdated_matches} to re-upload` : ""}
+          </small>
         </div>
         <div>
           <dt>MODEL HIT RATE</dt><dd>{pct(prediction.hit_rate)}</dd>
@@ -168,6 +171,13 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
           <small>Round won by the side with the first kill · CT {pct(opening.by_side.ct.conversion_rate)} · T {pct(opening.by_side.t.conversion_rate)}</small>
         </div>
       </dl>
+      {totals.outdated_matches ? (
+        <p className="steam-muted outdated-summary" role="note">
+          {plural(totals.outdated_matches, "match")} {totals.outdated_matches === 1 ? "was" : "were"} parsed by an older
+          version and {totals.outdated_matches === 1 ? "is" : "are"} counted as stored (e.g. warmup or knife rounds). Upload
+          {totals.outdated_matches === 1 ? " that demo" : " those demos"} again to update {totals.outdated_matches === 1 ? "it" : "them"} (marked RE-UPLOAD TO UPDATE below).
+        </p>
+      ) : null}
       {formLine(form) && <p className="summary-form">{formLine(form)}</p>}
       <table className="round-table summary-maps" aria-label="By map">
         <thead><tr><th>Map</th><th>Matches</th><th>Rounds</th><th>CT side won</th><th>Model hit rate</th><th>Brier</th></tr></thead>

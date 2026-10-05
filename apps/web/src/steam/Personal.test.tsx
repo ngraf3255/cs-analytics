@@ -58,8 +58,8 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     // The all-player numbers stay, labelled, below the personal ones.
     expect(panel()).toHaveTextContent("ALL PLAYERS IN THESE DEMOS · MAP SIDES");
     const all = within(panel()).getByLabelText("Previous matches summary");
-    expect(all).toHaveTextContent("MATCHES343 rounds · 41 scored");
-    expect(all).toHaveTextContent("CT / T ROUNDS58% / 42%CT side won 25 of 43");
+    expect(all).toHaveTextContent("MATCHES342 rounds · 40 scored");  // FACEIT: 24 rounds, the knife round left out
+    expect(all).toHaveTextContent("CT / T ROUNDS60% / 40%CT side won 25 of 42");
     const you = within(panel()).getByLabelText("Your stats");
     expect(you.compareDocumentPosition(all) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(panel()).toHaveTextContent("“You” uses the side your SteamID played each round (halftime swap included).");
@@ -100,7 +100,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /25 rounds/ }));
+    fireEvent.click(screen.getByRole("button", { name: /24 rounds/ }));
     await advance();
     const header = screen.getByLabelText("Match summary");
     expect(header).toHaveTextContent("YOUWon 13–11Started T, then CT · 29 K / 17 D (K/D 1.71) · won 13 of 24 rounds");
@@ -109,16 +109,17 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     expect(within(table).getAllByRole("columnheader").map((c) => c.textContent)).toEqual(
       ["Round", "You", "Opening kill", "Actual winner", "Model estimate"]);
     const body = within(table).getAllByRole("row").slice(1);
-    expect(body).toHaveLength(25);
-    expect(cells(body[0])[1]).toBe("Not tracked");  // knife round before the match restart
-    expect(cells(body[1])[1]).toBe("TLOST0 kills");
-    expect(cells(body[1])[4]).toContain("your team 38%");
-    expect(cells(body[14])[1]).toBe("CTWON2 kills · survived");
+    expect(body).toHaveLength(24);  // the knife round before the match restart is not a round of the match
+    expect(body.map((r) => cells(r)[1])).not.toContain("Not tracked");
+    expect(cells(body[0])[0]).toBe("1");
+    expect(cells(body[0])[1]).toBe("TLOST0 kills");
+    expect(cells(body[0])[4]).toContain("your team 38%");
+    expect(cells(body[13])[1]).toBe("CTWON2 kills · survived");
     expect(body.filter((r) => r.classList.contains("your-win"))).toHaveLength(13);
     expect(body.filter((r) => r.classList.contains("your-loss"))).toHaveLength(11);
     expect(within(table).getAllByText("YOUR KILL")).toHaveLength(4);
     expect(within(table).queryByText("YOU DIED FIRST")).not.toBeInTheDocument();
-    expect(cells(body[7])[2]).toBe("T · AK-47 · 9.0sYOUR KILL");
+    expect(cells(body[6])[2]).toBe("T · AK-47 · 9.0sYOUR KILL");
   });
 
   it("report: a match you're not in says so and has no 'You' column; the date is when it was played", async () => {
@@ -143,7 +144,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /25 rounds/ }));
+    fireEvent.click(screen.getByRole("button", { name: /24 rounds/ }));
     await advance();
     const header = screen.getByLabelText("Match summary");
     expect(header).not.toHaveTextContent("YOU");
