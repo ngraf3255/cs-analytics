@@ -294,6 +294,12 @@ class Storage(ABC):
     @abstractmethod
     def get_match(self, user_id: str, match_id: str) -> tuple[MatchRecord, list[RoundRecord]] | None: ...
 
+    @abstractmethod
+    def list_matches_with_rounds(self, user_id: str) -> list[tuple[MatchRecord, list[RoundRecord]]]:
+        """Every match in the user's list (shared matches included, as the user sees
+        them; stubs with no rounds too) with its rounds in round order, newest
+        first like :meth:`list_matches`. Two queries, for cross-match analytics."""
+
     # Deletion ---------------------------------------------------------------
     @abstractmethod
     def delete_user(self, user_id: str) -> None:

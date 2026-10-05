@@ -713,6 +713,25 @@ class SqlStorage(Storage):
             for r in round_rows
         ]
 
+    def list_matches_with_rounds(self, user_id: str):
+        owned = match_owners.c.user_id == user_id
+        with self.engine.begin() as conn:  # one transaction: a consistent snapshot
+            rows = conn.execute(
+                select(*_OWNED_COLUMNS).join(match_owners, match_owners.c.match_id == matches.c.id).where(owned)
+                .order_by(match_owners.c.added_at.desc(), matches.c.id.desc())
+            ).all()
+            round_rows = conn.execute(
+                select(rounds).join(match_owners, match_owners.c.match_id == rounds.c.match_id).where(owned)
+                .order_by(rounds.c.match_id, rounds.c.round_number)
+            ).all()
+        by_match: dict[str, list[RoundRecord]] = {}
+        for r in round_rows:
+            by_match.setdefault(r.match_id, []).append(RoundRecord(
+                round_number=r.round_number, winner_side=r.winner_side, opening_kill_side=r.opening_kill_side,
+                opening_kill_seconds=r.opening_kill_seconds, opening_weapon=r.opening_weapon,
+                unscored_reason=r.unscored_reason))
+        return [(_match_record(row, _Owner(row)), by_match.get(row.id, [])) for row in rows]
+
     # Deletion ---------------------------------------------------------------
     def delete_user(self, user_id: str) -> None:
         # Explicit child deletes so this does not depend on FK cascade settings. Shared

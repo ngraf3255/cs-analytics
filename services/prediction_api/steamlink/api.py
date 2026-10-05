@@ -20,6 +20,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from . import openid
+from .analytics import RECENT_DEFAULT, build_user_summary
 from .config import Settings
 from .crypto import AuthCodeCipher
 from .jobs import UploadJobWorker
@@ -453,6 +454,22 @@ def get_upload_job(job_id: str, user: User = Depends(_current_user), ctx: SteamC
     if job.active:
         ctx.jobs.start()
     return {"job": _job_view(ctx, job)}
+
+
+@router.get("/matches/summary")
+def matches_summary(
+    recent: int = Query(RECENT_DEFAULT, ge=1, le=50),
+    user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
+) -> dict:
+    """Analytics across all the user's previous matches and rounds (see
+    steamlink.analytics): totals, the round-win model's hit rate / Brier score /
+    calibration over previous rounds, CT vs T round wins per map, opening-kill
+    conversion and recent form (last ``recent`` matches vs the ones before).
+    Registered before ``/matches/{match_id}`` so "summary" is not taken for an id."""
+
+    summary = build_user_summary(ctx.storage, ctx.scorer, user.id, recent=recent)
+    summary["model"]["note"] = MODEL_NOTE
+    return summary
 
 
 @router.get("/matches/{match_id}")

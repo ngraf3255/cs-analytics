@@ -81,9 +81,39 @@ def test_real_demo_upload_parse_score_report(tmp_path):
         assert rounds[9]["unscored_reason"] == "no_opening_kill"
         assert report["summary"]["scored"] == 9
 
+    check_summary_matches_report(client, report)
     with open(DEMO, "rb") as fh:
         _, again = upload_and_wait(client, ctx, fh.read(), timeout=1200)
     assert again["created"] is False and again["match"]["id"] == match["id"]
+    check_summary_matches_report(client, report)  # dedupe: still one match
+
+
+def check_summary_matches_report(client, report):
+    """GET /matches/summary over the one real match agrees with its per-round report."""
+
+    summary = client.get("/matches/summary").json()
+    rounds = report["rounds"]
+    scored = [r for r in rounds if r["prediction"] and r["actual_winner"] in ("ct", "t")]
+    assert summary["totals"]["matches"] == summary["totals"]["imported_matches"] == 1
+    assert summary["totals"]["rounds"] == len(rounds) == report["match"]["rounds_count"]
+    assert summary["prediction"]["scored_rounds"] == len(scored) == report["summary"]["scored"]
+    assert summary["prediction"]["correct"] == report["summary"]["correct_predictions"]
+    brier = sum((r["prediction"]["probabilities"]["ct"] - (r["actual_winner"] == "ct")) ** 2 for r in scored) / len(scored)
+    assert summary["prediction"]["brier_score"] == pytest.approx(brier, abs=1e-4)
+    assert sum(b["rounds"] for b in summary["prediction"]["calibration"]) == len(scored)
+    winners = [r["actual_winner"] for r in rounds if r["actual_winner"]]
+    assert (summary["sides"]["ct_won"], summary["sides"]["t_won"]) == (winners.count("ct"), winners.count("t"))
+    (map_view,) = summary["maps"]
+    assert map_view["map_name"] == report["match"]["map_name"] and map_view["matches"] == 1
+    assert [m["id"] for m in summary["recent_form"]["matches"]] == [report["match"]["id"]]
+    unscored = sum(r["rounds"] for r in summary["unscored_reasons"])
+    assert unscored == len(rounds) - len(scored) == summary["totals"]["unscored_rounds"]
+    if report["match"]["map_name"] == "de_mirage" and len(rounds) == 10 and report["summary"]["scored"] == 9:
+        # demoparser2 fixture: T won 8 of 10 rounds; the model's favourite won 8 of 9 scored rounds.
+        assert summary["sides"] == {"rounds_with_winner": 10, "ct_won": 2, "t_won": 8, "ct_win_rate": 0.2,
+                                    "t_win_rate": 0.8}
+        assert summary["prediction"]["hit_rate"] == round(8 / 9, 4)
+        assert summary["unscored_reasons"] == [{"reason": "no_opening_kill", "rounds": 1}]
 
 
 def test_subprocess_and_in_process_parse_identically(tmp_path):
