@@ -63,6 +63,7 @@ class GameCoordinatorDemoLocator(DemoLocator):
         gc: GameCoordinator,
         *,
         min_interval_seconds: float = 2.0,
+        max_timeouts_per_match: int = 3,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ):
@@ -72,6 +73,11 @@ class GameCoordinatorDemoLocator(DemoLocator):
         self._sleep = sleep
         self._lock = threading.Lock()
         self._last_request: float | None = None
+        # The GC may simply not answer for expired matches. After repeated
+        # timeouts for the same match (across syncs), treat it as unavailable so
+        # one dead match can't block the cursor forever.
+        self._max_timeouts = max_timeouts_per_match
+        self._timeouts: dict[int, int] = {}
 
     def _throttle(self) -> None:
         # Be gentle with the GC: at most one request per min_interval across all users.
@@ -86,10 +92,18 @@ class GameCoordinatorDemoLocator(DemoLocator):
             self._throttle()
             try:
                 match = self._gc.full_match_info(share.match_id, share.outcome_id, share.token)
-            except (GCNotReady, GCTimeout):
+            except GCTimeout:
+                count = self._timeouts.get(share.match_id, 0) + 1
+                self._timeouts[share.match_id] = count
+                if count >= self._max_timeouts:
+                    self._timeouts.pop(share.match_id, None)
+                    raise DemoUnavailable() from None
+                raise DemoNotReady() from None
+            except GCNotReady:
                 raise DemoNotReady() from None
             except GCAuthError:
                 raise DemoBotAuthFailed() from None
+            self._timeouts.pop(share.match_id, None)
         if match is None or match.match_id != share.match_id:
             raise DemoUnavailable()
         url = demo_url_from_match(match)

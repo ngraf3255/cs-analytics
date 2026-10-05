@@ -64,3 +64,12 @@ def test_throttles_between_requests():
     now[0] += 0.5
     loc.demo_url(SHARE)
     assert slept == [pytest.approx(1.5)]
+
+
+def test_repeated_timeouts_for_same_match_become_unavailable():
+    loc = GameCoordinatorDemoLocator(FakeGC(error=GCTimeout()), min_interval_seconds=0, max_timeouts_per_match=3)
+    for _ in range(2):
+        with pytest.raises(DemoNotReady):
+            loc.demo_url(SHARE)
+    with pytest.raises(DemoUnavailable):
+        loc.demo_url(SHARE)
