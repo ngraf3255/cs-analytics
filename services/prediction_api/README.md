@@ -131,7 +131,9 @@ entry and per-round report as a synced match. Same feature flag, session,
   `?share_code=` already in the user's list) is answered at once with `200` and
   a finished job; `"created"` is true when the match was new to this user's
   list (e.g. another player had imported it), false when it already was there.
-  A `.bz2` is recognised after decompressing in the job.
+  A `.bz2` is recognised after decompressing in the job. Exception: a known
+  match parsed by an older parser (`outdated`, below) is parsed again by the
+  job and its rounds replaced; that job ends with `"updated": true`.
 - One worker thread per process works through jobs (uploads and Steam sync
   downloads) oldest first, one parse at a time. At most `UPLOAD_QUEUE_MAX` (3)
   jobs, all users and kinds, may be queued or processing; more ->
@@ -154,13 +156,40 @@ Each match (list item, job `match`, report `match`) carries `map_name`,
 was added to this user's list), `date` / `date_source` / `played_at` (when the
 match was **played** if known: Steam sync stores the Game Coordinator's match
 time, `date_source: "played"`; CS2 demos carry no date, so uploads fall back to
-`imported_at`, `date_source: "imported"`), `players_recorded` and `score`
+`imported_at`, `date_source: "imported"`), `players_recorded`, `outdated` and `score`
 (`{"ct": 13, "t": 5}`: rounds won by the team on each side **at the end**, read
 from the demo's team round totals at the last kill plus the winners of later
 rounds, see `demo_parser.final_score`; `null` for stubs and matches parsed
 before migration `0006_match_score`). Checked against the team entities on the
 last tick for the four public test demos (8-2, 6-2 surrender, 13-11 with a
 knife round, 13-5).
+
+**Warmup / knife rounds** (rounds that ended at or before the last
+`begin_new_match`, i.e. before the server restarted into the real match) are
+left out of everything: `rounds_count`, the report's rounds (numbered 1..N from
+the match start), the final score, per-player rounds and every summary number
+(`demo_parser.match_rounds`). The FACEIT test demo has a knife round: 24 rounds,
+not 25, and `rounds_count` equals the final score's sum on all four test demos.
+
+**No match date in a demo.** Checked on the four test demos (Valve MM, FACEIT,
+HLTV/ESL, the demoparser2 SourceTV fixture): the header has map, server name,
+build (`patch_version`) and a format GUID, the server cvars and events have no
+time (`steamworks_sessionid_server` is an opaque id). So uploads stay dated by
+when they were added, labelled "Added"; only Steam sync knows when a match was
+played (the Game Coordinator's match time).
+
+**`outdated`** is `null`, or `{"reason", "fix": "reupload"}` when the match was
+parsed by an older parser (`matches.parse_version`, migration
+`0008_parse_version`; current = `PARSE_VERSION` in `storage/base.py`):
+`players_not_recorded` (before migration `0007`: no per-player stats) or
+`parser_updated` (version 1: warmup / knife rounds may still be counted).
+Demos aren't kept on the server (job files are deleted after parsing, Render's
+disk is ephemeral, and replay URLs aren't stored), so there is no server-side
+re-parse: uploading the same demo again re-parses it and replaces its rounds,
+player rounds, `rounds_count` and score for every owner (a parse by an older
+parser never overwrites a newer one). The migration only flags rows; it
+rewrites nothing. `GET /matches/summary` counts them in
+`totals.outdated_matches` (included as stored).
 
 ### Across previous matches (`GET /matches/summary`)
 
@@ -201,7 +230,11 @@ death), `maps` (same per map) and `recent_form` (last `recent` matches vs
 earlier: `win_rate_change`, `kd_change`, per-match result / first side / K-D).
 `matches_without_you` counts demos the player isn't in (e.g. uploaded pro
 matches) and `matches_unknown` those parsed before `0007` (no backfill: demos
-aren't kept; uploading the demo again fills it in, once). Matches are ordered
+aren't kept; uploading the demo again fills it in, see `outdated`). A player
+with no spawn and no kill in a round normally gets no row (e.g. they
+disconnected), except in a round with no `player_spawn` at all (the recording
+started after the spawns, HLTV test demo round 1): there the next round's
+players count, on the same side unless most of them switched. Matches are ordered
 by `played_at`, else `imported_at`. `GET /matches/{id}` adds `you`
 (`status` `in_match` | `not_in_match` | `unknown`, first / last side, rounds
 won, K/D, opening kills / deaths, `score: {you, them}`, `result`) and per round
