@@ -55,6 +55,28 @@ round report): `python -m steamlink.live_check` (see
 [`docs/live-e2e-checklist.md`](../../docs/live-e2e-checklist.md) for the inputs).
 Offline with fake Valve + GC: `python -m steamlink.live_check --fake --demo match.dem.bz2`.
 
+### Linking match history (`PUT /steam/match-access`, `GET /me`)
+
+Body `{auth_code, share_code, consent}`; Valve is asked once (`GetNextMatchSharingCode`)
+before anything is stored. Codes are accepted the way users paste them: the
+auth code in any case, with spaces or without dashes; the share code bare or
+inside CS2's `steam://rungame/730/…/+csgo_download_match%20CSGO-…` link (also
+for `POST /matches/upload?share_code=`). Share codes are range-checked, not
+only pattern-matched. While linked, an empty `auth_code` keeps the stored code
+and only replaces the share code (Leetify-style: the auth code is given once, a
+fresh share code after a break of 30+ days). Each `422` names the box to fix:
+`invalid_auth_code_format`, `auth_code_is_share_code`, `auth_code_required`,
+`invalid_auth_code` (Valve) / `invalid_share_code_format`,
+`share_code_is_auth_code`, `invalid_share_code` (Valve); plus `consent_required`,
+`429 valve_rate_limited`, `502 valve_unavailable`.
+
+`GET /me` `match_access.needs_relink` is `{reason, field}` when the last sync
+failed in a way only new codes fix, until the codes are updated:
+`invalid_known_code` -> `share_code` (cursor expired or no longer valid),
+`invalid_auth_code` / `credentials_unreadable` -> `auth_code`. Transient errors
+(rate limits, Valve down) never set it. The web shows a re-link banner, opens
+the form on the right box and pauses Sync.
+
 ### Steam sync (`POST /steam/sync`)
 
 Downloading and parsing a demo takes minutes on Render's free plan, so the
