@@ -63,6 +63,7 @@ class Settings:
     login_state_ttl_seconds: int = 600
     sync_max_matches_per_request: int = 1
     sync_lock_ttl_seconds: int = 900
+    sync_min_interval_seconds: int = 30
     demo_max_download_bytes: int = 300 * 1024 * 1024
     demo_max_decompressed_bytes: int = 1024 * 1024 * 1024
     http_timeout_seconds: float = 20.0
@@ -94,6 +95,7 @@ class Settings:
                 ("SESSION_SECRET", self.session_secret),
                 ("PUBLIC_API_URL", self.public_api_url),
                 ("FRONTEND_URL", self.frontend_url),
+                ("STEAM_WEB_API_KEY", self.steam_web_api_key),
             )
             if not value
         ]
@@ -132,6 +134,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         session_ttl_seconds=_int(env, "SESSION_TTL_SECONDS", 14 * 24 * 3600),
         sync_max_matches_per_request=_int(env, "SYNC_MAX_MATCHES_PER_REQUEST", 1),
         sync_lock_ttl_seconds=_int(env, "SYNC_LOCK_TTL_SECONDS", 900),
+        sync_min_interval_seconds=_int(env, "SYNC_MIN_INTERVAL_SECONDS", 30),
         demo_max_download_bytes=_int(env, "DEMO_MAX_DOWNLOAD_BYTES", 300 * 1024 * 1024),
         demo_max_decompressed_bytes=_int(env, "DEMO_MAX_DECOMPRESSED_BYTES", 1024 * 1024 * 1024),
     )
