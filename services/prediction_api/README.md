@@ -31,11 +31,14 @@ Generate an encryption key (comma-separate several, newest first, to rotate):
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Apply migrations: `DATABASE_URL=... python -m steamlink.migrate`.
+Apply migrations: `DATABASE_URL=... python -m steamlink.migrate` (on Render
+this runs in the start command with `--if-configured`; see
+[`docs/deploy-render.md`](../../docs/deploy-render.md) for the full deploy:
+Blueprint, managed Postgres, env vars, custom domain, upload/memory limits).
 
-Demo URL resolution needs a CS2 Game Coordinator integration
-(`UnconfiguredDemoLocator`, see TODO in `steamlink/valve.py`); until then sync
-stops with `demo_retrieval_not_configured` and does not advance the cursor.
+Demo URL resolution goes through the CS2 Game Coordinator with a dedicated
+demo bot (`STEAM_BOT_REFRESH_TOKEN`, see `docs/steam-demo-bot.md`); without it
+sync stops with `demo_retrieval_not_configured` and does not advance the cursor.
 
 ### Manual demo upload (`POST /matches/upload`)
 
@@ -49,19 +52,53 @@ entry and per-round report as a synced match. Same feature flag, session,
 - Format is sniffed from content, not the filename: bzip2 (`BZh`) is
   decompressed first, then the file must start with the CS2 magic `PBDEMS2\0`
   (CS:GO `HL2DEMO` demos are rejected with `not_a_cs2_demo`).
-- Limits: request body and decompressed demo `DEMO_MAX_DECOMPRESSED_BYTES`
-  (1 GiB); a `.bz2` archive also `DEMO_MAX_DOWNLOAD_BYTES` (300 MiB). Over the
-  limit -> `413 demo_too_large`. Your proxy/host body limit applies too.
-- Idempotent per user on the SHA-256 of the decompressed demo (`.dem` and
-  `.dem.bz2` of the same demo are the same match); known demos are not re-parsed
+- Optional query `?share_code=CSGO-...` (the match's sharing code) links the
+  upload to the Valve match id (`422 invalid_share_code_format` if malformed).
+- Limits: request body `min(UPLOAD_MAX_BYTES, DEMO_MAX_DECOMPRESSED_BYTES)`
+  (1 GiB each by default); a `.bz2` archive also `DEMO_MAX_DOWNLOAD_BYTES`
+  (300 MiB), and its decompressed size `DEMO_MAX_DECOMPRESSED_BYTES`. Over the
+  limit -> `413 demo_too_large`. Render has no body cap of its own; a
+  Cloudflare-proxied hostname would cap at 100 MB.
+- Deduped per user (see below); a known, imported demo is not re-parsed
   (`"created": false`).
 - One parse per process at a time; a concurrent upload gets `429 upload_busy`.
 - Other errors: `422 demo_parse_failed`, `422 demo_has_no_rounds`. Nothing is
   stored on failure. Uploads never touch the share-code cursor.
 
+### One match, many sources (dedupe)
+
+The same match can arrive by upload and by Steam sync, in either order. It is
+stored once per user: a new arrival is "the same match" if **any** key matches
+a stored row:
+
+| Key | Known when | Column / index |
+| --- | --- | --- |
+| share code | Steam sync, or upload with `?share_code=` | `UNIQUE (user_id, share_code)`; uploads without one store `upload:<sha256>` |
+| Valve match id | decoded from the share code | partial `UNIQUE (user_id, valve_match_id) WHERE valve_match_id <> 'upload'` |
+| demo SHA-256 | whenever we had the file (upload, or the demo sync downloaded) | `UNIQUE (user_id, demo_sha256)` (NULLs don't collide) |
+
+On a match, no second row is written. The stored row gains keys it lacked
+(an upload learns its share code from a later sync; never overwrites a known
+key), keeps its `source` (first arrival), and if it was not imported (e.g.
+Steam had no demo: `unavailable`) it is upgraded with the uploaded rounds. Sync
+checks the share code / match id **before** downloading, so a match uploaded
+with its share code is never downloaded again; the cursor still advances. The
+demo hash covers uploads without a share code, assuming Valve serves the same
+bytes the CS2 client saved (a re-encoded file would only match via share code).
+
 Tests: `pip install -r requirements-dev.txt && pytest`
 
-Real-demo end-to-end test (demoparser2 -> features -> model -> SQLite -> report).
+PostgreSQL (opt-in; a throwaway database you own, each test gets its own
+schema that is dropped afterwards):
+
+```sh
+CSA_TEST_DATABASE_URL=postgresql://user:pw@127.0.0.1:5432/csa_test pytest
+```
+
+CI (`.github/workflows/api-tests.yml`) runs the suite on SQLite and on
+PostgreSQL 17, both with the real-demo test.
+
+Real-demo end-to-end test (demoparser2 -> features -> model -> SQLite/PostgreSQL -> report).
 Skipped unless `CSA_TEST_DEMO` is set; demos are too big to commit:
 
 ```sh
