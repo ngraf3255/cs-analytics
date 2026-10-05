@@ -1,5 +1,5 @@
 import { ApiError } from "./errors";
-import type { MatchAccess, MatchReport, MatchSummary, Me, SyncResult, SyncStatus, UploadJob } from "./types";
+import type { MatchAccess, MatchReport, MatchSummary, Me, SyncResult, SyncState, UploadJob } from "./types";
 
 const apiBase = (
   import.meta.env.VITE_API_BASE_URL ||
@@ -84,6 +84,34 @@ export async function waitForUploadJob(
   return current;
 }
 
+/** Poll the sync jobs with these ids (one GET /steam/sync per round, 2 s apart) until none is
+ * queued or processing. ``onUpdate`` gets the current state of every tracked job, oldest first. */
+export async function waitForSyncJobs(
+  jobs: UploadJob[], onUpdate?: (jobs: UploadJob[]) => void, signal?: { cancelled: boolean },
+): Promise<UploadJob[]> {
+  let current = jobs;
+  let failures = 0;
+  while (current.some(isJobActive)) {
+    await new Promise((resolve) => setTimeout(resolve, JOB_POLL_MS));
+    if (signal?.cancelled) return current;
+    try {
+      const latest = new Map((await request<SyncState>("/steam/sync")).jobs.map((job) => [job.id, job]));
+      const next: UploadJob[] = [];
+      for (const job of current) {
+        // Only the newest jobs are listed; look up an active one that dropped off the list directly.
+        next.push(latest.get(job.id)
+          ?? (isJobActive(job) ? (await request<{ job: UploadJob }>(`/matches/upload/${encodeURIComponent(job.id)}`)).job : job));
+      }
+      current = next;
+      failures = 0;
+      onUpdate?.(current);
+    } catch (reason) {
+      if ((reason instanceof ApiError && reason.status >= 400 && reason.status < 500) || ++failures > 30) throw reason;
+    }
+  }
+  return current;
+}
+
 export function steamLoginUrl(next = "/#matches"): string {
   const path = next.startsWith("/") ? next : `/${next}`;
   return `${apiBase}/auth/steam/login?next=${encodeURIComponent(path)}`;
@@ -97,12 +125,13 @@ export const steamApi = {
   putMatchAccess: (body: { auth_code: string; share_code: string; consent: boolean }) =>
     request<MatchAccess>("/steam/match-access", { method: "PUT", body: JSON.stringify(body) }, true),
   deleteMatchAccess: () => request<void>("/steam/match-access", { method: "DELETE" }, true),
-  getSync: () => request<SyncStatus>("/steam/sync"),
+  getSync: () => request<SyncState>("/steam/sync"),
   postSync: () => request<SyncResult>("/steam/sync", { method: "POST" }, true),
   listMatches: (limit = 20, offset = 0) =>
     request<{ matches: MatchSummary[]; limit: number; offset: number }>(`/matches?limit=${limit}&offset=${offset}`),
   uploadDemo,
   waitForUploadJob,
+  waitForSyncJobs,
   listUploadJobs: (limit = 5) => request<{ jobs: UploadJob[] }>(`/matches/upload?limit=${limit}`),
   getMatch: (id: string) => request<MatchReport>(`/matches/${encodeURIComponent(id)}`),
 };

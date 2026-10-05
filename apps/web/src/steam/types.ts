@@ -11,7 +11,12 @@ export type SyncStatus = {
   last_finished_at: string | null;
   last_error: string | null;
   last_imported_count: number;
+  /** Matches queued by syncs that are still downloading / parsing in the background. */
+  active_jobs?: number;
 };
+
+/** GET /steam/sync: status plus the user's most recent sync jobs, newest first. */
+export type SyncState = SyncStatus & { jobs: UploadJob[] };
 
 export type Me = {
   steam_id: string;
@@ -20,12 +25,15 @@ export type Me = {
   sync: SyncStatus;
 };
 
+/** POST /steam/sync: the request only walks the match history; each new match is a background job. */
 export type SyncResult = {
-  status: "up_to_date" | "partial" | "demo_not_ready" | "error" | string;
-  imported: number;
+  status: "up_to_date" | "partial" | "queue_full" | "error" | string;
+  queued: number;
+  skipped: number;
   processed: number;
   has_more: boolean;
   error: string | null;
+  jobs: UploadJob[];
 };
 
 export type MatchSummary = {
@@ -39,11 +47,14 @@ export type MatchSummary = {
   imported_at: string;
 };
 
-/** A manual upload being parsed in the background (POST /matches/upload, GET /matches/upload/{id}). */
+/** A demo being imported in the background: a manual upload (POST /matches/upload) or one match
+ * of a Steam sync (POST /steam/sync). Poll GET /matches/upload/{id} or GET /steam/sync. */
 export type UploadJob = {
   id: string;
+  kind?: "upload" | "steam_sync" | string;
+  share_code?: string | null;
   status: "queued" | "processing" | "done" | "failed" | string;
-  stage: "decompressing" | "hashing" | "parsing" | "storing" | string | null;
+  stage: "locating" | "downloading" | "decompressing" | "hashing" | "parsing" | "storing" | string | null;
   progress: number | null;
   queue_position: number | null;
   error: string | null;
@@ -53,6 +64,7 @@ export type UploadJob = {
   finished_at: string | null;
   match: MatchSummary | null;
   created: boolean | null;
+  attempts?: number;
 };
 
 export type RoundReport = {

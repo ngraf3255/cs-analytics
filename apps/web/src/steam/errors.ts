@@ -17,7 +17,7 @@ const MESSAGES: Record<string, string> = {
   demo_retrieval_not_configured:
     "Match sync is wired up, but demo download is not configured on the server yet (needs a Game Coordinator bot). Your share-code cursor was not advanced.",
   demo_bot_auth_failed:
-    "The server’s Steam demo bot could not sign in, so demos can’t be fetched right now. Your cursor was not advanced.",
+    "The server’s Steam demo bot could not sign in, so demos can’t be fetched right now. Your next sync retries the match.",
   demo_too_large: "That demo is larger than the server allows.",
   not_a_cs2_demo: "That file isn’t a CS2 demo (.dem or .dem.bz2). CS:GO demos aren’t supported.",
   demo_parse_failed: "The demo could not be parsed.",
@@ -25,6 +25,8 @@ const MESSAGES: Record<string, string> = {
   upload_queue_full: "The server already has several demos waiting to be parsed. Try again in a few minutes.",
   server_restarted: "The server restarted before it finished your demo. Upload it again.",
   internal_error: "The server hit an unexpected error while processing your demo. Try again.",
+  demo_not_ready: "That match’s demo isn’t on Valve’s servers yet. Sync again later to retry it.",
+  sync_queue_full: "The server already has several demos waiting. Sync again in a few minutes to continue.",
   upload_job_not_found: "That upload is no longer tracked. Check your matches below.",
   demo_has_no_rounds: "That demo has no completed rounds to analyse.",
   upload_network_error: "The upload was interrupted. Check your connection and try again.",
