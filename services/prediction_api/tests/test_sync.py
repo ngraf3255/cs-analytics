@@ -139,3 +139,12 @@ def test_valve_errors_surface_safely(env, forced):
     state = env["storage"].get_sync_state(env["user"].id, env["clock"]())
     assert state.status == "error" and state.last_error == forced
     assert cursor(env) == code(0)
+
+
+def test_demo_bot_auth_failure_stops_without_advancing(env):
+    from steamlink import sharecode
+    from steamlink.gc import DemoBotAuthFailed
+    env["locator"].errors[sharecode.decode(code(1)).match_id] = DemoBotAuthFailed()
+    out = env["service"]().sync(env["user"])
+    assert (out.status, out.error) == ("error", "demo_bot_auth_failed")
+    assert cursor(env) == code(0)

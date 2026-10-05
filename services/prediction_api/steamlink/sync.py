@@ -10,6 +10,7 @@ from typing import Callable
 
 from .crypto import AuthCodeCipher, DecryptionError
 from .demo_parser import DemoParseError, DemoParser, extract_rounds
+from .gc import DemoBotAuthFailed
 from .sharecode import decode
 from .storage.base import CursorConflict, NewMatch, Storage, User
 from .valve import (
@@ -117,6 +118,8 @@ class SyncService:
             match = self._import_one(result.next_code)
             if match is None:
                 return SyncOutcome("error", imported, processed, error="demo_retrieval_not_configured")
+            if match == "bot_auth_failed":
+                return SyncOutcome("error", imported, processed, error="demo_bot_auth_failed")
             if match == "not_ready":
                 return SyncOutcome("demo_not_ready", imported, processed)
             try:
@@ -130,7 +133,7 @@ class SyncService:
         return SyncOutcome("partial", imported, processed, has_more=True)
 
     def _import_one(self, share_code: str):
-        """Return a NewMatch, ``"not_ready"`` (transient), or None (no locator)."""
+        """Return a NewMatch, ``"not_ready"``/``"bot_auth_failed"`` (cursor not advanced), or None (no locator)."""
 
         share = decode(share_code)
         base = dict(share_code=share_code, valve_match_id=f"{share.match_id}")
@@ -140,6 +143,8 @@ class SyncService:
                 parsed = self.parser.parse(demo_path)
         except DemoLocatorNotConfigured:
             return None
+        except DemoBotAuthFailed:
+            return "bot_auth_failed"
         except DemoNotReady:
             return "not_ready"
         except DemoUnavailable:
