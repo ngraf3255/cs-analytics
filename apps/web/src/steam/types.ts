@@ -48,11 +48,18 @@ export type MatchSummary = {
   status_reason: string | null;
   map_name: string | null;
   rounds_count: number;
-  /** When the match was added to this user's list (demos carry no match date). */
+  /** When the match was added to this user's list. */
   imported_at: string;
+  /** When the match was played if known (Steam sync: Valve's Game Coordinator), else imported_at;
+   * date_source says which. Missing from older API versions (use imported_at). */
+  date?: string;
+  date_source?: "played" | "imported";
+  played_at?: string | null;
   /** Final score: rounds won by the team on each side at the end; null if the demo didn't say.
    * Missing from older API versions. */
   score?: { ct: number; t: number } | null;
+  /** Per-player sides / stats were recorded at parse time (false: parsed before that; re-upload). */
+  players_recorded?: boolean;
 };
 
 /** A demo being imported in the background: a manual upload (POST /matches/upload) or one match
@@ -84,13 +91,49 @@ export type RoundReport = {
     probabilities: { ct: number; t: number };
   } | null;
   unscored_reason: string | null;
+  /** The signed-in player's round (null: not in it, or not recorded). Missing from older APIs. */
+  you?: {
+    side: "ct" | "t";
+    won: boolean | null;
+    kills: number;
+    deaths: number;
+    opening_kill: boolean;
+    opening_death: boolean;
+    survived: boolean;
+    /** The model's probability for the player's side (null when the round is unscored). */
+    win_probability: number | null;
+  } | null;
 };
+
+export type MatchResult = { score: { you: number; them: number } | null; result: "won" | "lost" | "tied" | null };
+
+/** The signed-in player in one match. ``not_in_match``: e.g. an uploaded pro demo; ``unknown``:
+ * parsed before per-player rounds were recorded (re-upload the demo). */
+export type YouInMatch =
+  | { status: "not_in_match" | "unknown"; steam_id: string }
+  | (MatchResult & {
+    status: "in_match";
+    steam_id: string;
+    first_side: "ct" | "t";
+    last_side: "ct" | "t";
+    rounds: number;
+    won: number;
+    win_rate: number | null;
+    kills: number;
+    deaths: number;
+    kd: number | null;
+    opening_kills: number;
+    opening_deaths: number;
+    survived: number;
+  });
 
 export type MatchReport = {
   match: MatchSummary;
   model: { calibrated_for_matchmaking: boolean; note: string };
   summary: { rounds: number; scored: number; correct_predictions: number };
   rounds: RoundReport[];
+  /** Missing from older API versions. */
+  you?: YouInMatch;
 };
 
 /** Model hit rate / Brier score over a set of scored rounds (null when none were scored). */
@@ -104,8 +147,54 @@ export type SideTally = {
 };
 export type Conversion = { rounds: number; converted: number; conversion_rate: number | null };
 
-/** GET /matches/summary: analytics across every match in the user's list. Sides are map sides of
- * everyone in the match (the user's own team isn't stored); rates are 0..1 or null. */
+export type SideRate = { rounds: number; won: number; win_rate: number | null };
+export type Results = { won: number; lost: number; tied: number; unknown: number };
+/** The signed-in player's own rounds over a set of matches. */
+export type PlayerTally = {
+  matches: number;
+  rounds: number;
+  rounds_with_winner: number;
+  won: number;
+  win_rate: number | null;
+  results: Results;
+  kills: number;
+  deaths: number;
+  kd: number | null;
+  kills_per_round: number | null;
+  survived: number;
+  survival_rate: number | null;
+};
+export type PlayerWindow = { matches: number; rounds: number; won: number; win_rate: number | null; kd: number | null; results: Results };
+
+/** GET /matches/summary ``you``: the signed-in player's own rounds (their side each round). */
+export type YouAnalytics = PlayerTally & {
+  steam_id: string;
+  /** Demos the player is not in (e.g. uploaded pro matches): left out of these numbers. */
+  matches_without_you: number;
+  /** Parsed before per-player rounds were recorded: left out (re-upload to include). */
+  matches_unknown: number;
+  sides: { ct: SideRate; t: SideRate };
+  opening_duels: {
+    taken: number; won: number; lost: number; win_rate: number | null;
+    round_win_rate_after_opening_kill: number | null; round_win_rate_after_opening_death: number | null;
+  };
+  maps: (PlayerTally & { map_name: string | null; sides: { ct: SideRate; t: SideRate } })[];
+  recent_form: {
+    window: number;
+    recent: PlayerWindow;
+    earlier: PlayerWindow;
+    win_rate_change: number | null;
+    kd_change: number | null;
+    matches: (MatchResult & {
+      id: string; map_name: string | null; date: string; date_source: "played" | "imported"; played_at: string | null;
+      first_side: "ct" | "t"; rounds: number; won: number; win_rate: number | null; kills: number; deaths: number;
+    })[];
+  };
+};
+
+/** GET /matches/summary: analytics across every match in the user's list. ``you`` is the signed-in
+ * player's own rounds; everything else covers all players in the matches (CT / T = map sides);
+ * rates are 0..1 or null. */
 export type MatchesAnalytics = {
   model: { calibrated_for_matchmaking: boolean; coin_flip_brier_score: number; note: string };
   totals: {
@@ -132,6 +221,9 @@ export type MatchesAnalytics = {
   };
   maps: (SideTally & ModelTally & { map_name: string | null; matches: number; rounds: number })[];
   unscored_reasons: { reason: string; rounds: number }[];
+  /** Missing from older API versions. */
+  you?: YouAnalytics;
+  scope?: Record<string, "all_players" | "signed_in_player">;
   recent_form: {
     window: number;
     recent: ModelTally & { matches: number; ct_win_rate: number | null };

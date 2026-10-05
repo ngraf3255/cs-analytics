@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
-import type { MatchReport, MatchSummary, Me, SyncResult, UploadJob } from "./types";
+import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouInMatch } from "./types";
+import { kdText, matchDate, resultText } from "./format";
 import { MatchesSummaryPanel } from "./MatchesSummary";
 import { weaponName } from "./weapons";
 
@@ -289,7 +290,9 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
               <button type="button" className={`match-item ${selected === match.id ? "selected" : ""}`} onClick={() => setSelected(selected === match.id ? null : match.id)}>
                 <strong>{mapLabel(match.map_name)}{match.source === "upload" && <span className="source-tag">UPLOADED</span>}</strong>
                 <span>{match.status === "imported" ? `${match.rounds_count} rounds` : MATCH_STATUS[match.status_reason ?? ""] ?? "Not imported"}</span>
-                <span className="steam-muted">{new Date(match.imported_at).toLocaleDateString()}</span>
+                <span className="steam-muted" title={matchDate(match).label}>
+                  {matchDate(match).played ? matchDate(match).day : `Added ${matchDate(match).day}`}
+                </span>
               </button>
               {selected === match.id && match.status === "imported" && <MatchReportView matchId={match.id} />}
             </li>
@@ -317,17 +320,21 @@ function MatchReportView({ matchId }: { matchId: string }) {
 
   const { summary, match } = report;
   const score = match.score ?? null;
+  const date = matchDate(match);
+  const you = report.you;
+  const inMatch = you?.status === "in_match";
   return (
     <div className="match-report">
-      <dl className="report-header" aria-label="Match summary">
+      <dl className={`report-header ${you ? "with-you" : ""}`} aria-label="Match summary">
         <div><dt>MAP</dt><dd>{mapLabel(match.map_name)}</dd><small>{plural(match.rounds_count, "round")}</small></div>
         <div>
           <dt>SCORE</dt>
           <dd>{score ? `${Math.max(score.ct, score.t)} – ${Math.min(score.ct, score.t)}` : "—"}</dd>
           <small>{score ? `CT ${score.ct} · T ${score.t} (sides at the end)` : "Not recorded in this demo"}</small>
         </div>
-        <div><dt>DATE</dt><dd>{new Date(match.imported_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</dd><small>Imported (demos carry no match date)</small></div>
+        <div><dt>DATE</dt><dd>{date.day}</dd><small>{date.label}</small></div>
         <div><dt>SOURCE</dt><dd>{match.source === "upload" ? "Upload" : "Steam sync"}</dd><small>{match.source === "upload" ? "You uploaded the demo" : "From your match history"}</small></div>
+        {you && <YouTile you={you} />}
       </dl>
       <div className="calibration-note" role="note">
         <strong>Retrospective estimate, not calibrated for your games.</strong> {report.model.note}
@@ -339,25 +346,30 @@ function MatchReportView({ matchId }: { matchId: string }) {
         <span><i className="legend actual" /> Actual winner (from the demo)</span>
         <span><i className="legend model" /> Model estimate (in hindsight)</span>
         <span><i className="legend unscored" /> Unscored</span>
+        {inMatch && <span><i className="legend your-win" /> Your team won the round</span>}
       </div>
-      <table className="round-table">
+      <table className="round-table" aria-label="Rounds">
         <thead>
-          <tr><th>Round</th><th>Opening kill</th><th>Actual winner</th><th>Model estimate</th></tr>
+          <tr><th>Round</th>{inMatch && <th>You</th>}<th>Opening kill</th><th>Actual winner</th><th>Model estimate</th></tr>
         </thead>
         <tbody>
           {report.rounds.map((round) => (
-            <tr key={round.round_number} className={round.prediction ? "" : "unscored-row"}>
+            <tr key={round.round_number} className={[round.prediction ? "" : "unscored-row", yourRowClass(round)].filter(Boolean).join(" ")}>
               <td>{round.round_number}</td>
+              {inMatch && <td className="you-cell">{yourRound(round)}</td>}
               <td>
                 {round.opening_kill
                   ? `${sideName(round.opening_kill.side)} · ${weaponName(round.opening_kill.weapon)} · ${round.opening_kill.seconds != null ? `${round.opening_kill.seconds.toFixed(1)}s` : "?"}`
                   : "—"}
+                {round.you?.opening_kill && <span className="you-tag">YOUR KILL</span>}
+                {round.you?.opening_death && <span className="you-tag lost">YOU DIED FIRST</span>}
               </td>
               <td><span className={`actual-chip ${round.actual_winner ?? ""}`}>{sideName(round.actual_winner)}</span></td>
               <td>
                 {round.prediction ? (
                   <span className="model-estimate">
                     {sideName(round.prediction.predicted_winner)} favoured · CT {(round.prediction.probabilities.ct * 100).toFixed(0)}% / T {(round.prediction.probabilities.t * 100).toFixed(0)}%
+                    {round.you?.win_probability != null && ` · your team ${(round.you.win_probability * 100).toFixed(0)}%`}
                   </span>
                 ) : (
                   <span className="unscored-reason">Unscored: {messageFor(round.unscored_reason, "Not scorable.")}</span>
@@ -367,6 +379,47 @@ function MatchReportView({ matchId }: { matchId: string }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function yourRowClass(round: RoundReport): string {
+  if (!round.you || round.you.won == null) return "";
+  return round.you.won ? "your-win" : "your-loss";
+}
+
+function yourRound(round: RoundReport) {
+  const you = round.you;
+  if (!you) return <span className="steam-muted">Not tracked</span>;
+  const stats = `${plural(you.kills, "kill")}${you.survived ? " · survived" : ""}`;
+  return (
+    <>
+      <span className={`side-chip ${you.side}`}>{sideName(you.side)}</span>
+      {you.won != null && <strong className={you.won ? "you-won" : "you-lost"}>{you.won ? "WON" : "LOST"}</strong>}
+      <small>{stats}</small>
+    </>
+  );
+}
+
+/** The signed-in player's line in the report header. */
+function YouTile({ you }: { you: YouInMatch }) {
+  if (you.status !== "in_match") {
+    return (
+      <div className="you-tile muted">
+        <dt>YOU</dt>
+        <dd>{you.status === "not_in_match" ? "Not in this demo" : "Not tracked"}</dd>
+        <small>{you.status === "not_in_match"
+          ? "Your SteamID isn’t in this match: the stats cover all players."
+          : "Imported before per-player stats. Upload the demo again to add yours."}</small>
+      </div>
+    );
+  }
+  const side = you.first_side === you.last_side ? `${sideName(you.first_side)} all match` : `Started ${sideName(you.first_side)}, then ${sideName(you.last_side)}`;
+  return (
+    <div className="you-tile">
+      <dt>YOU</dt>
+      <dd>{resultText(you) ?? `${you.won} of ${you.rounds} rounds won`}</dd>
+      <small>{side} · {you.kills} K / {you.deaths} D (K/D {kdText(you.kd)}) · won {you.won} of {plural(you.rounds, "round")}</small>
     </div>
   );
 }
