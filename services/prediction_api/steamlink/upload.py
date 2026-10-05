@@ -8,7 +8,7 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from .demo_parser import PARSE_SLOT, DemoParseError, DemoParser, extract_rounds, final_score
+from .demo_parser import PARSE_SLOT, DemoParseError, DemoParser, extract_player_rounds, extract_rounds, final_score
 from .sharecode import InvalidShareCode, decode
 from .storage.base import UNKNOWN_MATCH_ID, UPLOAD_KEY_PREFIX, NewMatch, Storage
 from .valve import DemoTooLarge, DemoUnavailable, decompress_bz2
@@ -68,7 +68,7 @@ def import_uploaded_demo(
     max_compressed_bytes: int, max_demo_bytes: int, now, share_code: str | None = None,
     demo_sha256: str | None = None, wait_for_parse_slot: bool = False,
     on_stage: Callable[[str, float | None], None] = _noop_stage, source: str = "upload",
-    share_code_verified: bool = False,
+    share_code_verified: bool = False, played_at=None, played_at_source: str | None = None,
 ) -> UploadResult:
     """Decompress (if .bz2), hash, dedupe, parse and store one uploaded demo.
 
@@ -78,8 +78,13 @@ def import_uploaded_demo(
     ``on_stage(stage, progress)`` reports decompressing / hashing / parsing / storing.
     ``source``: ``"upload"``, or ``"steam_sync"`` when a sync job downloaded the demo.
     ``share_code_verified``: the share code came from Valve's match history (sync), not the user.
+    ``played_at`` / ``played_at_source``: when the match was played, if the caller knows
+    (Steam sync: the Game Coordinator's match time); demos carry no date.
     ``UploadResult.created``: the match was newly added to this user's list (parsed now, or
     already stored for another user and shared without parsing again).
+
+    A known demo is not parsed again, except when it was stored before per-player
+    rounds were recorded (``players_recorded`` false): then this parse fills them in.
     """
 
     valve_match_id = UNKNOWN_MATCH_ID
@@ -128,7 +133,9 @@ def import_uploaded_demo(
                                       source=source, now=now)
     if known is not None:
         record, added = known
-        return UploadResult(record.id, added)
+        if record.players_recorded:
+            return UploadResult(record.id, added)
+        # Stored before player rounds were recorded: parse once more to fill them in.
     on_stage("parsing", None)
     if not _parse_slot.acquire(blocking=wait_for_parse_slot):
         raise UploadRejected("upload_busy", 429)
@@ -146,6 +153,10 @@ def import_uploaded_demo(
                      status="imported", status_reason=None, map_name=parsed.map_name,
                      rounds=tuple(extract_rounds(parsed)), demo_sha256=demo_sha256, source=source,
                      share_code_verified=share_code_verified, score_ct=score[0] if score else None,
-                     score_t=score[1] if score else None)
+                     score_t=score[1] if score else None, player_rounds=tuple(extract_player_rounds(parsed)),
+                     players_recorded=True, played_at=played_at,
+                     played_at_source=played_at_source if played_at else None)
     match_id, created = storage.record_uploaded_match(user_id, match=match, now=now)
+    if known is not None:
+        return UploadResult(known[0].id, known[1])
     return UploadResult(match_id, created)

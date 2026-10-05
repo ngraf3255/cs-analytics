@@ -109,6 +109,12 @@ class DemoLocatorNotConfigured(Exception):
     """No way to resolve demo URLs is configured on this deployment."""
 
 
+@dataclass(frozen=True)
+class DemoInfo:
+    url: str
+    match_time: int | None = None  # unix seconds when the match was played, if the locator knows
+
+
 class DemoLocator(ABC):
     # False for the placeholder below: sync then stops before queueing a download.
     configured: bool = True
@@ -116,6 +122,11 @@ class DemoLocator(ABC):
     @abstractmethod
     def demo_url(self, share: ShareCode) -> str:
         """Return the Valve replay URL for a match or raise DemoNotReady/DemoUnavailable."""
+
+    def demo_info(self, share: ShareCode) -> DemoInfo:
+        """The replay URL plus the match time if known (the Game Coordinator sends it)."""
+
+        return DemoInfo(self.demo_url(share))
 
 
 class UnconfiguredDemoLocator(DemoLocator):

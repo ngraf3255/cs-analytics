@@ -16,7 +16,13 @@ Feature definitions match the training data (``data/rounds.parquet`` /
 * final score (:func:`final_score`) = rounds won by the team on each side at the
   end, read from the players' team round totals at the last kill plus the
   winners of the rounds that ended from then on (no extra parse pass; robust to
-  knife/warmup rounds and side swaps, unlike counting winners by side).
+  knife/warmup rounds and side swaps, unlike counting winners by side);
+* per-player rounds (:func:`extract_player_rounds`) = for every player
+  (SteamID64) the side they played each round, read from their ``player_spawn``
+  in that round (so the halftime side swap is just the next spawn), falling
+  back to their side in a kill of the round; plus their kills / deaths, opening
+  kill / death and whether they survived (see the function). Same single parse
+  pass (``player_spawn`` is one more event in it).
 
 Values are stored as observed. Values the model doesn't know (new maps, other
 knife skins, ...) get an unscored reason when the report is built; they are
@@ -34,12 +40,13 @@ import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from .storage.base import RoundRecord
+from .storage.base import PlayerRoundRecord, RoundRecord
 
 logger = logging.getLogger(__name__)
 
 CS2_TICKRATE = 64
 TEAM_NUM_TO_SIDE = {2: "t", 3: "ct", "2": "t", "3": "ct", "T": "t", "CT": "ct", "t": "t", "ct": "ct"}
+_OTHER_SIDE = {"ct": "t", "t": "ct"}
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,16 @@ class ParsedDeath:
     # Rounds won so far by the attacker's / victim's team (before a round_end on this tick).
     attacker_score: int | None = None
     victim_score: int | None = None
+    # SteamID64s (None for world / bots / unknown).
+    attacker_steamid: str | None = None
+    victim_steamid: str | None = None
+
+
+@dataclass(frozen=True)
+class ParsedSpawn:
+    tick: int
+    steamid: str
+    side: str  # ct | t
 
 
 @dataclass(frozen=True)
@@ -67,6 +84,9 @@ class ParsedDemo:
     rounds: list[ParsedRound] = field(default_factory=list)
     deaths: list[ParsedDeath] = field(default_factory=list)
     tickrate: int = CS2_TICKRATE
+    spawns: list[ParsedSpawn] = field(default_factory=list)
+    # Tick of the last begin_new_match (a restart after warmup / a knife round), if any.
+    match_start_tick: int | None = None
 
 
 class DemoParseError(Exception):
@@ -76,6 +96,19 @@ class DemoParseError(Exception):
 class DemoParser(ABC):
     @abstractmethod
     def parse(self, demo_path: str) -> ParsedDemo: ...
+
+
+def normalize_steamid(value) -> str | None:
+    """A SteamID64 as a string of digits, or None (missing, NaN, ``0`` for bots / world)."""
+
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, float):
+        if value != value:
+            return None
+        value = int(value)
+    text = str(value).strip()
+    return text if text.isdigit() and int(text) > 0 else None
 
 
 def normalize_weapon(weapon: str | None) -> str | None:
@@ -128,6 +161,82 @@ def extract_rounds(demo: ParsedDemo) -> list[RoundRecord]:
     return records
 
 
+def _live_start(rnd: ParsedRound, window_start: int) -> int:
+    return rnd.freeze_end_tick if rnd.freeze_end_tick is not None else window_start + 1
+
+
+def extract_player_rounds(demo: ParsedDemo) -> list[PlayerRoundRecord]:
+    """One record per (round, player with a known side), in round order.
+
+    * side: the side the player was on in the round. Kills of the round (after
+      freeze end) are authoritative for the players in them; everyone else gets
+      the side of their last ``player_spawn`` in the round (after the previous
+      round_end). At halftime the teams switch without a new spawn event (seen
+      on real demos), so when the kills contradict most spawns of the round, the
+      spawn sides of that round are swapped. Players with neither get no record
+      for that round (e.g. a knife round recorded without SteamIDs);
+    * rounds that ended before the last ``begin_new_match`` (warmup, knife
+      round before a restart) get no records: they are not part of the match;
+    * kills: enemies killed (teamkills, suicides and world deaths are not kills);
+      deaths: any death. Both counted from the round's freeze end up to the next
+      round's freeze end, so post-round "exit frags" count for the round that
+      just ended (like the in-game scoreboard); the last round stops at its
+      round_end (the server kills everyone after the match);
+    * opening_kill / opening_death: the player got / suffered the round's
+      opening kill (the same death :func:`extract_rounds` uses);
+    * survived: not killed before the round ended.
+    """
+
+    deaths = sorted(demo.deaths, key=lambda d: d.tick)
+    spawns = sorted(demo.spawns, key=lambda s: s.tick)
+    ordered = sorted(demo.rounds, key=lambda r: r.end_tick)
+    starts, previous_end = [], -1
+    for rnd in ordered:
+        starts.append((previous_end, _live_start(rnd, previous_end)))
+        previous_end = rnd.end_tick
+    records: list[PlayerRoundRecord] = []
+    for index, rnd in enumerate(ordered):
+        if demo.match_start_tick is not None and rnd.end_tick < demo.match_start_tick:
+            continue
+        window_start, live_start = starts[index]
+        live_start = max(live_start, window_start + 1)
+        # Stats window: up to the next round's live start (exit frags), the last round up to its end.
+        stats_end = starts[index + 1][1] if index + 1 < len(ordered) else rnd.end_tick + 1
+        live = [d for d in deaths if live_start <= d.tick <= rnd.end_tick]
+        seen: dict[str, str] = {}
+        for death in live:
+            for steamid, side in ((death.attacker_steamid, death.attacker_side),
+                                  (death.victim_steamid, death.victim_side)):
+                if steamid and side in ("ct", "t"):
+                    seen.setdefault(steamid, side)
+        spawned: dict[str, str] = {}
+        for spawn in spawns:
+            if window_start < spawn.tick <= rnd.end_tick and spawn.side in ("ct", "t"):
+                spawned[spawn.steamid] = spawn.side  # the last spawn of the round wins
+        both = [sid for sid in spawned if sid in seen]
+        if sum(spawned[sid] != seen[sid] for sid in both) * 2 > len(both):
+            spawned = {sid: _OTHER_SIDE[side] for sid, side in spawned.items()}  # stale: teams switched
+        sides = {**spawned, **seen}
+        if not sides:
+            continue
+        counted = [d for d in deaths if live_start <= d.tick < stats_end]
+        opening = live[0] if live else None
+        for steamid, side in sides.items():
+            kills = sum(1 for d in counted if d.attacker_steamid == steamid and d.victim_steamid != steamid
+                        and d.attacker_side in ("ct", "t") and d.victim_side in ("ct", "t")
+                        and d.attacker_side != d.victim_side)
+            opening_kill = (opening is not None and opening.attacker_steamid == steamid
+                            and opening.victim_steamid != steamid and opening.attacker_side != opening.victim_side)
+            records.append(PlayerRoundRecord(
+                round_number=rnd.number, steam_id=steamid, side=side, kills=kills,
+                deaths=sum(1 for d in counted if d.victim_steamid == steamid),
+                opening_kill=bool(opening_kill),
+                opening_death=opening is not None and opening.victim_steamid == steamid,
+                survived=not any(d.victim_steamid == steamid for d in live),
+            ))
+    return records
+
+
 def final_score(demo: ParsedDemo) -> tuple[int, int] | None:
     """``(ct, t)``: rounds won by the team on the CT / T side at the end of the demo,
     or None if the demo doesn't say (no cross-team kill with team totals)."""
@@ -159,9 +268,10 @@ def final_score(demo: ParsedDemo) -> tuple[int, int] | None:
 PARSE_SLOT = threading.BoundedSemaphore(1)
 
 PARSE_ISOLATION_MODES = ("subprocess", "inprocess")
-_EVENTS = ("round_end", "round_freeze_end", "player_death")
+_EVENTS = ("round_end", "round_freeze_end", "player_death", "player_spawn", "begin_new_match")
 _DEATH_COLUMNS = ("tick", "attacker_team_num", "user_team_num", "weapon", "attacker_team_rounds_total",
-                  "user_team_rounds_total")
+                  "user_team_rounds_total", "attacker_steamid", "user_steamid")
+_SPAWN_COLUMNS = ("tick", "user_steamid", "user_team_num")
 _INT_COLUMNS = ("winner", "attacker_team_num", "user_team_num", "attacker_team_rounds_total", "user_team_rounds_total")
 
 
@@ -236,6 +346,8 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
         round_end = _rows(frames.pop("round_end", None), ("tick", "winner"))
         freeze_ticks = sorted(int(t) for t in _column(frames.pop("round_freeze_end", None), "tick"))
         deaths = _rows(frames.pop("player_death", None), _DEATH_COLUMNS)
+        spawn_rows = _rows(frames.pop("player_spawn", None), _SPAWN_COLUMNS)
+        match_starts = [int(t) for t in _column(frames.pop("begin_new_match", None), "tick")]
         frames.clear()
     except Exception as exc:  # parser raises a variety of native errors
         raise DemoParseError("demo could not be parsed") from exc
@@ -263,9 +375,18 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
                 weapon=row.get("weapon"),
                 attacker_score=row.get("attacker_team_rounds_total"),
                 victim_score=row.get("user_team_rounds_total"),
+                attacker_steamid=normalize_steamid(row.get("attacker_steamid")),
+                victim_steamid=normalize_steamid(row.get("user_steamid")),
             )
             for row in deaths
         ],
+        spawns=[
+            ParsedSpawn(tick=int(row["tick"]), steamid=steamid, side=side)
+            for row in spawn_rows
+            if (steamid := normalize_steamid(row.get("user_steamid")))
+            and (side := TEAM_NUM_TO_SIDE.get(row.get("user_team_num")))
+        ],
+        match_start_tick=max(match_starts) if match_starts else None,
     )
 
 
@@ -274,8 +395,10 @@ def parsed_demo_to_json(demo: ParsedDemo) -> dict:
         "map_name": demo.map_name,
         "tickrate": demo.tickrate,
         "rounds": [[r.number, r.freeze_end_tick, r.end_tick, r.winner_side] for r in demo.rounds],
-        "deaths": [[d.tick, d.attacker_side, d.victim_side, d.weapon, d.attacker_score, d.victim_score]
-                   for d in demo.deaths],
+        "deaths": [[d.tick, d.attacker_side, d.victim_side, d.weapon, d.attacker_score, d.victim_score,
+                    d.attacker_steamid, d.victim_steamid] for d in demo.deaths],
+        "spawns": [[s.tick, s.steamid, s.side] for s in demo.spawns],
+        "match_start_tick": demo.match_start_tick,
     }
 
 
@@ -285,8 +408,11 @@ def parsed_demo_from_json(data: dict) -> ParsedDemo:
         tickrate=int(data["tickrate"]),
         rounds=[ParsedRound(number=int(n), freeze_end_tick=None if f is None else int(f), end_tick=int(e),
                             winner_side=w) for n, f, e, w in data["rounds"]],
-        deaths=[ParsedDeath(int(d[0]), d[1], d[2], d[3], *(None if x is None else int(x) for x in d[4:6]))
+        deaths=[ParsedDeath(int(d[0]), d[1], d[2], d[3], *(None if x is None else int(x) for x in d[4:6]),
+                            *(d[6:8] if len(d) >= 8 else (None, None)))
                 for d in data["deaths"]],
+        spawns=[ParsedSpawn(int(t), str(sid), side) for t, sid, side in data.get("spawns", [])],
+        match_start_tick=None if data.get("match_start_tick") is None else int(data["match_start_tick"]),
     )
 
 

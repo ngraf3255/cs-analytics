@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .sharecode import ShareCode
-from .valve import DemoLocator, DemoNotReady, DemoUnavailable, check_replay_url
+from .valve import DemoInfo, DemoLocator, DemoNotReady, DemoUnavailable, check_replay_url
 
 
 class GCNotReady(Exception):
@@ -88,6 +88,9 @@ class GameCoordinatorDemoLocator(DemoLocator):
         self._last_request = self._clock()
 
     def demo_url(self, share: ShareCode) -> str:
+        return self.demo_info(share).url
+
+    def demo_info(self, share: ShareCode) -> DemoInfo:
         with self._lock:
             self._throttle()
             try:
@@ -113,4 +116,4 @@ class GameCoordinatorDemoLocator(DemoLocator):
             check_replay_url(url)
         except ValueError:
             raise DemoUnavailable() from None  # never follow a non-Valve URL
-        return url
+        return DemoInfo(url, match.match_time if match.match_time and match.match_time > 0 else None)

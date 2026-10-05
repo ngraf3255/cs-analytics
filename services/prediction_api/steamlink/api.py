@@ -404,11 +404,12 @@ async def upload_demo(
         known = None
         if digest or share_code:
             # Already stored (same .dem, by this or another user; or this user's match by share
-            # code): added to the user's list if needed, no parse, finished job.
+            # code): added to the user's list if needed, no parse, finished job. Unless it was
+            # stored before per-player rounds were recorded: then the job parses it once more.
             known = ctx.storage.claim_known_match(
                 user.id, share_code=share_code, valve_match_id=valve_match_id, demo_sha256=digest,
                 share_code_verified=False, source="upload", now=now)
-        if known is not None:
+        if known is not None and known[0].players_recorded:
             record, added = known
             job = UploadJob(id=job_id, user_id=user.id, status="done", demo_path=raw_path, size_bytes=written,
                             created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest,

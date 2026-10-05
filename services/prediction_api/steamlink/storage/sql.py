@@ -40,6 +40,7 @@ from .base import (
     MatchAccess,
     MatchRecord,
     NewMatch,
+    PlayerRoundRecord,
     RoundRecord,
     Storage,
     SyncState,
@@ -120,6 +121,9 @@ matches = Table(
     Column("share_code_verified", Integer, nullable=False, default=0),
     Column("score_ct", Integer),
     Column("score_t", Integer),
+    Column("players_recorded", Integer, nullable=False, default=0),
+    Column("played_at", UTCDateTime),
+    Column("played_at_source", String),
 )
 # Who has a (shared) match in their list. matches.user_id = who imported it first.
 match_owners = Table(
@@ -138,6 +142,19 @@ rounds = Table(
     Column("opening_kill_seconds", Float),
     Column("opening_weapon", String),
     Column("unscored_reason", String),
+)
+# Every player's side and stats per round of a match (shared by all owners).
+player_rounds = Table(
+    "player_rounds", metadata,
+    Column("match_id", String, ForeignKey("matches.id", ondelete="CASCADE"), primary_key=True),
+    Column("steam_id", String, primary_key=True),
+    Column("round_number", Integer, primary_key=True),
+    Column("side", String, nullable=False),
+    Column("kills", Integer, nullable=False, default=0),
+    Column("deaths", Integer, nullable=False, default=0),
+    Column("opening_kill", Integer, nullable=False, default=0),
+    Column("opening_death", Integer, nullable=False, default=0),
+    Column("survived", Integer, nullable=False, default=1),
 )
 upload_jobs = Table(
     "upload_jobs", metadata,
@@ -209,6 +226,14 @@ def _match_record(row, owner=None) -> MatchRecord:
         imported_at=owner.added_at if owner is not None else row.imported_at,
         source=owner.source if owner is not None else row.source, demo_sha256=row.demo_sha256,
         share_code_verified=bool(row.share_code_verified), score_ct=row.score_ct, score_t=row.score_t,
+        players_recorded=bool(row.players_recorded), played_at=row.played_at, played_at_source=row.played_at_source,
+    )
+
+
+def _player_round(row) -> PlayerRoundRecord:
+    return PlayerRoundRecord(
+        round_number=row.round_number, steam_id=row.steam_id, side=row.side, kills=row.kills, deaths=row.deaths,
+        opening_kill=bool(row.opening_kill), opening_death=bool(row.opening_death), survived=bool(row.survived),
     )
 
 
@@ -520,11 +545,43 @@ class SqlStorage(Storage):
         if row.status != "imported" and match.status == "imported" and match.rounds:
             # e.g. Steam sync had no demo (unavailable), then the user uploaded it.
             conn.execute(delete(rounds).where(rounds.c.match_id == row.id))
+            conn.execute(delete(player_rounds).where(player_rounds.c.match_id == row.id))
             self._insert_rounds(conn, row.id, match)
+            self._insert_player_rounds(conn, row.id, match)
             conn.execute(update(matches).where(matches.c.id == row.id).values(
                 status=match.status, status_reason=match.status_reason, map_name=match.map_name,
-                rounds_count=len(match.rounds), score_ct=match.score_ct, score_t=match.score_t))
+                rounds_count=len(match.rounds), score_ct=match.score_ct, score_t=match.score_t,
+                players_recorded=int(match.players_recorded)))
+        elif row.status == "imported" and match.status == "imported":
+            self._fill_details(conn, row, match)
+        if row.played_at is None and match.played_at is not None:
+            conn.execute(update(matches).where(and_(matches.c.id == row.id, matches.c.played_at.is_(None))).values(
+                played_at=match.played_at, played_at_source=match.played_at_source))
         return row.id, self._attach(conn, user_id, row.id, match.source, now)
+
+    def _fill_details(self, conn, row, match: NewMatch) -> None:
+        """A re-parse of a stored match (same demo) fills in what was not recorded
+        when it was first parsed: player rounds and the final score."""
+
+        values = {}
+        if not row.players_recorded and match.players_recorded:
+            conn.execute(delete(player_rounds).where(player_rounds.c.match_id == row.id))
+            self._insert_player_rounds(conn, row.id, match)
+            values["players_recorded"] = 1
+        if row.score_ct is None and match.score_ct is not None and match.score_t is not None:
+            values.update(score_ct=match.score_ct, score_t=match.score_t)
+        if values:
+            conn.execute(update(matches).where(matches.c.id == row.id).values(**values))
+
+    @staticmethod
+    def _insert_player_rounds(conn, match_id: str, match: NewMatch) -> None:
+        if match.player_rounds:
+            conn.execute(insert(player_rounds), [
+                dict(match_id=match_id, steam_id=p.steam_id, round_number=p.round_number, side=p.side,
+                     kills=p.kills, deaths=p.deaths, opening_kill=int(p.opening_kill),
+                     opening_death=int(p.opening_death), survived=int(p.survived))
+                for p in match.player_rounds
+            ])
 
     @staticmethod
     def _insert_rounds(conn, match_id: str, match: NewMatch) -> None:
@@ -545,8 +602,11 @@ class SqlStorage(Storage):
             rounds_count=len(match.rounds), imported_at=now, source=match.source, demo_sha256=match.demo_sha256,
             share_code_verified=int(match.share_code_verified and _real_code(match.share_code) is not None),
             score_ct=match.score_ct, score_t=match.score_t,
+            players_recorded=int(match.players_recorded and match.status == "imported"),
+            played_at=match.played_at, played_at_source=match.played_at_source if match.played_at else None,
         ))
         cls._insert_rounds(conn, match_id, match)
+        cls._insert_player_rounds(conn, match_id, match)
         return match_id
 
     # Upload jobs -------------------------------------------------------------
@@ -713,6 +773,27 @@ class SqlStorage(Storage):
             for r in round_rows
         ]
 
+    def get_player_rounds(self, match_id: str, steam_id: str) -> list[PlayerRoundRecord]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(player_rounds).where(and_(player_rounds.c.match_id == match_id,
+                                                 player_rounds.c.steam_id == steam_id))
+                .order_by(player_rounds.c.round_number)
+            ).all()
+        return [_player_round(r) for r in rows]
+
+    def list_player_rounds(self, user_id: str, steam_id: str) -> dict[str, list[PlayerRoundRecord]]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(player_rounds).join(match_owners, match_owners.c.match_id == player_rounds.c.match_id)
+                .where(and_(match_owners.c.user_id == user_id, player_rounds.c.steam_id == steam_id))
+                .order_by(player_rounds.c.match_id, player_rounds.c.round_number)
+            ).all()
+        by_match: dict[str, list[PlayerRoundRecord]] = {}
+        for r in rows:
+            by_match.setdefault(r.match_id, []).append(_player_round(r))
+        return by_match
+
     def list_matches_with_rounds(self, user_id: str):
         owned = match_owners.c.user_id == user_id
         with self.engine.begin() as conn:  # one transaction: a consistent snapshot
@@ -750,6 +831,7 @@ class SqlStorage(Storage):
                 if heir is None:
                     conn.execute(update(upload_jobs).where(upload_jobs.c.match_id == match_id).values(match_id=None))
                     conn.execute(delete(rounds).where(rounds.c.match_id == match_id))
+                    conn.execute(delete(player_rounds).where(player_rounds.c.match_id == match_id))
                     conn.execute(delete(matches).where(matches.c.id == match_id))
                 else:
                     conn.execute(update(matches).where(and_(matches.c.id == match_id, matches.c.user_id == user_id))

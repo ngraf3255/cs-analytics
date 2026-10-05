@@ -56,6 +56,21 @@ class RoundRecord:
     unscored_reason: str | None
 
 
+@dataclass(frozen=True)
+class PlayerRoundRecord:
+    """One player's round (steamlink.demo_parser.extract_player_rounds). Stored for
+    every player in the demo, so each owner of a shared match sees their own side."""
+
+    round_number: int
+    steam_id: str
+    side: str  # ct | t: the side this player was on in this round
+    kills: int = 0
+    deaths: int = 0
+    opening_kill: bool = False
+    opening_death: bool = False
+    survived: bool = True
+
+
 # valve_match_id value when the Valve match id is not known (uploads without a share code).
 UNKNOWN_MATCH_ID = "upload"
 # matches.share_code prefix for uploads without a share code: "upload:<demo sha256>".
@@ -78,6 +93,11 @@ class NewMatch:
     share_code_verified: bool = False
     score_ct: int | None = None  # final score (demo_parser.final_score), when the demo was parsed
     score_t: int | None = None
+    # Every player's side and stats per round (demo_parser.extract_player_rounds).
+    player_rounds: tuple[PlayerRoundRecord, ...] = ()
+    players_recorded: bool = False  # True when the parse recorded player rounds (even if empty)
+    played_at: datetime | None = None  # when the match was played, if known (not in CS2 demos)
+    played_at_source: str | None = None  # valve_gc
 
 
 @dataclass(frozen=True)
@@ -95,6 +115,9 @@ class MatchRecord:
     share_code_verified: bool = False
     score_ct: int | None = None  # final score: rounds won by the team on CT / T at the end
     score_t: int | None = None
+    players_recorded: bool = False  # per-player rounds stored (False: parsed before they were)
+    played_at: datetime | None = None  # when the match was played, if known
+    played_at_source: str | None = None
 
     @property
     def has_share_code(self) -> bool:
@@ -226,7 +249,9 @@ class Storage(ABC):
     def record_uploaded_match(self, user_id: str, *, match: NewMatch, now: datetime) -> tuple[str, bool]:
         """Store a parsed (or stub) match (cursor untouched), deduped as above.
         ``match.share_code`` is the real share code if known, else
-        ``upload:<sha256>``. Returns ``(match_id, newly_added_to_user)``."""
+        ``upload:<sha256>``. Returns ``(match_id, newly_added_to_user)``.
+        A deduped stored match also gains details it lacked: player rounds (if not
+        recorded yet), final score and match date (``played_at``)."""
 
     @abstractmethod
     def find_match(
@@ -293,6 +318,16 @@ class Storage(ABC):
 
     @abstractmethod
     def get_match(self, user_id: str, match_id: str) -> tuple[MatchRecord, list[RoundRecord]] | None: ...
+
+    @abstractmethod
+    def get_player_rounds(self, match_id: str, steam_id: str) -> list[PlayerRoundRecord]:
+        """One player's rounds of a stored match, in round order (empty: not in the demo,
+        or not recorded; see ``MatchRecord.players_recorded``)."""
+
+    @abstractmethod
+    def list_player_rounds(self, user_id: str, steam_id: str) -> dict[str, list[PlayerRoundRecord]]:
+        """``{match id: that player's rounds}`` over every match in the user's list
+        (matches the player is not in are absent). One query."""
 
     @abstractmethod
     def list_matches_with_rounds(self, user_id: str) -> list[tuple[MatchRecord, list[RoundRecord]]]:

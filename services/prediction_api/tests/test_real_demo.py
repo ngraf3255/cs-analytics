@@ -159,3 +159,67 @@ def test_real_demo_steam_sync_background_job(tmp_path):
     with open(DEMO, "rb") as fh:
         _, again = upload_and_wait(client, ctx, fh.read(), timeout=1200)
     assert again["created"] is False and again["match"]["id"] == match["id"]
+
+
+# A player of the demoparser2 fixture (on T all 10 rounds, T won 8-2): 11 kills, 4 deaths
+# (the in-game scoreboard's kills_total / deaths_total at the end), 1 opening kill, survived 6 rounds.
+FIXTURE_PLAYER = "76561198265366770"
+
+
+def _plain_demo(tmp_path):
+    with open(DEMO, "rb") as fh:
+        if fh.read(3) != b"BZh":
+            return DEMO
+    demo = str(tmp_path / "demo.dem")
+    decompress_bz2(DEMO, demo, 1 << 32)
+    return demo
+
+
+def test_player_sides_and_kd_match_the_demos_own_player_state(tmp_path):
+    """Independent check of extract_player_rounds: every player's side each round equals
+    their team_num at that round's freeze end (parse_ticks, a different code path in the
+    parser), and their kills / deaths add up to the scoreboard totals at the end."""
+
+    from collections import Counter
+
+    from demoparser2 import DemoParser
+
+    from steamlink.demo_parser import TEAM_NUM_TO_SIDE, extract_player_rounds
+
+    demo_path = _plain_demo(tmp_path)
+    demo = Demoparser2Parser(isolation="inprocess").parse(demo_path)
+    records = extract_player_rounds(demo)
+    assert records, "no player rounds"
+    rounds = sorted(demo.rounds, key=lambda r: r.end_tick)
+    with_freeze = [r for r in rounds if r.freeze_end_tick is not None]
+    final_tick = rounds[-1].end_tick
+    frame = DemoParser(demo_path).parse_ticks(["team_num", "kills_total", "deaths_total"],
+                                              ticks=[r.freeze_end_tick for r in with_freeze] + [final_tick])
+    by_key = {(r.round_number, r.steam_id): r for r in records}
+    checked = 0
+    for rnd in with_freeze:
+        for row in frame[frame["tick"] == rnd.freeze_end_tick].itertuples():
+            side = TEAM_NUM_TO_SIDE.get(int(row.team_num)) if row.team_num == row.team_num else None
+            record = by_key.get((rnd.number, str(row.steamid)))
+            if side is None or record is None:
+                continue  # spectator / not tracked this round (e.g. before the match restart)
+            assert record.side == side, (rnd.number, row.steamid)
+            checked += 1
+    checkable = {r.number for r in with_freeze}
+    assert checked >= 0.9 * sum(1 for r in records if r.round_number in checkable)
+    kills, deaths = Counter(), Counter()
+    for r in records:
+        kills[r.steam_id] += r.kills
+        deaths[r.steam_id] += r.deaths
+    for row in frame[frame["tick"] == final_tick].itertuples():
+        steam_id = str(row.steamid)
+        if steam_id in kills:
+            assert (kills[steam_id], deaths[steam_id]) == (row.kills_total, row.deaths_total), steam_id
+    # Exactly one opening kill and one opening death per round that had one.
+    per_round = Counter(r.round_number for r in records if r.opening_kill)
+    assert all(n == 1 for n in per_round.values())
+    if _sha256(demo_path) == DEMOPARSER_FIXTURE_SHA256:
+        mine = [r for r in records if r.steam_id == FIXTURE_PLAYER]
+        assert [r.side for r in mine] == ["t"] * 10
+        assert (sum(r.kills for r in mine), sum(r.deaths for r in mine), sum(r.opening_kill for r in mine),
+                sum(r.opening_death for r in mine), sum(r.survived for r in mine)) == (11, 4, 1, 0, 6)

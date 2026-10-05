@@ -8,12 +8,12 @@ from datetime import datetime, timedelta, timezone
 from cryptography.fernet import Fernet
 
 from steamlink import sharecode
-from steamlink.demo_parser import DemoParser, ParsedDeath, ParsedDemo, ParsedRound
+from steamlink.demo_parser import DemoParser, ParsedDeath, ParsedDemo, ParsedRound, ParsedSpawn
 from steamlink.migrate import apply_migrations
 from steamlink.storage.sql import SqlStorage
 
 from dbutil import make_test_engine
-from steamlink.valve import DemoLocator, MatchHistoryClient, NextCodeResult
+from steamlink.valve import DemoInfo, DemoLocator, MatchHistoryClient, NextCodeResult
 
 KEY = Fernet.generate_key().decode()
 
@@ -57,13 +57,19 @@ class FakeHistory(MatchHistoryClient):
 
 
 class FakeLocator(DemoLocator):
+    """``match_times[match_id]``: the GC's match time (unix seconds) for that match."""
+
     def __init__(self):
         self.errors = {}
+        self.match_times = {}
 
     def demo_url(self, share):
         if share.match_id in self.errors:
             raise self.errors[share.match_id]
         return f"http://replay1.valve.net/730/{share.match_id}_{share.outcome_id}.dem.bz2"
+
+    def demo_info(self, share):
+        return DemoInfo(self.demo_url(share), self.match_times.get(share.match_id))
 
 
 class FakeFetcher:
@@ -111,11 +117,26 @@ class FakeParser(DemoParser):
         self.calls += 1
         if self.fail_after_calls is not None and self.calls > self.fail_after_calls:
             raise RuntimeError("simulated crash mid-sync")
-        return ParsedDemo(
-            map_name="de_mirage",
-            rounds=[ParsedRound(1, 1000, 8000, "t"), ParsedRound(2, 9000, 15000, "ct")],
-            deaths=[ParsedDeath(2280, "t", "ct", "ak47", 0, 0), ParsedDeath(9640, "ct", "t", "bayonet", 0, 1)],
-        )
+        return fake_demo()
+
+
+# Players of fake_demo(): the test user (STEAM_ID in the API / sync tests) and an opponent.
+FAKE_PLAYER = "76561198000000001"
+FAKE_OPPONENT = "76561198000000077"
+
+
+def fake_demo() -> ParsedDemo:
+    """Two rounds, final score 1-1; FAKE_PLAYER is T in both: round 1 they get the opening
+    kill and T wins, round 2 they are killed first (bayonet) and CT wins."""
+
+    return ParsedDemo(
+        map_name="de_mirage",
+        rounds=[ParsedRound(1, 1000, 8000, "t"), ParsedRound(2, 9000, 15000, "ct")],
+        deaths=[ParsedDeath(2280, "t", "ct", "ak47", 0, 0, FAKE_PLAYER, FAKE_OPPONENT),
+                ParsedDeath(9640, "ct", "t", "bayonet", 0, 1, FAKE_OPPONENT, FAKE_PLAYER)],
+        spawns=[ParsedSpawn(100, FAKE_PLAYER, "t"), ParsedSpawn(100, FAKE_OPPONENT, "ct"),
+                ParsedSpawn(8500, FAKE_PLAYER, "t"), ParsedSpawn(8500, FAKE_OPPONENT, "ct")],
+    )
 
 
 def make_storage(tmp_path):

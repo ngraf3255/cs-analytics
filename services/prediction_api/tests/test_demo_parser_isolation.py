@@ -8,7 +8,7 @@ import pytest
 from steamlink import demo_parser, upload
 from steamlink.config import ConfigError, load_settings
 from steamlink.demo_parser import (
-    PARSE_SLOT, DemoParseError, Demoparser2Parser, ParsedDeath, ParsedDemo, ParsedRound,
+    PARSE_SLOT, DemoParseError, Demoparser2Parser, ParsedDeath, ParsedDemo, ParsedRound, ParsedSpawn,
     parsed_demo_from_json, parsed_demo_to_json,
 )
 
@@ -17,12 +17,24 @@ from test_sync import env  # noqa: F401  (fixture)
 SAMPLE = ParsedDemo(
     map_name="de_mirage",
     rounds=[ParsedRound(1, 1000, 8000, "t"), ParsedRound(2, None, 15000, None)],
-    deaths=[ParsedDeath(2280, "t", "ct", "weapon_ak47"), ParsedDeath(9640, None, "t", "world")],
+    deaths=[ParsedDeath(2280, "t", "ct", "weapon_ak47", 0, 0, "76561198000000001", "76561198000000002"),
+            ParsedDeath(9640, None, "t", "world", None, 1, None, "76561198000000001")],
+    spawns=[ParsedSpawn(500, "76561198000000001", "t"), ParsedSpawn(500, "76561198000000002", "ct")],
+    match_start_tick=60,
 )
 
 
 def test_json_round_trip_is_lossless():
     assert parsed_demo_from_json(parsed_demo_to_json(SAMPLE)) == SAMPLE
+
+
+def test_json_from_an_older_worker_without_players_still_loads():
+    old = parsed_demo_to_json(SAMPLE)
+    old["deaths"] = [d[:6] for d in old["deaths"]]
+    del old["spawns"], old["match_start_tick"]
+    demo = parsed_demo_from_json(old)
+    assert demo.spawns == [] and demo.match_start_tick is None
+    assert demo.deaths[0].attacker_steamid is None and demo.deaths[0].weapon == "weapon_ak47"
 
 
 @pytest.mark.parametrize("isolation", ["subprocess", "inprocess"])

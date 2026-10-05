@@ -360,6 +360,7 @@ class Run:
     r: Reporter
     codes: list[str] = field(default_factory=list)
     demo_url: str | None = None
+    match_time: int | None = None  # the GC's match time (unix seconds), stored as the match date
     compressed_path: str | None = None
     demo_path: str | None = None
     parsed: Any = None
@@ -461,6 +462,7 @@ def step_gc_locate(run: Run) -> str:
     except ValueError:
         raise Failed("the Game Coordinator returned a URL that is not a Valve replay URL; not following it") from None
     run.demo_url = url
+    run.match_time = match.match_time or None
     when = (datetime.fromtimestamp(match.match_time, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
             if match.match_time else "unknown time")
     return f"{url} (match played {when}; GC answered in {elapsed:.1f}s)"
@@ -558,11 +560,17 @@ class _PreParsed:
 class _CachedLocator:
     configured = True
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, match_time: int | None = None):
         self.url = url
+        self.match_time = match_time
 
     def demo_url(self, share):
         return self.url
+
+    def demo_info(self, share):
+        from .valve import DemoInfo
+
+        return DemoInfo(self.url, self.match_time)
 
 
 class _LocalFetcher:
@@ -607,7 +615,7 @@ def step_store_report(run: Run, scorer) -> str:
         storage.set_match_access(user.id, ciphertext=cipher.encrypt(inp.steam_id, inp.auth_code),
                                  last4=inp.auth_code[-4:], cursor_share_code=cursor, now=now)
         history = SteamWebMatchHistoryClient(inp.settings.steam_web_api_key, run.http)
-        sync = SyncService(storage=storage, history=history, locator=_CachedLocator(run.demo_url),
+        sync = SyncService(storage=storage, history=history, locator=_CachedLocator(run.demo_url, run.match_time),
                            fetcher=_LocalFetcher(run.demo_path), parser=_PreParsed(run.parsed), cipher=cipher,
                            clock=clock, max_matches=1, min_interval_seconds=0,
                            max_job_attempts=inp.settings.sync_job_max_attempts)

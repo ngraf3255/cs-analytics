@@ -29,7 +29,7 @@ import logging
 import secrets
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from .crypto import AuthCodeCipher, DecryptionError
@@ -95,6 +95,17 @@ class SyncJobFailed(Exception):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
+
+
+def _played_at(match_time: int | None) -> datetime | None:
+    """The Game Coordinator's match time (unix seconds) as a UTC datetime; None if unknown/implausible."""
+
+    if not match_time or match_time < 1_300_000_000:  # before CS:GO existed: not a real match time
+        return None
+    try:
+        return datetime.fromtimestamp(int(match_time), tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def _ordered_job_id() -> str:
@@ -250,9 +261,9 @@ class SyncService:
 
         try:
             on_stage("locating", None)
-            url = self.locator.demo_url(share)
+            info = self.locator.demo_info(share)
             on_stage("downloading", None)
-            self.fetcher.download(url, job.demo_path, on_progress=download_progress)
+            self.fetcher.download(info.url, job.demo_path, on_progress=download_progress)
         except DemoLocatorNotConfigured:
             raise SyncJobFailed("demo_retrieval_not_configured") from None
         except DemoBotAuthFailed:
@@ -271,7 +282,8 @@ class SyncService:
                 storage=self.storage, parser=self.parser, user_id=job.user_id, raw_path=job.demo_path,
                 workdir=workdir, max_compressed_bytes=max_compressed_bytes, max_demo_bytes=max_demo_bytes,
                 now=self.clock(), share_code=job.share_code, wait_for_parse_slot=True, on_stage=on_stage,
-                source="steam_sync", share_code_verified=True,
+                source="steam_sync", share_code_verified=True, played_at=_played_at(info.match_time),
+                played_at_source="valve_gc",
             )
         except UploadRejected as exc:
             status, reason = _STUB_FOR_REJECTION.get(exc.reason, ("parse_failed", "parser_error"))
