@@ -3,6 +3,7 @@ Runs on SQLite by default and on PostgreSQL with CSA_TEST_DATABASE_URL."""
 
 import csv
 import io
+import re
 from datetime import datetime, timezone
 
 import pytest
@@ -61,8 +62,8 @@ def test_header_only_without_matches(app_client):
 def test_stable_column_names():
     """Renaming / reordering breaks saved Tableau workbooks: only append (bump EXPORT_VERSION on meaning changes)."""
 
-    assert export.ROUND_COLUMNS[:12] == (
-        "match_id", "map_name", "match_date", "date_source", "played_at", "imported_at", "source",
+    assert export.ROUND_COLUMNS[:13] == (
+        "match_id", "map_name", "match_date", "match_day", "date_source", "played_at", "imported_at", "source",
         "round_number", "winner_side", "ct_won", "opening_kill_side", "opening_kill_seconds")
     assert len(set(export.ROUND_COLUMNS)) == len(export.ROUND_COLUMNS)
     assert len(set(export.MATCH_COLUMNS)) == len(export.MATCH_COLUMNS)
@@ -82,6 +83,8 @@ def test_rounds_with_the_users_side_model_and_running_score(app_client):
         [(nuke, "1"), (nuke, "2"), (nuke, "3")] + [(mirage, str(n)) for n in range(1, 5)]
     m = [r for r in rows if r["match_id"] == mirage]
     assert m[0]["match_date"] == "2026-09-30T19:05:00Z" and m[0]["date_source"] == "played"
+    assert m[0]["match_day"] == "2026-09-30"
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", rows[0]["imported_at"])
     assert m[0]["played_at"] == "2026-09-30T19:05:00Z" and m[0]["imported_at"].endswith("Z")
     assert rows[0]["date_source"] == "imported" and rows[0]["played_at"] == ""
     assert rows[0]["match_date"] == rows[0]["imported_at"]
@@ -245,3 +248,22 @@ def test_large_export_is_streamed_in_chunks():
     rows = ({"match_id": str(i)} for i in range(1201))
     chunks = list(export.csv_chunks(("match_id",), rows, batch=500))
     assert len(chunks) == 3 and "".join(chunks).count("\r\n") == 1202
+
+
+def test_python_export_app_tableau_script(app_client, tmp_path):
+    """python/export_app_tableau.py (repo root) wraps python -m steamlink.export."""
+
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    client, ctx = app_client
+    store(ctx, ME, "m1", "de_mirage", MIRAGE_ROUNDS, MIRAGE_PLAYERS, score=(3, 1))
+    script = Path(__file__).resolve().parents[3] / "python" / "export_app_tableau.py"
+    url = ctx.storage.engine.url.render_as_string(hide_password=False)
+    out = tmp_path / "tableau-app"
+    done = subprocess.run([sys.executable, str(script), "--database-url", url, "--steam-id", ME, "--out-dir", str(out)],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert "rounds: 4 rows" in done.stdout and "matches: 1 rows" in done.stdout
+    assert (out / "app_rounds.csv").read_bytes() == client.get(ROUNDS_URL).content

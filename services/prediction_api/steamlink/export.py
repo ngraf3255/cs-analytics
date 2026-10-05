@@ -13,9 +13,10 @@ see ``python/export_app_tableau.py``):
 Column names are stable (``ROUND_COLUMNS`` / ``MATCH_COLUMNS``; documented in
 ``tableau/README.md``). Conventions, chosen so Tableau infers the types:
 
-* dates are ISO 8601 UTC (``2026-10-05T04:12:00Z``); ``match_date`` is when the
-  match was played if known (Steam sync, from Valve) else when it was added
-  (``date_source`` = ``played`` | ``imported``; demos carry no date);
+* dates are ISO 8601 UTC to the second (``2026-10-05T04:12:00Z``); ``match_date``
+  is when the match was played if known (Steam sync, from Valve) else when it
+  was added (``date_source`` = ``played`` | ``imported``; demos carry no date),
+  ``match_day`` the same as a plain ``YYYY-MM-DD`` (UTC) date;
 * flags are ``1`` / ``0`` (so ``AVG([ct_won])`` is the CT round win rate);
   empty cells mean unknown / not applicable;
 * sides are ``ct`` / ``t``; probabilities are 0..1;
@@ -44,14 +45,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Iterable, Iterator
 
-from .analytics import SIDES, iso, match_result
+from datetime import datetime, timezone
+
+from .analytics import SIDES, match_result
 from .scoring import RoundScorer
 from .storage.base import MatchRecord, PlayerRoundRecord, RoundRecord, Storage
 
 EXPORT_VERSION = 1  # bump when a column changes meaning; new columns are only appended
 
 MATCH_KEY_COLUMNS = (
-    "match_id", "map_name", "match_date", "date_source", "played_at", "imported_at", "source",
+    "match_id", "map_name", "match_date", "match_day", "date_source", "played_at", "imported_at", "source",
 )
 ROUND_COLUMNS = MATCH_KEY_COLUMNS + (
     "round_number",
@@ -138,10 +141,18 @@ def _rate(part, whole):
     return round(part / whole, 4) if whole else None
 
 
+def iso(value: datetime | None) -> str | None:
+    """ISO 8601 UTC to the second, e.g. 2026-10-05T04:12:00Z."""
+
+    return value.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ") if value else None
+
+
 def _match_keys(match: MatchRecord) -> dict:
+    when = match.played_at or match.imported_at
     return {
         "match_id": match.id, "map_name": match.map_name,
-        "match_date": iso(match.played_at or match.imported_at),
+        "match_date": iso(when),
+        "match_day": when.astimezone(timezone.utc).strftime("%Y-%m-%d"),  # Tableau reads it as a date as is
         "date_source": "played" if match.played_at else "imported",
         "played_at": iso(match.played_at), "imported_at": iso(match.imported_at), "source": match.source,
     }
