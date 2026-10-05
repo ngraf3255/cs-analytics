@@ -20,6 +20,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from . import openid
+from .autosync import AutoSyncScheduler
 from .analytics import RECENT_DEFAULT, SIDES, build_user_summary, match_date, match_result
 from .config import Settings
 from .crypto import AuthCodeCipher, DecryptionError
@@ -28,7 +29,7 @@ from .scoring import RoundScorer
 from .sessions import LOGIN_STATE_COOKIE, CookieSigner
 from .sharecode import extract_share_code, is_valid_share_code
 from .storage.base import JOB_KIND_SYNC, JOB_KIND_UPLOAD, Storage, User
-from .sync import SyncRejected, SyncService
+from .sync import RELINK_ERRORS, SyncRejected, SyncService, relink_needed  # noqa: F401
 from .valve import MatchHistoryClient, is_valid_auth_code, normalize_auth_code
 
 MODEL_NOTE = (
@@ -50,6 +51,7 @@ class SteamContext:
     http: httpx.Client
     clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
     jobs: "UploadJobWorker | None" = None  # set by register()
+    auto_sync: "AutoSyncScheduler | None" = None  # set by register()
 
 
 def _ctx(request: Request) -> SteamContext:
@@ -81,25 +83,10 @@ def _iso(value: datetime | None) -> str | None:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if value else None
 
 
-# Sync errors only new codes can fix -> which code the user has to replace.
-RELINK_ERRORS = {
-    "invalid_auth_code": "auth_code",  # revoked on Valve's page or mistyped
-    "credentials_unreadable": "auth_code",  # encryption key rotated away
-    "invalid_known_code": "share_code",  # the cursor is too old (> ~30 days) or no longer valid
-}
-
-
 def _needs_relink(ctx: SteamContext, user: User, access) -> dict | None:
-    """``{"reason", "field"}`` when the last sync failed in a way only new codes fix and the
-    codes were not updated since; else None."""
+    """See :func:`steamlink.sync.relink_needed`."""
 
-    state = ctx.storage.get_sync_state(user.id, ctx.clock())
-    field = RELINK_ERRORS.get(state.last_error or "")
-    if field is None or state.locked or state.last_finished_at is None:
-        return None
-    if access.updated_at is not None and access.updated_at > state.last_finished_at:
-        return None  # re-linked after that sync
-    return {"reason": state.last_error, "field": field}
+    return relink_needed(ctx.storage.get_sync_state(user.id, ctx.clock()), access)
 
 
 def _match_access_view(ctx: SteamContext, user: User) -> dict:
@@ -115,6 +102,39 @@ def _match_access_view(ctx: SteamContext, user: User) -> dict:
     }
 
 
+def _auto_sync_view(ctx: SteamContext, user: User, state=None) -> dict:
+    """The user's automatic background sync (steamlink.autosync). ``enabled``: the user's
+    toggle; ``active``: it will actually run for them; else ``paused_reason`` says why:
+    turned_off | not_linked | needs_relink | server_disabled | demo_retrieval_not_configured."""
+
+    sched = ctx.auto_sync
+    state = state or ctx.storage.get_sync_state(user.id, ctx.clock())
+    access = ctx.storage.get_match_access(user.id)
+    if sched is None or not sched.enabled:
+        reason = "server_disabled"
+    elif not sched.available:
+        reason = "demo_retrieval_not_configured"
+    elif not user.auto_sync_enabled:
+        reason = "turned_off"
+    elif access is None:
+        reason = "not_linked"
+    elif relink_needed(state, access) is not None:
+        reason = "needs_relink"
+    else:
+        reason = None
+    return {
+        "enabled": user.auto_sync_enabled,
+        "active": reason is None,
+        "paused_reason": reason,
+        "interval_seconds": sched.interval_seconds if sched is not None and sched.enabled else None,
+        # earliest time the next automatic sync runs (null while paused)
+        "next_at": _iso(sched.next_at(user, state)) if reason is None else None,
+        "last_run_at": _iso(state.last_auto_sync_at),
+        "last_error": state.last_auto_sync_error,  # error of the last automatic run (null: OK)
+        "failures": state.auto_sync_failures,  # consecutive failed syncs (backoff)
+    }
+
+
 def _sync_view(ctx: SteamContext, user: User, jobs: list | None = None) -> dict:
     state = ctx.storage.get_sync_state(user.id, ctx.clock())
     if jobs is None:
@@ -124,9 +144,11 @@ def _sync_view(ctx: SteamContext, user: User, jobs: list | None = None) -> dict:
         "status": "running" if state.locked else state.status,
         "last_started_at": _iso(state.last_started_at),
         "last_finished_at": _iso(state.last_finished_at),
+        "last_synced_at": _iso(state.last_synced_at),  # last sync (manual or automatic) that finished OK
         "last_error": state.last_error,
         "last_imported_count": state.last_imported_count,  # matches queued by the last sync
         "active_jobs": sum(job.active for job in jobs),
+        "auto_sync": _auto_sync_view(ctx, user, state),
     }
 
 
@@ -162,6 +184,10 @@ def _clear_session_cookie(response: Response, settings: Settings) -> None:
     )
 
 
+class AutoSyncInput(BaseModel):
+    enabled: bool
+
+
 class MatchAccessInput(BaseModel):
     # Empty while already linked: keep the stored Game Authentication Code and only replace the
     # share code (Leetify-style: the auth code is given once, a fresh share code when the old one expired).
@@ -175,7 +201,14 @@ router = APIRouter()
 
 @router.get("/steam/status")
 def steam_status(request: Request) -> dict:
-    return {"enabled": getattr(request.app.state, "steam", None) is not None}
+    ctx = getattr(request.app.state, "steam", None)
+    if ctx is None:
+        return {"enabled": False}
+    sched = ctx.auto_sync
+    return {"enabled": True, "auto_sync": {
+        "enabled": sched is not None and sched.enabled, "available": sched is not None and sched.available,
+        "interval_seconds": sched.interval_seconds if sched is not None and sched.enabled else None,
+    }}
 
 
 @router.get("/auth/steam/login")
@@ -308,6 +341,19 @@ def delete_match_access(user: User = Depends(_current_user), ctx: SteamContext =
     return Response(status_code=204)
 
 
+@router.put("/steam/auto-sync", dependencies=[Depends(_csrf)])
+def put_auto_sync(
+    payload: AutoSyncInput, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
+) -> dict:
+    """Turn automatic background sync on or off for the signed-in user (on by default).
+    Returns the new ``auto_sync`` view (as in ``GET /steam/sync``)."""
+
+    from dataclasses import replace
+
+    ctx.storage.set_auto_sync_enabled(user.id, payload.enabled, ctx.clock())
+    return _auto_sync_view(ctx, replace(user, auto_sync_enabled=payload.enabled))
+
+
 @router.get("/steam/sync")
 def get_sync(user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
     """Sync status plus the user's recent sync jobs (newest first): the UI polls this
@@ -336,6 +382,13 @@ def post_sync(
     except SyncRejected as exc:
         status = {"not_linked": 409, "already_running": 409, "too_soon": 429}[exc.reason]
         raise HTTPException(status_code=status, detail=exc.reason) from None
+    if ctx.auto_sync is not None:
+        try:
+            ctx.auto_sync.after_sync(user.id, outcome, automatic=False)  # next automatic sync from now
+        except Exception:  # scheduling is best effort; the sync itself succeeded
+            import logging
+
+            logging.getLogger(__name__).exception("could not schedule auto sync for user %s", user.id)
     jobs = [job for job in (ctx.storage.get_upload_job(user.id, job_id) for job_id in outcome.job_ids) if job]
     if any(job.active for job in jobs):
         ctx.jobs.start()
@@ -657,13 +710,26 @@ def build_steam_context(settings: Settings, scorer: RoundScorer) -> SteamContext
 def register(app: FastAPI, ctx: SteamContext | None) -> None:
     if ctx is not None and ctx.jobs is None:
         ctx.jobs = UploadJobWorker(ctx)
+    if ctx is not None and ctx.auto_sync is None:
+        ctx.auto_sync = AutoSyncScheduler(ctx)
     app.state.steam = ctx
     app.include_router(router)
 
 
 def start_background_work(app: FastAPI) -> None:
-    """At app startup: resume / clean up upload and sync jobs a previous process left behind."""
+    """At app startup: resume / clean up upload and sync jobs a previous process left behind,
+    and start the automatic sync scheduler (steamlink.autosync; no-op if AUTO_SYNC_INTERVAL_SECONDS=0)."""
 
     ctx = getattr(app.state, "steam", None)
     if ctx is not None and ctx.jobs is not None:
         ctx.jobs.start()
+    if ctx is not None and ctx.auto_sync is not None:
+        ctx.auto_sync.start()
+
+
+def stop_background_work(app: FastAPI) -> None:
+    """At app shutdown: stop the scheduler and release its lease (another instance takes over)."""
+
+    ctx = getattr(app.state, "steam", None)
+    if ctx is not None and ctx.auto_sync is not None:
+        ctx.auto_sync.stop()

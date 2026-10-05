@@ -71,6 +71,15 @@ class Settings:
     sync_job_max_attempts: int = 5
     sync_lock_ttl_seconds: int = 900
     sync_min_interval_seconds: int = 30
+    # Automatic background sync (steamlink.autosync): every linked user who has not
+    # turned it off is synced once their last sync is older than this (0 disables it).
+    # The scheduler checks every AUTO_SYNC_TICK_SECONDS and syncs at most
+    # AUTO_SYNC_MAX_USERS_PER_TICK users per check (all processes together); repeated
+    # failures back off exponentially up to AUTO_SYNC_MAX_BACKOFF_SECONDS.
+    auto_sync_interval_seconds: int = 1800
+    auto_sync_tick_seconds: int = 60
+    auto_sync_max_users_per_tick: int = 5
+    auto_sync_max_backoff_seconds: int = 6 * 3600
     demo_max_download_bytes: int = 300 * 1024 * 1024
     demo_max_decompressed_bytes: int = 1024 * 1024 * 1024
     # Max request body for POST /matches/upload (.dem or .dem.bz2 as sent).
@@ -166,6 +175,14 @@ class Settings:
             raise ConfigError("SYNC_MAX_MATCHES_PER_REQUEST must be between 1 and 10")
         if self.sync_job_max_attempts < 1:
             raise ConfigError("SYNC_JOB_MAX_ATTEMPTS must be positive")
+        if self.auto_sync_interval_seconds < 0:
+            raise ConfigError("AUTO_SYNC_INTERVAL_SECONDS must be 0 (off) or positive")
+        if 0 < self.auto_sync_interval_seconds < max(60, self.sync_min_interval_seconds):
+            raise ConfigError("AUTO_SYNC_INTERVAL_SECONDS must be at least 60 and SYNC_MIN_INTERVAL_SECONDS")
+        if self.auto_sync_tick_seconds < 5 or self.auto_sync_max_users_per_tick < 1:
+            raise ConfigError("AUTO_SYNC_TICK_SECONDS must be at least 5 and AUTO_SYNC_MAX_USERS_PER_TICK positive")
+        if self.auto_sync_max_backoff_seconds < self.auto_sync_interval_seconds:
+            raise ConfigError("AUTO_SYNC_MAX_BACKOFF_SECONDS must be at least AUTO_SYNC_INTERVAL_SECONDS")
 
 
 def _read_secret_file(path: str | None) -> str | None:
@@ -197,6 +214,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         sync_job_max_attempts=_int(env, "SYNC_JOB_MAX_ATTEMPTS", 5),
         sync_lock_ttl_seconds=_int(env, "SYNC_LOCK_TTL_SECONDS", 900),
         sync_min_interval_seconds=_int(env, "SYNC_MIN_INTERVAL_SECONDS", 30),
+        auto_sync_interval_seconds=_int(env, "AUTO_SYNC_INTERVAL_SECONDS", 1800),
+        auto_sync_tick_seconds=_int(env, "AUTO_SYNC_TICK_SECONDS", 60),
+        auto_sync_max_users_per_tick=_int(env, "AUTO_SYNC_MAX_USERS_PER_TICK", 5),
+        auto_sync_max_backoff_seconds=_int(env, "AUTO_SYNC_MAX_BACKOFF_SECONDS", 6 * 3600),
         demo_max_download_bytes=_int(env, "DEMO_MAX_DOWNLOAD_BYTES", 300 * 1024 * 1024),
         demo_max_decompressed_bytes=_int(env, "DEMO_MAX_DECOMPRESSED_BYTES", 1024 * 1024 * 1024),
         upload_max_bytes=_int(env, "UPLOAD_MAX_BYTES", 1024 * 1024 * 1024),

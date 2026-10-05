@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from steamlink.api import build_steam_context, register as register_steam, start_background_work
+from steamlink.api import build_steam_context, register as register_steam, start_background_work, stop_background_work
 from steamlink.config import load_settings
 from steamlink.scoring import RoundScorer
 
@@ -36,9 +36,11 @@ allowed_origins = settings.allowed_origins
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Resume or fail upload / sync jobs left behind by a previous process (steamlink.jobs).
+    # Resume or fail upload / sync jobs left behind by a previous process (steamlink.jobs)
+    # and start the automatic background sync scheduler (steamlink.autosync).
     start_background_work(app)
     yield
+    stop_background_work(app)
 
 
 app = FastAPI(

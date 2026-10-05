@@ -53,6 +53,27 @@ log = logging.getLogger(__name__)
 # Job errors after which the next sync queues the job again (bounded by max_job_attempts).
 RETRYABLE_JOB_ERRORS = ("demo_not_ready", "demo_bot_auth_failed", "demo_retrieval_not_configured", "internal_error")
 
+# Sync errors only new codes can fix -> which code the user has to replace. Shown as the
+# API's needs_relink; the automatic sync (steamlink.autosync) skips such users until re-linked.
+RELINK_ERRORS = {
+    "invalid_auth_code": "auth_code",  # revoked on Valve's page or mistyped
+    "credentials_unreadable": "auth_code",  # encryption key rotated away
+    "invalid_known_code": "share_code",  # the cursor is too old (> ~30 days) or no longer valid
+}
+
+
+def relink_needed(state, access) -> dict | None:
+    """``{"reason", "field"}`` when the last sync (``SyncState``) failed in a way only new
+    codes fix and the codes (``MatchAccess``) were not updated since; else None."""
+
+    field_ = RELINK_ERRORS.get(state.last_error or "")
+    if field_ is None or state.locked or state.last_finished_at is None:
+        return None
+    if access.updated_at is not None and access.updated_at > state.last_finished_at:
+        return None  # re-linked after that sync
+    return {"reason": state.last_error, "field": field_}
+
+
 # Import pipeline rejections -> the stub match a sync job stores instead (status, status_reason).
 _STUB_FOR_REJECTION = {
     "demo_too_large": ("unavailable", "demo_too_large"),
