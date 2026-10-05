@@ -12,6 +12,8 @@ The new prediction app has a React + TypeScript frontend and a FastAPI service t
 
 [Open the current Streamlit predictor](https://cs-analytics-4fqredurpvknehdkr3svw4.streamlit.app/)
 
+The next planned feature is Steam-linked match sync; see the [implementation plan](docs/steam-match-sync-plan.md).
+
 ### Run locally
 
 Install the frontend dependencies and start the frontend from the repository root:
