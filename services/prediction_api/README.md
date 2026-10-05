@@ -23,6 +23,7 @@ these are also required: `SESSION_SECRET` (32+ chars), `PUBLIC_API_URL`,
 
 Optional: `SESSION_COOKIE_SAMESITE` (lax), `SESSION_COOKIE_SECURE` (true),
 `SESSION_COOKIE_DOMAIN`, `SYNC_MAX_MATCHES_PER_REQUEST` (3), `SYNC_JOB_MAX_ATTEMPTS` (5),
+`SYNC_IMPORT_START_MATCH` (true),
 `SYNC_MIN_INTERVAL_SECONDS` (30), `DEMO_MAX_DOWNLOAD_BYTES`, `DEMO_MAX_DECOMPRESSED_BYTES`,
 `DEMO_PARSE_ISOLATION` (`subprocess`: each demo is parsed in a short-lived child
 process so its memory goes back to the OS; `inprocess` to debug),
@@ -90,6 +91,11 @@ job worker as uploads (`steamlink/sync.py`, `steamlink/jobs.py`, migration
   code, earlier sync) is skipped without a download. Every other one becomes a
   `steam_sync` job, and the cursor moves past it **in the same transaction**,
   so a match is never queued twice (one job row per user and share code).
+- The match of the share code the user linked with is imported too
+  (`SYNC_IMPORT_START_MATCH`, default on): users paste their latest match
+  token and expect that match. Each sync queues it once if it isn't in the
+  user's list and has no sync job yet (no Valve call; without a demo bot it is
+  simply tried again on a later sync).
 - Response: `202` if any job is queued (else `200`) with `status`
   (`up_to_date | partial | queue_full | error`), `queued`, `skipped`,
   `has_more`, `error` and `jobs` (same shape as upload jobs, plus `kind` and

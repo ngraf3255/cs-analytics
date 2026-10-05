@@ -327,6 +327,10 @@ class Storage(ABC):
         nothing changes, ``job_id`` is None). Raises :class:`CursorConflict`."""
 
     @abstractmethod
+    def has_sync_job(self, user_id: str, share_code: str) -> bool:
+        """Whether the user has (or had) a ``steam_sync`` job for this share code, in any state."""
+
+    @abstractmethod
     def requeue_sync_jobs(self, user_id: str, *, errors: tuple[str, ...], max_attempts: int,
                           max_active: int, now: datetime) -> list[str]:
         """Queue the user's failed ``steam_sync`` jobs whose error is in ``errors``

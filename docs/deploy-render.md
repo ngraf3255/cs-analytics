@@ -97,6 +97,7 @@ free instances have no shell. On a paid plan, move it to
 | `PUBLIC_API_URL` | `https://api.csgooner.com` | exact; OpenID realm and return URL |
 | `FRONTEND_URL` | `https://csgooner.com` | redirect after login |
 | `STEAM_BOT_REFRESH_TOKEN` | `sync: false` | optional, demo bot |
+| `SYNC_IMPORT_START_MATCH` | `true` (default, not in render.yaml) | also import the match of the share code the user linked with |
 | `SYNC_MAX_MATCHES_PER_REQUEST` | `3` | share codes walked per sync request; each new match becomes a background job (cheap request) |
 | `SYNC_JOB_MAX_ATTEMPTS` | default | 5 runs of a sync job whose demo isn't ready / download failed, then an `unavailable` stub |
 | `UPLOAD_MAX_BYTES` | `1073741824` | request-body cap for `POST /matches/upload` |

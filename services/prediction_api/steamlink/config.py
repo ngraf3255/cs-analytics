@@ -66,6 +66,8 @@ class Settings:
     # isn't ready yet (or whose download failed transiently) is retried by later
     # syncs until it ran SYNC_JOB_MAX_ATTEMPTS times.
     sync_max_matches_per_request: int = 3
+    # Also import the match of the share code the user linked with (not only newer ones).
+    sync_import_start_match: bool = True
     sync_job_max_attempts: int = 5
     sync_lock_ttl_seconds: int = 900
     sync_min_interval_seconds: int = 30
@@ -191,6 +193,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         session_cookie_domain=env.get("SESSION_COOKIE_DOMAIN") or None,
         session_ttl_seconds=_int(env, "SESSION_TTL_SECONDS", 14 * 24 * 3600),
         sync_max_matches_per_request=_int(env, "SYNC_MAX_MATCHES_PER_REQUEST", 3),
+        sync_import_start_match=_bool(env, "SYNC_IMPORT_START_MATCH", True),
         sync_job_max_attempts=_int(env, "SYNC_JOB_MAX_ATTEMPTS", 5),
         sync_lock_ttl_seconds=_int(env, "SYNC_LOCK_TTL_SECONDS", 900),
         sync_min_interval_seconds=_int(env, "SYNC_MIN_INTERVAL_SECONDS", 30),

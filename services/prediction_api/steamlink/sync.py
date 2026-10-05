@@ -130,6 +130,7 @@ class SyncService:
         lock_ttl_seconds: int = 900,
         min_interval_seconds: int = 30,
         max_job_attempts: int = 5,
+        import_start_match: bool = False,
     ):
         self.storage = storage
         self.history = history
@@ -142,6 +143,10 @@ class SyncService:
         self.lock_ttl_seconds = lock_ttl_seconds
         self.min_interval_seconds = min_interval_seconds
         self.max_job_attempts = max_job_attempts
+        # Also import the match of the share code the user linked with (the cursor) when it
+        # isn't in their list yet: users paste their latest match token and expect that match
+        # (Leetify does the same). Off by default here; on in production (SYNC_IMPORT_START_MATCH).
+        self.import_start_match = import_start_match
 
     # The request: walk the history, queue jobs ------------------------------------
     def sync(self, user: User, *, max_active: int, job_file: Callable[[str], str]) -> SyncOutcome:
@@ -184,6 +189,36 @@ class SyncService:
         def done(status: str, *, has_more: bool = False, error: str | None = None) -> SyncOutcome:
             return SyncOutcome(status, queued=queued, skipped=skipped, attached=attached, has_more=has_more,
                                error=error, job_ids=tuple(dict.fromkeys(job_ids)))
+
+        if self.import_start_match:
+            access = self.storage.get_match_access(user.id)
+            # A sync job for the cursor (any state) means it was handled: imported, a stub, or
+            # retried by requeue_sync_jobs above. Cursors moved by skip_known_match are 'owned'.
+            if access is not None and not self.storage.has_sync_job(user.id, access.cursor_share_code):
+                start = access.cursor_share_code
+                try:
+                    known = self.storage.skip_known_match(
+                        user.id, expected_cursor=start, share_code=start,
+                        valve_match_id=str(decode(start).match_id), now=self.clock())
+                except CursorConflict:
+                    return done("error", error="cursor_changed")
+                if known == "added":
+                    attached += 1
+                elif known is None and self.locator.configured:  # not configured: tried again next sync
+                    now = self.clock()
+                    job_id = _ordered_job_id()
+                    job = UploadJob(id=job_id, user_id=user.id, status="queued", demo_path=job_file(job_id),
+                                    size_bytes=0, created_at=now, updated_at=now, share_code=start,
+                                    kind=JOB_KIND_SYNC)
+                    try:
+                        status, queued_id = self.storage.enqueue_sync_job(
+                            job, expected_cursor=start, max_active=max_active, now=now)
+                    except CursorConflict:
+                        return done("error", error="cursor_changed")
+                    if status == "queue_full":
+                        return done("queue_full", has_more=True)
+                    job_ids.append(queued_id)
+                    queued += status == "queued"
 
         for _ in range(self.max_matches):
             access = self.storage.get_match_access(user.id)

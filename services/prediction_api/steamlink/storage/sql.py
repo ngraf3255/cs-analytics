@@ -664,6 +664,12 @@ class SqlStorage(Storage):
             self._advance_cursor(conn, job.user_id, job.share_code, now)
             return "queued", job_id
 
+    def has_sync_job(self, user_id: str, share_code: str) -> bool:
+        with self.engine.begin() as conn:
+            return conn.execute(select(upload_jobs.c.id).where(and_(
+                upload_jobs.c.user_id == user_id, upload_jobs.c.kind == JOB_KIND_SYNC,
+                upload_jobs.c.share_code == share_code)).limit(1)).first() is not None
+
     def requeue_sync_jobs(self, user_id, *, errors, max_attempts, max_active, now) -> list[str]:
         requeued: list[str] = []
         with self.engine.begin() as conn:

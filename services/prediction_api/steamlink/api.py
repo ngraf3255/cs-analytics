@@ -648,6 +648,7 @@ def build_steam_context(settings: Settings, scorer: RoundScorer) -> SteamContext
         cipher=cipher, clock=clock,
         max_matches=settings.sync_max_matches_per_request, lock_ttl_seconds=settings.sync_lock_ttl_seconds,
         min_interval_seconds=settings.sync_min_interval_seconds, max_job_attempts=settings.sync_job_max_attempts,
+        import_start_match=settings.sync_import_start_match,
     )
     return SteamContext(settings=settings, storage=storage, signer=CookieSigner(settings.session_secret),
                         cipher=cipher, history=history, sync=sync, scorer=scorer, http=http, clock=clock)
