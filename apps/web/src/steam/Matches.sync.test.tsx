@@ -171,4 +171,44 @@ describe("Steam sync", () => {
     expect(syncButton()).toBeDisabled();
     expect(screen.getByText(/Link your match history above to sync/)).toBeInTheDocument();
   });
+
+  it("does not claim 'up to date' when the history walk stopped with an error", async () => {
+    installFakeApi(routes({
+      "POST /steam/sync": { status: 202, body: { ...posted, status: "error", error: "valve_unavailable", queued: 1, jobs: [first] } },
+      "GET /steam/sync": [syncState([]), syncState([finalFirst], 0)],
+    }));
+    render(<Matches me={linkedMe} onMeChange={async () => undefined} />);
+    await advance();
+    fireEvent.click(syncButton());
+    await advance();
+    expect(screen.getByRole("status")).toHaveTextContent("Matches found before the error are still being imported.");
+    await advance(POLL_MS);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Imported 1 new match.");
+    expect(status).toHaveTextContent("Valve’s match-history service did not respond.");
+    expect(status).not.toHaveTextContent("up to date");
+  });
+
+  it("leads with the failure instead of 'Imported 0 new matches'", async () => {
+    const failed = job(first, { status: "failed", error: "demo_not_ready", queue_position: null, attempts: 1 });
+    installFakeApi(routes({
+      "POST /steam/sync": { status: 202, body: { ...posted, queued: 1, jobs: [first] } },
+      "GET /steam/sync": [syncState([]), syncState([failed], 0)],
+    }));
+    render(<Matches me={linkedMe} onMeChange={async () => undefined} />);
+    await advance();
+    fireEvent.click(syncButton());
+    await advance();
+    await advance(POLL_MS);
+    expect(screen.getByRole("status")).toHaveTextContent(/^That match’s demo isn’t on Valve’s servers yet\. Sync again later to retry it\.$/);
+  });
+
+  it("after a reload it does not know whether more matches wait, so it does not claim 'up to date'", async () => {
+    const running = job(first, { status: "processing", stage: "parsing", queue_position: null });
+    installFakeApi(routes({ "GET /steam/sync": [syncState([running]), syncState([finalFirst], 0)] }));
+    render(<Matches me={linkedMe} onMeChange={async () => undefined} />);
+    await advance();
+    await advance(POLL_MS);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Imported 1 new match\.$/);
+  });
 });

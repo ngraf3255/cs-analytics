@@ -19,8 +19,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : word.e
 function syncMessage(result: SyncResult): { tone: "ok" | "error"; text: string } | null {
   const skipped = result.skipped ? ` ${plural(result.skipped, "match")} you already had ${result.skipped === 1 ? "was" : "were"} skipped.` : "";
   if (result.status === "error") {
-    const code = result.error === "invalid_auth_code" ? "invalid_auth_code_status" : result.error;
-    return { tone: "error", text: `${messageFor(code, "Sync failed.")}${result.jobs.length ? " Matches found before the error are still being imported." : ""}` };
+    return { tone: "error", text: `${messageFor(syncErrorCode(result.error), "Sync failed.")}${result.jobs.length ? " Matches found before the error are still being imported." : ""}` };
   }
   if (result.jobs.length) return null;  // the job progress tells the rest
   if (result.status === "queue_full") return { tone: "ok", text: `${messageFor("sync_queue_full")}${skipped}` };
@@ -28,19 +27,28 @@ function syncMessage(result: SyncResult): { tone: "ok" | "error"; text: string }
   return { tone: "ok", text: `You’re up to date.${skipped}` };
 }
 
+/** How the POST /steam/sync request itself ended; null when following jobs after a reload (unknown). */
+type SyncOutcome = { hasMore: boolean; error: string | null } | null;
+
+const syncErrorCode = (error: string | null) => (error === "invalid_auth_code" ? "invalid_auth_code_status" : error);
+
 /** Summary once every job of a sync has finished. */
-function syncSummary(jobs: UploadJob[], hasMore: boolean): { tone: "ok" | "error"; text: string } {
+function syncSummary(jobs: UploadJob[], outcome: SyncOutcome): { tone: "ok" | "error"; text: string } {
   const imported = jobs.filter((j) => j.status === "done" && j.match?.status === "imported" && j.created).length;
   const known = jobs.filter((j) => j.status === "done" && j.match?.status === "imported" && !j.created).length;
   const missing = jobs.filter((j) => j.status === "done" && j.match && j.match.status !== "imported").length;
   const failed = jobs.filter((j) => j.status === "failed");
-  const parts = [`Imported ${plural(imported, "new match")}.`];
+  const parts: string[] = [];
+  // "Imported 0 new matches." only adds noise when something else explains the outcome.
+  if (imported || !(known || missing || failed.length)) parts.push(`Imported ${plural(imported, "new match")}.`);
   if (known) parts.push(`${plural(known, "match")} ${known === 1 ? "was" : "were"} already imported.`);
   if (missing) parts.push(`${plural(missing, "demo")} couldn’t be imported (see the list below; you can upload ${missing === 1 ? "it" : "them"} by hand).`);
   if (failed.length) parts.push(failed.length === 1 ? messageFor(failed[0].error, "One match failed.") : `${failed.length} matches failed: ${messageFor(failed[0].error, "try syncing again.")}`);
-  else if (hasMore) parts.push("More matches are waiting. Sync again to continue.");
-  else if (!missing) parts.push("You’re up to date.");
-  return { tone: failed.length && !imported ? "error" : "ok", text: parts.join(" ") };
+  // The history walk itself stopped early: say why rather than "up to date".
+  if (outcome?.error) parts.push(messageFor(syncErrorCode(outcome.error), "The sync stopped early. Sync again to continue."));
+  else if (outcome?.hasMore) { if (!failed.length) parts.push("More matches are waiting. Sync again to continue."); }
+  else if (outcome && !missing && !failed.length) parts.push("You’re up to date.");
+  return { tone: (failed.length || outcome?.error) && !imported ? "error" : "ok", text: parts.join(" ") };
 }
 
 function jobLabel(job: UploadJob | null): string {
@@ -173,12 +181,12 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
   // (also after a page reload while they run) and summarise when all are finished.
   const onMeChangeRef = useRef(onMeChange);
   onMeChangeRef.current = onMeChange;
-  const followSyncJobs = useCallback(async (jobs: UploadJob[], hasMoreAfter: boolean, signal?: { cancelled: boolean }) => {
+  const followSyncJobs = useCallback(async (jobs: UploadJob[], outcome: SyncOutcome, signal?: { cancelled: boolean }) => {
     setSyncJobs(jobs);
     try {
       const final = await steamApi.waitForSyncJobs(jobs, (next) => { if (!signal?.cancelled) setSyncJobs(next); }, signal);
       if (signal?.cancelled) return;
-      setNotice(syncSummary(final, hasMoreAfter));
+      setNotice(syncSummary(final, outcome));
       await loadMatches();
     } catch (reason) {
       if (!signal?.cancelled) setNotice({ tone: "error", text: reason instanceof ApiError ? reason.message : "Lost track of the sync. Check your matches below." });
@@ -195,7 +203,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
     steamApi.getSync()
       .then(({ jobs }) => {
         const active = (jobs ?? []).filter(isJobActive).reverse();  // oldest first
-        if (active.length && !signal.cancelled) void followSyncJobs(active, false, signal);
+        if (active.length && !signal.cancelled) void followSyncJobs(active, null, signal);
       })
       .catch(() => undefined);  // older API, or not signed in yet
     return () => { signal.cancelled = true; };
@@ -218,10 +226,11 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
     setNotice(syncMessage(result));
     if (result.skipped) void loadMatches();
     const jobs = result.jobs ?? [];
+    const outcome = { hasMore: result.has_more, error: result.status === "error" ? result.error : null };
     if (jobs.some(isJobActive)) {
-      await followSyncJobs(jobs, result.has_more);
+      await followSyncJobs(jobs, outcome);
     } else {
-      if (jobs.length) setNotice(syncSummary(jobs, result.has_more));
+      if (jobs.length) setNotice(syncSummary(jobs, outcome));
       await loadMatches();
       void onMeChange();
     }
