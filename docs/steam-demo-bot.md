@@ -30,7 +30,7 @@ Never commit any of these. Set them only in Render's environment (or secret file
 2. Verify the email. Enable **Steam Guard via email** (the default) — that's enough for the refresh-token flow.
 3. Add **Counter-Strike 2** to the account's library (free: store page → *Play Game* / *Add to Library*). The GC only talks to accounts that own app 730.
 4. Optional but recommended: launch CS2 once on that account so it's fully provisioned with the GC. No Prime status is needed to look up match info.
-5. Don't use the account for anything else and don't share it. Limited (no-purchase) accounts are expected to work for GC lookups. **Verify this during the smoke test.**
+5. Don't use the account for anything else and don't share it. Limited (no-purchase) accounts are expected to work for GC lookups. **The live check (step 4, `python -m steamlink.live_check`) verifies this.**
 
 ## Get a refresh token (one time, on your own machine)
 
@@ -57,31 +57,53 @@ new token. Changing the bot's password or using *Deauthorize all devices* revoke
 - Any URL the GC returns must pass the `replayN.valve.net` allowlist before it is downloaded.
 - steam.py loggers are capped at WARNING. Tokens, passwords, auth codes and share codes are never logged.
 
-## Manual smoke test (needs the bot account; not yet run)
+## Live check (one command; needs the bot account, not yet run live)
 
-Run locally first, with SQLite, before touching Render:
+`python -m steamlink.live_check` runs the whole live chain with the production
+code and prints PASS / FAIL / SKIP per step. It stops at the first problem and
+says exactly what is missing (exit 0 = all passed, 1 = a step failed,
+2 = a prerequisite is missing):
 
-1. `export DATABASE_URL=sqlite:///./local.db TOKEN_ENCRYPTION_KEYS=<fernet key> SESSION_SECRET=<32+ chars> PUBLIC_API_URL=http://localhost:8000 FRONTEND_URL=http://localhost:5173 STEAM_WEB_API_KEY=<key> STEAM_BOT_REFRESH_TOKEN=<token> SESSION_COOKIE_SECURE=false`
-2. `python -m steamlink.migrate` then `uvicorn main:app --port 8000`.
-3. GC lookup alone (no web flow):
-   ```sh
-   python - <<'PY'
-   import os
-   from steamlink.gc import GameCoordinatorDemoLocator
-   from steamlink.gc_steamio import SteamioGameCoordinator
-   from steamlink.sharecode import decode
-   gc = SteamioGameCoordinator(refresh_token=os.environ["STEAM_BOT_REFRESH_TOKEN"])
-   print(GameCoordinatorDemoLocator(gc).demo_url(decode("CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx")))
-   PY
-   ```
-   - [ ] Bot logs in with the refresh token (no prompt).
-   - [ ] GC becomes ready within ~60 s.
-   - [ ] A recent (<2 weeks) share code returns a `http://replayN.valve.net/730/...dem.bz2` URL.
-   - [ ] A very old share code returns `DemoUnavailable`, or times out three times and is then treated as unavailable.
-4. Full flow in the browser (`pnpm dev` in `apps/web`, proxy `/api` → `:8000`):
-   - [ ] Sign in through Steam, then link a Game Authentication Code and recent share code. Valve accepts them.
-   - [ ] **Sync matches** imports a match. The `.dem.bz2` download stays under the size limits, the temp dir is removed afterwards, and demoparser2 parses it.
-   - [ ] The round report shows plausible opening kills (compare a couple of rounds with the in-game replay) and actual winners.
-   - [ ] Revoke the refresh token (change the bot password), then sync → `demo_bot_auth_failed`, and the cursor is unchanged.
-   - [ ] Logs contain no token, password, auth code or share-code query strings.
-5. Record the demoparser2 column names actually seen (`round_end.winner`, `player_death.attacker_team_num`, etc.). If any differ, fix `Demoparser2Parser`.
+| # | Step | What it proves |
+| --- | --- | --- |
+| 1 | config + inputs | env vars and inputs are present and well-formed (same settings loader as the API) |
+| 2 | Steam Web API key | `STEAM_WEB_API_KEY` is accepted (`ISteamUser/GetPlayerSummaries`) and the Steam ID exists |
+| 3 | match history walk | the auth code + known share code work; walks up to `--walk` (3) newer codes with `GetNextMatchSharingCode` (checks the 200/202/403/412 mapping) |
+| 4 | GC demo URL (bot) | the bot signs in with its refresh token, reaches the CS2 GC and gets the newest match's `replayN.valve.net` URL |
+| 5 | demo download | downloads the `.dem.bz2` with the production fetcher (allowlist, size caps), decompresses it; prints size and time |
+| 6 | parse + model score | demoparser2 parse (child process, as on Render) and `model.pkl` round scoring |
+| 7 | store + round report | the real `POST /steam/sync` logic queues a `steam_sync` job, the job worker imports and stores it, then prints the per-round report (same JSON as `GET /matches/{id}`, `--report-json FILE` saves it) |
+
+Run it on your own machine (not CI), from `services/prediction_api` with the
+requirements installed:
+
+```sh
+cd services/prediction_api
+export STEAM_WEB_API_KEY="$(cat ~/.config/csa/steam-web-api-key)"
+export STEAM_BOT_REFRESH_TOKEN_FILE=~/.config/csa/steam-bot-refresh-token
+export TOKEN_ENCRYPTION_KEYS="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+python -m steamlink.live_check \
+  --steam-id 7656119XXXXXXXXXX \
+  --known-code CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx \
+  --auth-code-file ~/.config/csa/auth-code \
+  --report-json /tmp/live-report.json
+```
+
+- Inputs come only from env / arguments. `CSA_LIVE_STEAM_ID`, `CSA_LIVE_AUTH_CODE`
+  and `CSA_LIVE_KNOWN_CODE` work instead of the flags. Prefer `--auth-code-file`
+  over `--auth-code`, because the flag ends up in shell history. Secrets are never printed, and share codes are masked.
+- Storage is a throwaway SQLite file by default. `DATABASE_URL` from the
+  environment is ignored on purpose. `--database-url URL` stores into a real
+  database (e.g. Render's) and restores that user's previous link afterwards.
+- Offline version (fake Valve HTTP + fake GC, everything else real; this is what
+  CI runs): `python -m steamlink.live_check --fake --demo /path/to/match.dem.bz2`.
+- What's still needed before it can pass live, and who does it:
+  `docs/live-e2e-checklist.md`.
+
+After it passes, check these by hand:
+
+- [ ] A very old share code → step 4 reports "knows no such match" or a GC timeout (sync then records it as unavailable after 3 timeouts).
+- [ ] Revoke the refresh token (change the bot password) → step 4 says the bot's login was rejected. In the app, sync shows `demo_bot_auth_failed` and the cursor doesn't move.
+- [ ] Compare a couple of rounds' opening kills in the report with the in-game replay.
+- [ ] The output and API logs contain no token, password, auth code or share-code query string.
+- [ ] If demoparser2's columns on the Valve-served demo differ (`round_end.winner`, `player_death.attacker_team_num`, ...), step 6 fails or reports unscored rounds; fix `Demoparser2Parser`.

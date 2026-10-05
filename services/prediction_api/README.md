@@ -49,6 +49,12 @@ Demo URL resolution goes through the CS2 Game Coordinator with a dedicated
 demo bot (`STEAM_BOT_REFRESH_TOKEN`, see `docs/steam-demo-bot.md`); without it
 sync stops with `demo_retrieval_not_configured` and does not advance the cursor.
 
+Live end-to-end check (one command, prints PASS/FAIL/SKIP per step: Web API
+key -> history walk -> GC demo URL -> download -> parse + model -> stored
+round report): `python -m steamlink.live_check` (see
+[`docs/live-e2e-checklist.md`](../../docs/live-e2e-checklist.md) for the inputs).
+Offline with fake Valve + GC: `python -m steamlink.live_check --fake --demo match.dem.bz2`.
+
 ### Steam sync (`POST /steam/sync`)
 
 Downloading and parsing a demo takes minutes on Render's free plan, so the
