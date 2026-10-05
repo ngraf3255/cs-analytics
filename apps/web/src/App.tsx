@@ -77,9 +77,9 @@ function App() {
   return (
     <div className="site-shell">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="CS Gooners home">
-          <span className="brand-mark"><span /></span>
-          <span>CS<span className="brand-light">GOONERS</span></span>
+        <a className="brand" href="#top" aria-label="CS Gooner home">
+          <span className="brand-mark"><img src="/favicon.svg" alt="" /></span>
+          <span>CS <span className="brand-light">GOONER</span></span>
         </a>
         <nav aria-label="Main navigation">
           <a className="nav-active" href="#predictor">Predictor</a>
@@ -181,7 +181,7 @@ function App() {
         </section>
       </main>
 
-      <footer><a className="brand footer-brand" href="#top"><span className="brand-mark"><span /></span><span>CS<span className="brand-light">GOONERS</span></span></a><span>BUILT AROUND THE ROUND.</span><span>CS2 ANALYTICS PROJECT <i>© 2026</i></span></footer>
+      <footer><a className="brand footer-brand" href="#top" aria-label="CS Gooner home"><span className="brand-mark"><img src="/favicon.svg" alt="" /></span><span>CS <span className="brand-light">GOONER</span></span></a><span>BUILT AROUND THE ROUND.</span><span>CS2 ANALYTICS PROJECT <i>© 2026</i></span></footer>
     </div>
   );
 }
