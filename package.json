@@ -9,5 +9,10 @@
     "dev": "pnpm --filter csgooners-web dev",
     "build": "pnpm --filter csgooners-web build",
     "preview": "pnpm --filter csgooners-web preview"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
