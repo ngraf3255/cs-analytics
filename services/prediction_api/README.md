@@ -159,6 +159,24 @@ before migration `0006_match_score`). Checked against the team entities on the
 last tick for the four public test demos (8-2, 6-2 surrender, 13-11 with a
 knife round, 13-5).
 
+### Across previous matches (`GET /matches/summary`)
+
+Analytics over every match in the signed-in user's list (shared matches count
+for each owner; `match_owners`), computed on request (`steamlink/analytics.py`,
+two queries, one model call per map): `totals` (matches, imported / stubs,
+rounds, scored / unscored), `prediction` (the model's `hit_rate`,
+`brier_score` on P(CT) vs the actual winner, `coin_flip_brier_score` 0.25 in
+`model`, `opening_kill_baseline_hit_rate` = always back the side with the
+opening kill, `calibration` bins of the favourite's probability 50-60 ... 90-100%),
+`sides` (rounds won by the CT / T side), `opening_kills` (conversion overall,
+by side, top 5 weapons, average time), `maps` (per map: matches, rounds, CT/T
+wins, model hit rate / Brier), `unscored_reasons`, and `recent_form`
+(`?recent=N`, default 10, 1-50: the last N imported matches newest first, their
+totals vs the earlier ones, `hit_rate_change`). Rates are 0..1, `null` when
+there is nothing to divide by; zero matches return zeros / nulls / empty
+lists. CT / T are map sides of everyone in the match: the user's own team is
+not stored yet. The route is registered before `/matches/{id}`.
+
 ### One match, many sources and users (dedupe)
 
 The same match can arrive by upload and by Steam sync, in either order, and
