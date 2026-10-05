@@ -43,6 +43,24 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
     void loadMatches();
   }, [loadMatches]);
 
+  const [uploading, setUploading] = useState(false);
+
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setNotice(null);
+    try {
+      const result = await steamApi.uploadDemo(file);
+      setNotice({ tone: "ok", text: result.created ? "Demo imported." : "That demo was already imported." });
+      await loadMatches();
+      setSelected(result.match.id);
+    } catch (reason) {
+      setNotice({ tone: "error", text: reason instanceof ApiError ? reason.message : "Upload failed." });
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function sync() {
     setSyncing(true);
     setNotice(null);
@@ -73,6 +91,12 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
           {!linked ? "Link your match history above to enable sync." : syncing ? "Fetching the next match from Valve, downloading and parsing the demo. This can take a minute." : lastSync ? `Last sync ${lastSync}` : "Not synced yet."}
         </span>
       </div>
+      <label className="upload-row">
+        <span className="ghost-button">{uploading ? "Parsing demo…" : "Upload a .dem file"}</span>
+        <input type="file" accept=".dem,.bz2" disabled={uploading}
+          onChange={(event) => { void upload(event.target.files?.[0]); event.target.value = ""; }} />
+        <span className="steam-muted sync-meta">For older matches or demos you already have (CS2 .dem or .dem.bz2).</span>
+      </label>
       {notice && <div className={notice.tone === "ok" ? "steam-notice" : "steam-error"} role="status">{notice.text}</div>}
       {listError && <div className="steam-error" role="alert">{listError}</div>}
 

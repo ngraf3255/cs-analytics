@@ -18,6 +18,10 @@ const MESSAGES: Record<string, string> = {
     "Match sync is wired up, but demo download is not configured on the server yet (needs a Game Coordinator bot). Your share-code cursor was not advanced.",
   demo_bot_auth_failed:
     "The server’s Steam demo bot could not sign in, so demos can’t be fetched right now. Your cursor was not advanced.",
+  demo_too_large: "That demo is larger than the server allows.",
+  not_a_cs2_demo: "That file isn’t a CS2 demo (.dem or .dem.bz2). CS:GO demos aren’t supported.",
+  demo_parse_failed: "The demo could not be parsed.",
+  upload_busy: "The server is parsing another demo. Try again in a minute.",
   invalid_auth_code_status: "Your Game Authentication Code was rejected. Update or revoke it.",
   invalid_known_code: "The saved share code is no longer valid. Re-link with a recent one from CS2.",
   rate_limited: "Valve is rate-limiting sync. Try again in a few minutes.",

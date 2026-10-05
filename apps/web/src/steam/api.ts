@@ -42,6 +42,12 @@ export const steamApi = {
   postSync: () => request<SyncResult>("/steam/sync", { method: "POST" }, true),
   listMatches: (limit = 20, offset = 0) =>
     request<{ matches: MatchSummary[]; limit: number; offset: number }>(`/matches?limit=${limit}&offset=${offset}`),
+  uploadDemo: (file: File) =>
+    request<{ match: MatchSummary; created: boolean }>(
+      "/matches/upload",
+      { method: "POST", body: file, headers: { "Content-Type": "application/octet-stream" } },
+      true,
+    ),
   getMatch: (id: string) => request<MatchReport>(`/matches/${encodeURIComponent(id)}`),
 };
 
