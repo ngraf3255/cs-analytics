@@ -6,3 +6,4 @@ apps/web/node_modules/
 apps/web/dist/
 apps/web/.env
 apps/web/.env.local
+node_modules/

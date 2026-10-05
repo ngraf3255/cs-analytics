@@ -108,8 +108,8 @@ The existing model predicts a **round** from `map_name`, `opening_kill_side`, `o
 - [x] Steam integration replaces the original manual-upload-first direction.
 - [x] Plan recorded before implementation.
 - [x] Defer the homelab PostgreSQL connection to the final infrastructure step.
-- [ ] Validate Steam auth-code/share-code/demo flow with a test account and demo.
-- [ ] Implement Steam identity and secure sessions.
-- [ ] Implement durable data and incremental import.
-- [ ] Implement parsed match analysis and UI.
-- [ ] Validate Render resource limits and deployment configuration.
+- [ ] Validate Steam auth-code/share-code/demo flow with a test account and demo. *(Not done: GetNextMatchSharingCode status handling and the demoparser2 column mapping are implemented but only tested with mocks.)*
+- [x] Implement Steam identity and secure sessions. *(Server-side OpenID verification, signed server-side sessions, CSRF header + origin check; tested with mocked Steam responses.)*
+- [ ] Implement durable data and incremental import. *(Partly done: storage interface, migrations, encrypted auth codes, bounded idempotent sync with transactional cursor. Still open: demo URL resolution via the CS2 Game Coordinator (`UnconfiguredDemoLocator` TODO) and connecting the homelab PostgreSQL.)*
+- [ ] Implement parsed match analysis and UI. *(Partly done: round feature mapping, scoring with unscored reasons, Connect Steam onboarding, sync, match list and round report UI. Not verified end to end on a real demo.)*
+- [ ] Validate Render resource limits and deployment configuration. *(Open: also needs an API domain on csgooner.com, e.g. api.csgooner.com, for first-party session cookies, plus a background worker before larger sync batches.)*
