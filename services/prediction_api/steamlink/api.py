@@ -119,7 +119,9 @@ def _match_view(match) -> dict:
         "status_reason": match.status_reason,
         "map_name": match.map_name,
         "rounds_count": match.rounds_count,
-        "imported_at": _iso(match.imported_at),
+        "imported_at": _iso(match.imported_at),  # when it was added to this user's list
+        # Final score: rounds won by the team on each side at the end (null if unknown).
+        "score": None if match.score_ct is None or match.score_t is None else {"ct": match.score_ct, "t": match.score_t},
     }
 
 

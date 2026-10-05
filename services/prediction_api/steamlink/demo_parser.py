@@ -12,7 +12,11 @@ Feature definitions match the training data (``data/rounds.parquet`` /
 * ``opening_kill_seconds`` = (death tick - freeze-end tick) / 64;
 * ``opening_weapon`` = the demo's weapon name without the ``weapon_`` prefix
   (e.g. ``ak47``, ``m4a1_silencer``, ``knife_karambit``);
-* ``map_name`` = the demo header map name (e.g. ``de_mirage``).
+* ``map_name`` = the demo header map name (e.g. ``de_mirage``);
+* final score (:func:`final_score`) = rounds won by the team on each side at the
+  end, read from the players' team round totals at the last kill plus the
+  winners of the rounds that ended from then on (no extra parse pass; robust to
+  knife/warmup rounds and side swaps, unlike counting winners by side).
 
 Values are stored as observed. Values the model doesn't know (new maps, other
 knife skins, ...) get an unscored reason when the report is built; they are
@@ -52,6 +56,9 @@ class ParsedDeath:
     attacker_side: str | None
     victim_side: str | None
     weapon: str | None
+    # Rounds won so far by the attacker's / victim's team (before a round_end on this tick).
+    attacker_score: int | None = None
+    victim_score: int | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +128,31 @@ def extract_rounds(demo: ParsedDemo) -> list[RoundRecord]:
     return records
 
 
+def final_score(demo: ParsedDemo) -> tuple[int, int] | None:
+    """``(ct, t)``: rounds won by the team on the CT / T side at the end of the demo,
+    or None if the demo doesn't say (no cross-team kill with team totals)."""
+
+    if not demo.rounds:
+        return None
+    last_end = max(r.end_tick for r in demo.rounds)
+    anchor = None
+    for death in sorted(demo.deaths, key=lambda d: d.tick):
+        if death.tick > last_end:
+            break
+        if ({death.attacker_side, death.victim_side} == {"ct", "t"}
+                and death.attacker_score is not None and death.victim_score is not None):
+            anchor = death
+    if anchor is None:
+        return None
+    score = {anchor.attacker_side: anchor.attacker_score, anchor.victim_side: anchor.victim_score}
+    later = [r for r in demo.rounds if r.end_tick >= anchor.tick]  # not counted yet at the anchor kill
+    if len(later) > 3 or any(r.winner_side not in ("ct", "t") for r in later):
+        return None  # e.g. a side swap could hide in a long stretch without kills
+    for rnd in later:
+        score[rnd.winner_side] += 1
+    return score["ct"], score["t"]
+
+
 # Parsing is the memory-heavy step (demoparser2 memory-maps the whole .dem and
 # builds per-event frames). Upload and Steam sync share this one slot so a
 # 512 MB instance never parses two demos at once.
@@ -128,7 +160,9 @@ PARSE_SLOT = threading.BoundedSemaphore(1)
 
 PARSE_ISOLATION_MODES = ("subprocess", "inprocess")
 _EVENTS = ("round_end", "round_freeze_end", "player_death")
-_DEATH_COLUMNS = ("tick", "attacker_team_num", "user_team_num", "weapon")
+_DEATH_COLUMNS = ("tick", "attacker_team_num", "user_team_num", "weapon", "attacker_team_rounds_total",
+                  "user_team_rounds_total")
+_INT_COLUMNS = ("winner", "attacker_team_num", "user_team_num", "attacker_team_rounds_total", "user_team_rounds_total")
 
 
 class Demoparser2Parser(DemoParser):
@@ -197,7 +231,7 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
 
         parser = _Parser(demo_path)
         header = parser.parse_header() or {}
-        frames = dict(parser.parse_events(list(_EVENTS), player=["team_num"]))
+        frames = dict(parser.parse_events(list(_EVENTS), player=["team_num", "team_rounds_total"]))
         del parser
         round_end = _rows(frames.pop("round_end", None), ("tick", "winner"))
         freeze_ticks = sorted(int(t) for t in _column(frames.pop("round_freeze_end", None), "tick"))
@@ -227,6 +261,8 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
                 attacker_side=TEAM_NUM_TO_SIDE.get(row.get("attacker_team_num")),
                 victim_side=TEAM_NUM_TO_SIDE.get(row.get("user_team_num")),
                 weapon=row.get("weapon"),
+                attacker_score=row.get("attacker_team_rounds_total"),
+                victim_score=row.get("user_team_rounds_total"),
             )
             for row in deaths
         ],
@@ -238,7 +274,8 @@ def parsed_demo_to_json(demo: ParsedDemo) -> dict:
         "map_name": demo.map_name,
         "tickrate": demo.tickrate,
         "rounds": [[r.number, r.freeze_end_tick, r.end_tick, r.winner_side] for r in demo.rounds],
-        "deaths": [[d.tick, d.attacker_side, d.victim_side, d.weapon] for d in demo.deaths],
+        "deaths": [[d.tick, d.attacker_side, d.victim_side, d.weapon, d.attacker_score, d.victim_score]
+                   for d in demo.deaths],
     }
 
 
@@ -248,7 +285,8 @@ def parsed_demo_from_json(data: dict) -> ParsedDemo:
         tickrate=int(data["tickrate"]),
         rounds=[ParsedRound(number=int(n), freeze_end_tick=None if f is None else int(f), end_tick=int(e),
                             winner_side=w) for n, f, e, w in data["rounds"]],
-        deaths=[ParsedDeath(tick=int(t), attacker_side=a, victim_side=v, weapon=w) for t, a, v, w in data["deaths"]],
+        deaths=[ParsedDeath(int(d[0]), d[1], d[2], d[3], *(None if x is None else int(x) for x in d[4:6]))
+                for d in data["deaths"]],
     )
 
 
@@ -257,11 +295,11 @@ def _rows(frame, columns: tuple[str, ...]) -> list[dict]:
         return []
     frame = frame[[c for c in columns if c in frame.columns]]
     records = frame.to_dict("records")
-    for record in records:  # pandas gives floats for nullable ints
-        for key in ("winner", "attacker_team_num", "user_team_num"):
+    for record in records:  # pandas gives floats for nullable ints (NaN = missing)
+        for key in _INT_COLUMNS:
             value = record.get(key)
-            if isinstance(value, float) and value == value:
-                record[key] = int(value)
+            if isinstance(value, float):
+                record[key] = int(value) if value == value else None
     return records
 
 

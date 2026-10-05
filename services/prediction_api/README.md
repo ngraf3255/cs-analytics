@@ -141,6 +141,18 @@ entry and per-round report as a synced match. Same feature flag, session,
   `demo_too_large`, `server_restarted`, `internal_error`. Nothing is stored on
   failure. Uploads never touch the share-code cursor.
 
+### Match list and report (`GET /matches`, `GET /matches/{id}`)
+
+Each match (list item, job `match`, report `match`) carries `map_name`,
+`rounds_count`, `source` (how it arrived for this user), `imported_at` (when it
+was added to this user's list; the demo has no match date) and `score`
+(`{"ct": 13, "t": 5}`: rounds won by the team on each side **at the end**, read
+from the demo's team round totals at the last kill plus the winners of later
+rounds, see `demo_parser.final_score`; `null` for stubs and matches parsed
+before migration `0006_match_score`). Checked against the team entities on the
+last tick for the four public test demos (8-2, 6-2 surrender, 13-11 with a
+knife round, 13-5).
+
 ### One match, many sources and users (dedupe)
 
 The same match can arrive by upload and by Steam sync, in either order, and

@@ -214,6 +214,7 @@ def test_api_upload_and_sync_share_matches_between_users(tmp_path):
     # Plain .dem another user already imported: answered at once, added to Bob's list.
     response, shared = upload_and_wait(bob, ctx, demo(5))
     assert response.status_code == 200 and shared["created"] is True and shared["match"]["id"] == job["match"]["id"]
+    assert shared["match"]["score"] == {"ct": 1, "t": 1}  # from the (fake) parse, shared too
     assert [m["id"] for m in bob.get("/matches").json()["matches"]] == [job["match"]["id"]]
     assert bob.get(f"/matches/{job['match']['id']}").status_code == 200
     response, again = upload_and_wait(bob, ctx, demo(5))

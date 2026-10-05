@@ -76,6 +76,8 @@ class NewMatch:
     # True when share_code came from Valve's match history (Steam sync); a share code
     # typed in with an upload is only a hint (see Storage, "Dedupe").
     share_code_verified: bool = False
+    score_ct: int | None = None  # final score (demo_parser.final_score), when the demo was parsed
+    score_t: int | None = None
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,8 @@ class MatchRecord:
     source: str = "steam_sync"  # how it arrived for this user: steam_sync | upload
     demo_sha256: str | None = None
     share_code_verified: bool = False
+    score_ct: int | None = None  # final score: rounds won by the team on CT / T at the end
+    score_t: int | None = None
 
     @property
     def has_share_code(self) -> bool:

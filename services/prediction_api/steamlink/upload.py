@@ -8,7 +8,7 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from .demo_parser import PARSE_SLOT, DemoParseError, DemoParser, extract_rounds
+from .demo_parser import PARSE_SLOT, DemoParseError, DemoParser, extract_rounds, final_score
 from .sharecode import InvalidShareCode, decode
 from .storage.base import UNKNOWN_MATCH_ID, UPLOAD_KEY_PREFIX, NewMatch, Storage
 from .valve import DemoTooLarge, DemoUnavailable, decompress_bz2
@@ -141,9 +141,11 @@ def import_uploaded_demo(
     if not parsed.rounds:
         raise UploadRejected("demo_has_no_rounds")
     on_stage("storing", None)
+    score = final_score(parsed)
     match = NewMatch(share_code=share_code or UPLOAD_KEY_PREFIX + demo_sha256, valve_match_id=valve_match_id,
                      status="imported", status_reason=None, map_name=parsed.map_name,
                      rounds=tuple(extract_rounds(parsed)), demo_sha256=demo_sha256, source=source,
-                     share_code_verified=share_code_verified)
+                     share_code_verified=share_code_verified, score_ct=score[0] if score else None,
+                     score_t=score[1] if score else None)
     match_id, created = storage.record_uploaded_match(user_id, match=match, now=now)
     return UploadResult(match_id, created)

@@ -130,6 +130,7 @@ def test_upload_fills_in_a_match_steam_could_not_provide(env):
     assert (up.match_id, up.created) == (stub.id, False)
     record, rounds = env["storage"].get_match(env["user"].id, stub.id)
     assert record.status == "imported" and record.rounds_count == len(rounds) == 2 and record.demo_sha256
+    assert (stub.score_ct, record.score_ct, record.score_t) == (None, 1, 1)  # the upload brings the score
 
 
 def test_different_demos_are_different_matches(env):
@@ -203,7 +204,7 @@ def test_migration_backfills_uploads_stored_before_dedupe(tmp_path):
                 "VALUES (:id, 'u', :share, :vid, 'imported', 0, '2026-10-04 12:00:00+00')"),
                 {"id": mid, "share": share, "vid": "upload" if share.startswith("upload:") else "1001"})
     assert apply_migrations(engine) == ["0002_cross_source_dedupe", "0003_upload_jobs", "0004_sync_jobs",
-                                        "0005_shared_matches"]
+                                        "0005_shared_matches", "0006_match_score"]
     storage = SqlStorage(engine)
     up = storage.find_match("u", demo_sha256="abc123")
     assert up is not None and up.id == "m1" and up.source == "upload" and not up.has_share_code

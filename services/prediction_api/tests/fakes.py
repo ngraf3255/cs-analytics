@@ -114,7 +114,7 @@ class FakeParser(DemoParser):
         return ParsedDemo(
             map_name="de_mirage",
             rounds=[ParsedRound(1, 1000, 8000, "t"), ParsedRound(2, 9000, 15000, "ct")],
-            deaths=[ParsedDeath(2280, "t", "ct", "ak47"), ParsedDeath(9640, "ct", "t", "bayonet")],
+            deaths=[ParsedDeath(2280, "t", "ct", "ak47", 0, 0), ParsedDeath(9640, "ct", "t", "bayonet", 0, 1)],
         )
 
 

@@ -24,6 +24,15 @@ pytestmark = pytest.mark.skipif(not DEMO or not os.path.isfile(DEMO), reason="se
 # demoparser2 repo src/parser/test_demo.dem: de_mirage, SourceTV, 10 round_end events
 # (round 10 is a CT surrender during the round restart: no freeze end, no kills).
 DEMOPARSER_FIXTURE_SHA256 = "84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2"
+# Final scores (sides at the end) checked against the team entities' round totals on the last
+# tick (demoparser2 parse_ticks team_rounds_total): demoparser fixture 8-2 (T), awpy public set:
+# Valve MM de_ancient 6-2 (surrender), FACEIT de_mirage 13-11 (knife round first), HLTV de_nuke 13-5.
+KNOWN_SCORES = {
+    DEMOPARSER_FIXTURE_SHA256: {"ct": 2, "t": 8},
+    "b29a9cb537a181deef97b15cfed10ee722a37999644a27bb2226fdd77a1337fc": {"ct": 6, "t": 2},  # MM ancient .dem
+    "ac1c51a159b80f72b43b88271765457229a3f28f07a25e45d780a9265b3e5a51": {"ct": 13, "t": 11},  # FACEIT mirage .dem
+    "679efc6ae7d750e98124149ce5462956d7694b1c0936a655621475c7ed864136": {"ct": 13, "t": 5},  # HLTV nuke .dem
+}
 
 
 def _sha256(path):
@@ -56,6 +65,13 @@ def test_real_demo_upload_parse_score_report(tmp_path):
         else:
             assert rnd["unscored_reason"]
 
+    # The final score is read from the demo: every round has a winner, so it adds up.
+    assert match["score"] is not None, match
+    assert match["score"]["ct"] + match["score"]["t"] <= match["rounds_count"]
+    assert max(match["score"].values()) >= 1
+    known = KNOWN_SCORES.get(_sha256(DEMO) if not DEMO.endswith(".bz2") else None)
+    if known:
+        assert match["score"] == known
     if _sha256(DEMO) == DEMOPARSER_FIXTURE_SHA256:
         assert match["map_name"] == "de_mirage" and match["rounds_count"] == 10
         assert [r["actual_winner"] for r in rounds] == ["t", "ct", "t", "t", "ct", "t", "t", "t", "t", "t"]

@@ -86,3 +86,31 @@ def test_scorer_unscored_reasons(scorer, map_name, rnd, reason):
     score = scorer.score_rounds(map_name, [rnd])[0]
     assert score.unscored_reason == reason
     assert score.probability_t is None
+
+
+def _scored_demo(deaths, rounds):
+    return ParsedDemo(map_name="de_nuke", rounds=rounds, deaths=deaths)
+
+
+def test_final_score_from_team_totals_at_the_last_kill_plus_later_round_winners():
+    from steamlink.demo_parser import final_score
+
+    rounds = [ParsedRound(1, 100, 1000, "t"), ParsedRound(2, 1100, 2000, "ct"), ParsedRound(3, 2100, 3000, "ct")]
+    # Last kill on round 3's end tick: totals are from before that round_end (12-5), round 3 adds 1.
+    deaths = [ParsedDeath(500, "t", "ct", "ak47", 3, 9), ParsedDeath(3000, "ct", "t", "m4a1", 12, 5)]
+    assert final_score(_scored_demo(deaths, rounds)) == (13, 5)
+    # Kill in round 2; round 2 (ends after) and round 3 (no kills, e.g. surrender) still count.
+    deaths = [ParsedDeath(1500, "t", "ct", "ak47", 1, 5)]
+    assert final_score(_scored_demo(deaths, rounds)) == (7, 1)
+    # Team kills / world deaths are no anchor; no totals -> unknown.
+    assert final_score(_scored_demo([ParsedDeath(2500, "ct", "ct", "awp", 3, 3)], rounds)) is None
+    assert final_score(_scored_demo([ParsedDeath(2500, "ct", "t", "awp")], rounds)) is None
+    assert final_score(_scored_demo([], [])) is None
+    # Kills after the last round_end (post-match) are ignored.
+    late = [ParsedDeath(2500, "ct", "t", "awp", 1, 1), ParsedDeath(9999, "t", "ct", "ak47", 0, 0)]
+    assert final_score(_scored_demo(late, rounds)) == (2, 1)
+    # A long kill-free stretch (could hide a side swap) or an unknown winner -> unknown.
+    many = [ParsedRound(i, None, 1000 * i, "ct") for i in range(1, 7)]
+    assert final_score(_scored_demo([ParsedDeath(1500, "ct", "t", "awp", 0, 0)], many)) is None
+    unknown = [ParsedRound(1, 100, 1000, None)]
+    assert final_score(_scored_demo([ParsedDeath(500, "ct", "t", "awp", 0, 0)], unknown)) is None

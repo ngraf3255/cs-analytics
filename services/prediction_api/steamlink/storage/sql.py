@@ -118,6 +118,8 @@ matches = Table(
     Column("source", String, nullable=False, default="steam_sync"),
     Column("demo_sha256", String),
     Column("share_code_verified", Integer, nullable=False, default=0),
+    Column("score_ct", Integer),
+    Column("score_t", Integer),
 )
 # Who has a (shared) match in their list. matches.user_id = who imported it first.
 match_owners = Table(
@@ -206,7 +208,7 @@ def _match_record(row, owner=None) -> MatchRecord:
         status_reason=row.status_reason, map_name=row.map_name, rounds_count=row.rounds_count,
         imported_at=owner.added_at if owner is not None else row.imported_at,
         source=owner.source if owner is not None else row.source, demo_sha256=row.demo_sha256,
-        share_code_verified=bool(row.share_code_verified),
+        share_code_verified=bool(row.share_code_verified), score_ct=row.score_ct, score_t=row.score_t,
     )
 
 
@@ -521,7 +523,7 @@ class SqlStorage(Storage):
             self._insert_rounds(conn, row.id, match)
             conn.execute(update(matches).where(matches.c.id == row.id).values(
                 status=match.status, status_reason=match.status_reason, map_name=match.map_name,
-                rounds_count=len(match.rounds)))
+                rounds_count=len(match.rounds), score_ct=match.score_ct, score_t=match.score_t))
         return row.id, self._attach(conn, user_id, row.id, match.source, now)
 
     @staticmethod
@@ -542,6 +544,7 @@ class SqlStorage(Storage):
             status=match.status, status_reason=match.status_reason, map_name=match.map_name,
             rounds_count=len(match.rounds), imported_at=now, source=match.source, demo_sha256=match.demo_sha256,
             share_code_verified=int(match.share_code_verified and _real_code(match.share_code) is not None),
+            score_ct=match.score_ct, score_t=match.score_t,
         ))
         cls._insert_rounds(conn, match_id, match)
         return match_id
