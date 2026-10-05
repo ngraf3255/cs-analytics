@@ -99,7 +99,7 @@ The existing model predicts a **round** from `map_name`, `opening_kill_side`, `o
 
 ## Follow-up options
 
-- Offer manual `.dem` upload as an alternative for demos not available via Steam match history.
+- ~~Offer manual `.dem` upload as an alternative for demos not available via Steam match history.~~ Implemented (`POST /matches/upload`).
 - Add scheduled incremental sync with conservative polling after user-triggered sync works reliably.
 - Calibrate or retrain a separate model on consented matchmaking data only after collecting enough representative rounds and defining retention/consent rules.
 
@@ -110,6 +110,6 @@ The existing model predicts a **round** from `map_name`, `opening_kill_side`, `o
 - [x] Defer the homelab PostgreSQL connection to the final infrastructure step.
 - [ ] Validate Steam auth-code/share-code/demo flow with a test account and demo. *(Not done: GetNextMatchSharingCode status handling and the demoparser2 column mapping are implemented but only tested with mocks.)*
 - [x] Implement Steam identity and secure sessions. *(Server-side OpenID verification, signed server-side sessions, CSRF header + origin check; tested with mocked Steam responses.)*
-- [ ] Implement durable data and incremental import. *(Partly done: storage interface, migrations, encrypted auth codes, bounded idempotent sync with transactional cursor. Still open: demo URL resolution via the CS2 Game Coordinator (`UnconfiguredDemoLocator` TODO) and connecting the homelab PostgreSQL.)*
-- [ ] Implement parsed match analysis and UI. *(Partly done: round feature mapping, scoring with unscored reasons, Connect Steam onboarding, sync, match list and round report UI. Not verified end to end on a real demo.)*
+- [ ] Implement durable data and incremental import. *(Partly done: storage interface, migrations, encrypted auth codes, bounded idempotent sync with transactional cursor. Game Coordinator demo-URL lookup is implemented (`steamlink/gc.py`, `gc_steamio.py`, steam.py `steamio==1.1.3`) behind bot-credential env vars. It still needs a dedicated bot account and the live smoke test in `docs/steam-demo-bot.md`. Database for now: Render managed PostgreSQL (`docs/deploy-render.md`). The homelab has no reachable Postgres yet.)*
+- [ ] Implement parsed match analysis and UI. *(Partly done: manual `.dem`/`.dem.bz2` upload (`POST /matches/upload` + UI) as a fallback to Steam sync; round feature mapping, scoring with unscored reasons, Connect Steam onboarding, sync, match list and round report UI. Not verified end to end on a real demo.)*
 - [ ] Validate Render resource limits and deployment configuration. *(Open: also needs an API domain on csgooner.com, e.g. api.csgooner.com, for first-party session cookies, plus a background worker before larger sync batches.)*
