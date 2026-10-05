@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { SteamSection } from "./steam/SteamSection";
 
 type Options = {
   maps: string[];
@@ -83,6 +84,7 @@ function App() {
         </a>
         <nav aria-label="Main navigation">
           <a className="nav-active" href="#predictor">Predictor</a>
+          <a href="#matches">My matches</a>
           <a href="#about">About the model</a>
           <a href="https://public.tableau.com/app/profile/nicholas.hinkel/viz/CS2-Analytics/CS2RoundAnalytics?publish=yes" target="_blank" rel="noreferrer">Analytics ↗</a>
         </nav>
@@ -173,6 +175,8 @@ function App() {
             {error && <div className="error-message" role="alert">{error}</div>}
           </div>
         </section>
+
+        <SteamSection />
 
         <section id="about" className="model-info">
           <div className="info-intro"><span className="section-kicker">THE MODEL</span><h2>One opening duel.<br /><em>A lot of signal.</em></h2></div>

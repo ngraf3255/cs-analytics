@@ -1,0 +1,262 @@
+from urllib.parse import parse_qs, urlsplit
+
+import httpx
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+import main
+from steamlink import api, openid
+from steamlink.config import Settings
+from steamlink.crypto import AuthCodeCipher
+from steamlink.sessions import CookieSigner
+from steamlink.sync import SyncService
+
+from fakes import KEY, Clock, FakeFetcher, FakeHistory, FakeLocator, FakeParser, code, make_storage
+
+STEAM_ID = "76561198000000001"
+AUTH = "AB12-CDE34-FG56"
+H = {"X-Requested-With": "csa", "Origin": "https://csgooner.com"}
+
+
+def make_client(tmp_path):
+    settings = Settings(
+        allowed_origins=["https://csgooner.com"], database_url="sqlite://", token_encryption_keys=[KEY],
+        session_secret="s" * 40, public_api_url="https://api.example.com", frontend_url="https://csgooner.com",
+        steam_web_api_key="k", session_cookie_secure=False, upload_job_dir=str(tmp_path / "upload-jobs"),
+    )
+    storage, clock, cipher = make_storage(tmp_path), Clock(), AuthCodeCipher([KEY])
+    history = FakeHistory([code(i) for i in range(4)], valid_auth=AUTH)
+    steam_http = httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, text="ns:http://specs.openid.net/auth/2.0\nis_valid:true\n")))
+    sync = SyncService(storage=storage, history=history, locator=FakeLocator(), fetcher=FakeFetcher(),
+                       parser=FakeParser(), cipher=cipher, clock=clock, max_matches=5)
+    ctx = api.SteamContext(settings=settings, storage=storage, signer=CookieSigner(settings.session_secret),
+                           cipher=cipher, history=history, sync=sync,
+                           scorer=main.scorer, http=steam_http, clock=clock)
+    app = FastAPI()
+    api.register(app, ctx)
+    return TestClient(app, base_url="https://api.example.com", follow_redirects=False), ctx
+
+
+OCTET = {**H, "Content-Type": "application/octet-stream"}
+
+
+def upload_and_wait(client, ctx, content, *, headers=OCTET, query="", timeout=120):
+    """POST /matches/upload, then wait for the background job. Returns (POST response, final job or None)."""
+
+    response = client.post("/matches/upload" + query, content=content, headers=headers)
+    if response.status_code not in (200, 202):
+        return response, None
+    job = response.json()["job"]
+    if response.status_code == 202:
+        assert ctx.jobs.wait_idle(timeout), "upload job worker did not finish"
+        job = client.get(f"/matches/upload/{job['id']}").json()["job"]
+    return response, job
+
+
+def login(client, ctx):
+    response = client.get("/auth/steam/login", params={"next": "/matches"})
+    assert response.status_code == 302
+    state = parse_qs(parse_qs(urlsplit(response.headers["location"]).query)["openid.return_to"][0]
+                     .split("?", 1)[1])["state"][0]
+    claimed = f"https://steamcommunity.com/openid/id/{STEAM_ID}"
+    params = {
+        "state": state, "openid.ns": openid.OPENID_NS, "openid.mode": "id_res",
+        "openid.op_endpoint": openid.STEAM_OPENID_ENDPOINT, "openid.claimed_id": claimed,
+        "openid.identity": claimed, "openid.return_to": openid.build_return_to(ctx.settings.openid_return_url, state),
+        "openid.response_nonce": ctx.clock().strftime("%Y-%m-%dT%H:%M:%SZ") + "n",
+        "openid.assoc_handle": "1", "openid.sig": "x",
+        "openid.signed": "signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle",
+    }
+    response = client.get("/auth/steam/callback", params=params)
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://csgooner.com/matches"
+    return response
+
+
+@pytest.fixture()
+def app_client(tmp_path):
+    client, ctx = make_client(tmp_path)
+    login(client, ctx)
+    return client, ctx
+
+
+def test_disabled_by_default_in_main_app():
+    client = TestClient(main.app)
+    assert client.get("/steam/status").json() == {"enabled": False}
+    assert client.get("/me").status_code == 503
+    assert client.post("/steam/sync", headers=H).json()["detail"] == "steam_sync_disabled"
+
+
+def test_unauthenticated_requests_rejected(tmp_path):
+    client, _ = make_client(tmp_path)
+    assert client.get("/me").status_code == 401
+    assert client.get("/matches").status_code == 401
+
+
+def test_callback_without_login_state_fails_safely(tmp_path):
+    client, _ = make_client(tmp_path)
+    response = client.get("/auth/steam/callback", params={"state": "x"})
+    assert "steam_login=failed" in response.headers["location"]
+    assert client.get("/me").status_code == 401
+
+
+def test_full_flow_link_sync_report_delete(app_client):
+    client, ctx = app_client
+    me = client.get("/me").json()
+    assert me["steam_id"] == STEAM_ID and me["match_access"]["linked"] is False
+
+    body = {"auth_code": AUTH, "share_code": code(0), "consent": True}
+    assert client.put("/steam/match-access", json=body).status_code == 403  # no CSRF header
+    response = client.put("/steam/match-access", json=body, headers=H)
+    assert response.status_code == 200
+    assert response.json()["auth_code_hint"] == "****-*****-FG56"
+    assert AUTH not in str(ctx.storage.get_match_access(ctx.storage.get_or_create_user(STEAM_ID, ctx.clock()).id))
+
+    response = client.post("/steam/sync", headers=H)
+    assert response.status_code == 202  # matches queued for background download + parse
+    sync = response.json()
+    assert {k: sync[k] for k in ("status", "queued", "skipped", "processed", "has_more", "error")} == {
+        "status": "up_to_date", "queued": 3, "skipped": 0, "processed": 3, "has_more": False, "error": None}
+    assert [job["kind"] for job in sync["jobs"]] == ["steam_sync"] * 3
+    assert [job["share_code"] for job in sync["jobs"]] == [code(1), code(2), code(3)]
+    assert client.post("/steam/sync", headers=H).status_code == 429  # too soon
+    assert ctx.jobs.wait_idle(10)
+    status = client.get("/steam/sync").json()
+    assert status["status"] == "ok" and status["active_jobs"] == 0 and status["last_imported_count"] == 3
+    assert [job["status"] for job in status["jobs"]] == ["done"] * 3
+    assert all(job["match"]["status"] == "imported" and job["created"] for job in status["jobs"])
+    one = client.get(f"/matches/upload/{sync['jobs'][0]['id']}").json()["job"]
+    assert one["kind"] == "steam_sync" and one["status"] == "done"
+    assert client.get("/matches/upload").json()["jobs"] == []  # default: uploads only
+    assert len(client.get("/matches/upload?kind=all").json()["jobs"]) == 3
+
+    matches = client.get("/matches").json()["matches"]
+    assert len(matches) == 3
+    report = client.get(f"/matches/{matches[0]['id']}").json()
+    assert report["model"]["calibrated_for_matchmaking"] is False
+    first, second = report["rounds"]
+    assert first["actual_winner"] == "t" and first["prediction"]["probabilities"]["t"] > 0
+    assert first["opening_kill"] == {"side": "t", "seconds": 20.0, "weapon": "ak47"}
+    assert second["prediction"] is None and second["unscored_reason"] == "weapon_not_in_model"
+    assert report["summary"]["scored"] == 1
+    assert client.get("/matches/nope").status_code == 404
+
+    assert client.delete("/steam/match-access", headers=H).status_code == 204
+    assert client.get("/me").json()["match_access"]["linked"] is False
+    assert client.post("/steam/sync", headers=H).status_code in (409, 429)
+
+    assert client.delete("/me", headers=H).status_code == 204
+    assert client.get("/me").status_code == 401
+
+
+@pytest.mark.parametrize("body,detail", [
+    ({"auth_code": AUTH, "share_code": code(0), "consent": False}, "consent_required"),
+    ({"auth_code": "bad", "share_code": code(0), "consent": True}, "invalid_auth_code_format"),
+    ({"auth_code": AUTH, "share_code": "CSGO-bad", "consent": True}, "invalid_share_code_format"),
+    ({"auth_code": "ZZ12-CDE34-FG56", "share_code": code(0), "consent": True}, "invalid_auth_code"),
+    ({"auth_code": AUTH, "share_code": code(99), "consent": True}, "invalid_share_code"),
+])
+def test_link_validation(app_client, body, detail):
+    client, _ = app_client
+    response = client.put("/steam/match-access", json=body, headers=H)
+    assert response.status_code == 422 and response.json()["detail"] == detail
+
+
+def test_disallowed_origin_rejected(app_client):
+    client, _ = app_client
+    response = client.post("/steam/sync", headers={"X-Requested-With": "csa", "Origin": "https://evil.com"})
+    assert response.status_code == 403
+
+
+def test_logout_revokes_session(app_client):
+    client, _ = app_client
+    assert client.post("/auth/logout", headers=H).status_code == 204
+    assert client.get("/me").status_code == 401
+
+
+def test_upload_demo_plain_and_bz2_dedupe(app_client):
+    import bz2
+    client, ctx = app_client
+    demo = b"PBDEMS2\0" + b"x" * 2000
+    assert client.post("/matches/upload", content=demo).status_code == 403  # CSRF header
+    first, job = upload_and_wait(client, ctx, demo)
+    assert first.status_code == 202, first.text
+    assert job["status"] == "done" and job["created"] is True and job["match"]["status"] == "imported"
+    assert job["match"]["map_name"] == "de_mirage"
+    again_response, again = upload_and_wait(client, ctx, bz2.compress(demo))
+    assert again_response.status_code == 202  # an archive must be decompressed before dedupe
+    assert again["created"] is False and again["match"]["id"] == job["match"]["id"]
+    report = client.get(f"/matches/{job['match']['id']}").json()
+    assert len(report["rounds"]) == 2
+
+
+@pytest.mark.parametrize("payload,detail", [(b"", "not_a_cs2_demo"), (b"HL2DEMO\0old-csgo", "not_a_cs2_demo")])
+def test_upload_rejects_non_cs2_demo(app_client, payload, detail):
+    client, _ = app_client
+    response = client.post("/matches/upload", content=payload, headers={**H, "Content-Type": "application/octet-stream"})
+    assert response.status_code == 422 and response.json()["detail"] == detail
+
+
+def test_upload_too_large(app_client):
+    from dataclasses import replace
+    client, ctx = app_client
+    ctx.settings = replace(ctx.settings, demo_max_decompressed_bytes=100)
+    response = client.post("/matches/upload", content=b"PBDEMS2\0" + b"x" * 500,
+                           headers={**H, "Content-Type": "application/octet-stream"})
+    assert response.status_code == 413
+
+
+def test_sync_jobs_share_the_queue_cap_with_uploads(app_client):
+    from dataclasses import replace
+
+    from steamlink import upload
+
+    client, ctx = app_client
+    body = {"auth_code": AUTH, "share_code": code(0), "consent": True}
+    assert client.put("/steam/match-access", json=body, headers=H).status_code == 200
+    ctx.settings = replace(ctx.settings, upload_queue_max=2)
+    assert upload._parse_slot.acquire(blocking=False)  # hold the worker at "parsing"
+    try:
+        response = client.post("/steam/sync", headers=H)
+        sync = response.json()
+        assert response.status_code == 202
+        assert (sync["status"], sync["queued"], sync["has_more"]) == ("queue_full", 2, True)
+        full = client.post("/matches/upload", content=b"PBDEMS2\0" + b"\x01" * 64, headers=OCTET)
+        assert full.status_code == 429 and full.json()["detail"] == "upload_queue_full"
+        assert client.get("/me").json()["sync"]["active_jobs"] == 2
+        import time
+
+        deadline = time.monotonic() + 10
+        while not any(job["stage"] == "parsing" for job in client.get("/steam/sync").json()["jobs"]):
+            assert time.monotonic() < deadline, "worker did not reach the parse slot"
+            time.sleep(0.01)
+        jobs = client.get("/steam/sync").json()["jobs"]
+        assert sorted(job["status"] for job in jobs) == ["processing", "queued"]
+        queued = next(job for job in jobs if job["status"] == "queued")
+        assert queued["queue_position"] == 1
+    finally:
+        upload._parse_slot.release()
+    assert ctx.jobs.wait_idle(10)
+    ctx.clock.advance(60)
+    rest = client.post("/steam/sync", headers=H).json()
+    assert (rest["status"], rest["queued"]) == ("up_to_date", 1)
+    assert ctx.jobs.wait_idle(10)
+    assert len(client.get("/matches").json()["matches"]) == 3
+
+
+def test_sync_status_poll_restarts_a_stopped_worker(app_client):
+    client, ctx = app_client
+    body = {"auth_code": AUTH, "share_code": code(0), "consent": True}
+    assert client.put("/steam/match-access", json=body, headers=H).status_code == 200
+    start = ctx.jobs.start
+    ctx.jobs.start = lambda: None  # e.g. the worker gave up during a database outage
+    try:
+        assert client.post("/steam/sync", headers=H).status_code == 202
+    finally:
+        ctx.jobs.start = start
+    assert not ctx.jobs.running
+    client.get("/steam/sync")
+    assert ctx.jobs.wait_idle(10)
+    assert [job["status"] for job in client.get("/steam/sync").json()["jobs"]] == ["done"] * 3

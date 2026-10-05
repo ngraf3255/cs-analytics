@@ -1,0 +1,18 @@
+{
+  "steam_id": "76561198000000001",
+  "created_at": "2026-10-05T07:30:40.271341Z",
+  "match_access": {
+    "linked": false,
+    "auth_code_hint": null,
+    "linked_at": null,
+    "updated_at": null
+  },
+  "sync": {
+    "status": "idle",
+    "last_started_at": null,
+    "last_finished_at": null,
+    "last_error": null,
+    "last_imported_count": 0,
+    "active_jobs": 0
+  }
+}

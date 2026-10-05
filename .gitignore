@@ -6,3 +6,7 @@ apps/web/node_modules/
 apps/web/dist/
 apps/web/.env
 apps/web/.env.local
+node_modules/
+
+# personal app exports (python/export_app_tableau.py)
+tableau/app/

@@ -1,0 +1,219 @@
+{
+    "model": {
+        "calibrated_for_matchmaking": false,
+        "coin_flip_brier_score": 0.25,
+        "note": "Retrospective estimate from a model trained on professional CS2 matches using only map, opening-kill side, timing and weapon. Not generated during the match and not calibrated for matchmaking skill levels."
+    },
+    "totals": {
+        "matches": 4,
+        "imported_matches": 4,
+        "not_imported_matches": 0,
+        "rounds": 61,
+        "rounds_with_winner": 61,
+        "scored_rounds": 59,
+        "unscored_rounds": 2,
+        "first_imported_at": "2026-10-05T08:14:41.233186Z",
+        "last_imported_at": "2026-10-05T08:49:03.912631Z"
+    },
+    "prediction": {
+        "scored_rounds": 59,
+        "correct": 52,
+        "hit_rate": 0.8814,
+        "brier_score": 0.1332,
+        "opening_kill_baseline_hit_rate": 0.8644,
+        "calibration": [
+            {
+                "min": 0.5,
+                "max": 0.6,
+                "rounds": 1,
+                "mean_confidence": 0.5125,
+                "hit_rate": 1.0
+            },
+            {
+                "min": 0.6,
+                "max": 0.7,
+                "rounds": 7,
+                "mean_confidence": 0.6533,
+                "hit_rate": 1.0
+            },
+            {
+                "min": 0.7,
+                "max": 0.8,
+                "rounds": 47,
+                "mean_confidence": 0.7287,
+                "hit_rate": 0.8511
+            },
+            {
+                "min": 0.8,
+                "max": 0.9,
+                "rounds": 4,
+                "mean_confidence": 0.8383,
+                "hit_rate": 1.0
+            },
+            {
+                "min": 0.9,
+                "max": 1.0,
+                "rounds": 0,
+                "mean_confidence": null,
+                "hit_rate": null
+            }
+        ]
+    },
+    "sides": {
+        "rounds_with_winner": 61,
+        "ct_won": 34,
+        "t_won": 27,
+        "ct_win_rate": 0.5574,
+        "t_win_rate": 0.4426
+    },
+    "opening_kills": {
+        "rounds": 59,
+        "converted": 51,
+        "conversion_rate": 0.8644,
+        "average_seconds": 24.83,
+        "by_side": {
+            "ct": {
+                "rounds": 31,
+                "converted": 28,
+                "conversion_rate": 0.9032
+            },
+            "t": {
+                "rounds": 28,
+                "converted": 23,
+                "conversion_rate": 0.8214
+            }
+        },
+        "top_weapons": [
+            {
+                "weapon": "ak47",
+                "rounds": 15,
+                "converted": 11,
+                "conversion_rate": 0.7333
+            },
+            {
+                "weapon": "m4a1_silencer",
+                "rounds": 14,
+                "converted": 12,
+                "conversion_rate": 0.8571
+            },
+            {
+                "weapon": "awp",
+                "rounds": 9,
+                "converted": 9,
+                "conversion_rate": 1.0
+            },
+            {
+                "weapon": "mac10",
+                "rounds": 3,
+                "converted": 3,
+                "conversion_rate": 1.0
+            },
+            {
+                "weapon": "usp_silencer",
+                "rounds": 3,
+                "converted": 3,
+                "conversion_rate": 1.0
+            }
+        ]
+    },
+    "maps": [
+        {
+            "map_name": "de_mirage",
+            "matches": 2,
+            "rounds": 35,
+            "rounds_with_winner": 35,
+            "ct_won": 19,
+            "t_won": 16,
+            "ct_win_rate": 0.5429,
+            "t_win_rate": 0.4571,
+            "scored_rounds": 34,
+            "correct": 29,
+            "hit_rate": 0.8529,
+            "brier_score": 0.1438
+        },
+        {
+            "map_name": "de_nuke",
+            "matches": 1,
+            "rounds": 18,
+            "rounds_with_winner": 18,
+            "ct_won": 9,
+            "t_won": 9,
+            "ct_win_rate": 0.5,
+            "t_win_rate": 0.5,
+            "scored_rounds": 18,
+            "correct": 16,
+            "hit_rate": 0.8889,
+            "brier_score": 0.1308
+        },
+        {
+            "map_name": "de_ancient",
+            "matches": 1,
+            "rounds": 8,
+            "rounds_with_winner": 8,
+            "ct_won": 6,
+            "t_won": 2,
+            "ct_win_rate": 0.75,
+            "t_win_rate": 0.25,
+            "scored_rounds": 7,
+            "correct": 7,
+            "hit_rate": 1.0,
+            "brier_score": 0.0883
+        }
+    ],
+    "unscored_reasons": [
+        {
+            "reason": "no_opening_kill",
+            "rounds": 2
+        }
+    ],
+    "recent_form": {
+        "window": 2,
+        "recent": {
+            "matches": 2,
+            "scored_rounds": 34,
+            "correct": 29,
+            "hit_rate": 0.8529,
+            "brier_score": 0.1438,
+            "ct_win_rate": 0.5429
+        },
+        "earlier": {
+            "matches": 2,
+            "scored_rounds": 25,
+            "correct": 23,
+            "hit_rate": 0.92,
+            "brier_score": 0.1189,
+            "ct_win_rate": 0.5769
+        },
+        "hit_rate_change": -0.0671,
+        "matches": [
+            {
+                "id": "55963b2d57624c5bbeeb9418fc07f8f0",
+                "map_name": "de_mirage",
+                "imported_at": "2026-10-05T08:49:03.912631Z",
+                "rounds": 25,
+                "score": {
+                    "ct": 13,
+                    "t": 11
+                },
+                "scored_rounds": 25,
+                "correct": 21,
+                "hit_rate": 0.84,
+                "brier_score": 0.1532
+            },
+            {
+                "id": "27ed398db2d04d4abccf03ce82d8a869",
+                "map_name": "de_mirage",
+                "imported_at": "2026-10-05T08:49:00.283547Z",
+                "rounds": 10,
+                "score": {
+                    "ct": 2,
+                    "t": 8
+                },
+                "scored_rounds": 9,
+                "correct": 8,
+                "hit_rate": 0.8889,
+                "brier_score": 0.1176
+            }
+        ]
+    }
+}

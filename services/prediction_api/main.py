@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -11,6 +12,10 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+from steamlink.api import build_steam_context, register as register_steam, start_background_work, stop_background_work
+from steamlink.config import load_settings
+from steamlink.scoring import RoundScorer
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -26,14 +31,20 @@ model = saved_model["model"]
 map_options = [str(value) for value in saved_model["map_options"]]
 weapon_options = [str(value) for value in saved_model["weapon_options"]]
 
-default_origins = "http://localhost:5173,http://127.0.0.1:5173,https://csgooner.com,https://www.csgooner.com"
-allowed_origins = [
-    origin.strip()
-    for origin in os.environ.get("ALLOWED_ORIGINS", default_origins).split(",")
-    if origin.strip()
-]
+settings = load_settings()
+allowed_origins = settings.allowed_origins
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Resume or fail upload / sync jobs left behind by a previous process (steamlink.jobs)
+    # and start the automatic background sync scheduler (steamlink.autosync).
+    start_background_work(app)
+    yield
+    stop_background_work(app)
+
 
 app = FastAPI(
+    lifespan=lifespan,
     title="CS2 Round Prediction API",
     description="Predicts a round winner from the opening kill and map conditions.",
     version="1.0.0",
@@ -41,10 +52,17 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    # Credentials are needed for the Steam session cookie. Origins come from
+    # ALLOWED_ORIGINS and may never be "*" (enforced in load_settings).
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "X-Requested-With"],
 )
+
+# Steam linking/sync is feature-flagged: disabled (routes return 503) unless
+# DATABASE_URL and TOKEN_ENCRYPTION_KEYS are set.
+scorer = RoundScorer(model, map_options, weapon_options)
+register_steam(app, build_steam_context(settings, scorer) if settings.steam_enabled else None)
 
 
 class PredictionInput(BaseModel):

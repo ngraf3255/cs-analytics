@@ -1,0 +1,111 @@
+{
+    "model": {
+        "calibrated_for_matchmaking": false,
+        "coin_flip_brier_score": 0.25,
+        "note": "Retrospective estimate from a model trained on professional CS2 matches using only map, opening-kill side, timing and weapon. Not generated during the match and not calibrated for matchmaking skill levels."
+    },
+    "totals": {
+        "matches": 0,
+        "imported_matches": 0,
+        "not_imported_matches": 0,
+        "rounds": 0,
+        "rounds_with_winner": 0,
+        "scored_rounds": 0,
+        "unscored_rounds": 0,
+        "first_imported_at": null,
+        "last_imported_at": null
+    },
+    "prediction": {
+        "scored_rounds": 0,
+        "correct": 0,
+        "hit_rate": null,
+        "brier_score": null,
+        "opening_kill_baseline_hit_rate": null,
+        "calibration": [
+            {
+                "min": 0.5,
+                "max": 0.6,
+                "rounds": 0,
+                "mean_confidence": null,
+                "hit_rate": null
+            },
+            {
+                "min": 0.6,
+                "max": 0.7,
+                "rounds": 0,
+                "mean_confidence": null,
+                "hit_rate": null
+            },
+            {
+                "min": 0.7,
+                "max": 0.8,
+                "rounds": 0,
+                "mean_confidence": null,
+                "hit_rate": null
+            },
+            {
+                "min": 0.8,
+                "max": 0.9,
+                "rounds": 0,
+                "mean_confidence": null,
+                "hit_rate": null
+            },
+            {
+                "min": 0.9,
+                "max": 1.0,
+                "rounds": 0,
+                "mean_confidence": null,
+                "hit_rate": null
+            }
+        ]
+    },
+    "sides": {
+        "rounds_with_winner": 0,
+        "ct_won": 0,
+        "t_won": 0,
+        "ct_win_rate": null,
+        "t_win_rate": null
+    },
+    "opening_kills": {
+        "rounds": 0,
+        "converted": 0,
+        "conversion_rate": null,
+        "average_seconds": null,
+        "by_side": {
+            "ct": {
+                "rounds": 0,
+                "converted": 0,
+                "conversion_rate": null
+            },
+            "t": {
+                "rounds": 0,
+                "converted": 0,
+                "conversion_rate": null
+            }
+        },
+        "top_weapons": []
+    },
+    "maps": [],
+    "unscored_reasons": [],
+    "recent_form": {
+        "window": 10,
+        "recent": {
+            "matches": 0,
+            "scored_rounds": 0,
+            "correct": 0,
+            "hit_rate": null,
+            "brier_score": null,
+            "ct_win_rate": null
+        },
+        "earlier": {
+            "matches": 0,
+            "scored_rounds": 0,
+            "correct": 0,
+            "hit_rate": null,
+            "brier_score": null,
+            "ct_win_rate": null
+        },
+        "hit_rate_change": null,
+        "matches": []
+    }
+}

@@ -1,0 +1,30 @@
+{
+    "steam_id": "76561198000000077",
+    "created_at": "2026-10-05T10:38:49.754525Z",
+    "match_access": {
+        "linked": true,
+        "auth_code_hint": "****-*****-FG56",
+        "linked_at": "2026-10-05T10:38:49.819452Z",
+        "updated_at": "2026-10-05T10:38:56.697888Z",
+        "needs_relink": null
+    },
+    "sync": {
+        "status": "ok",
+        "last_started_at": "2026-10-05T10:38:56.687760Z",
+        "last_finished_at": "2026-10-05T10:38:56.700661Z",
+        "last_synced_at": "2026-10-05T10:38:56.700661Z",
+        "last_error": null,
+        "last_imported_count": 3,
+        "active_jobs": 0,
+        "auto_sync": {
+            "enabled": true,
+            "active": true,
+            "paused_reason": null,
+            "interval_seconds": 120,
+            "next_at": "2026-10-05T10:41:06.600130Z",
+            "last_run_at": "2026-10-05T10:38:56.701658Z",
+            "last_error": null,
+            "failures": 0
+        }
+    }
+}
