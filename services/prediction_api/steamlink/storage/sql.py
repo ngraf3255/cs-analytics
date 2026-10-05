@@ -293,6 +293,11 @@ class SqlStorage(Storage):
                 row = conn.execute(select(users).where(users.c.steam_id == steam_id)).one()
                 return _user(row)
 
+    def find_user(self, steam_id: str) -> User | None:
+        with self.engine.begin() as conn:
+            row = conn.execute(select(users).where(users.c.steam_id == steam_id)).first()
+        return _user(row) if row else None
+
     def create_session(self, token_hash: str, user_id: str, now: datetime, expires_at: datetime) -> None:
         with self.engine.begin() as conn:
             conn.execute(delete(sessions).where(and_(sessions.c.user_id == user_id, sessions.c.expires_at < now)))

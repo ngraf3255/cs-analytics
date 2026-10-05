@@ -203,6 +203,10 @@ class Storage(ABC):
     def get_or_create_user(self, steam_id: str, now: datetime) -> User: ...
 
     @abstractmethod
+    def find_user(self, steam_id: str) -> User | None:
+        """The user with this SteamID64, or None (never creates one; offline export)."""
+
+    @abstractmethod
     def create_session(self, token_hash: str, user_id: str, now: datetime, expires_at: datetime) -> None: ...
 
     @abstractmethod

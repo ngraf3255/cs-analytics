@@ -16,7 +16,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
 from . import openid
@@ -24,6 +24,7 @@ from .autosync import AutoSyncScheduler
 from .analytics import RECENT_DEFAULT, SIDES, build_user_summary, match_date, match_result
 from .config import Settings
 from .crypto import AuthCodeCipher, DecryptionError
+from . import export as tableau_export
 from .jobs import UploadJobWorker
 from .scoring import RoundScorer
 from .sessions import LOGIN_STATE_COOKIE, CookieSigner
@@ -578,6 +579,29 @@ def matches_summary(
     summary = build_user_summary(ctx.storage, ctx.scorer, user.id, steam_id=user.steam_id, recent=recent)
     summary["model"]["note"] = MODEL_NOTE
     return summary
+
+
+@router.get("/matches/export/{table}.csv")
+def export_csv(table: str, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> Response:
+    """Tableau-ready CSV of the signed-in user's own match list (steamlink.export):
+    ``rounds`` (one row per round of every imported match) or ``matches`` (one row per
+    match). Only matches in the user's list (uploads, Steam sync, shared matches) are
+    included; ``you_*`` columns are the user's own side / stats. Streamed as UTF-8 CSV.
+    Registered before ``/matches/{match_id}``."""
+
+    if table not in tableau_export.TABLES:
+        raise HTTPException(status_code=404, detail="export_not_found")
+    columns, rows = tableau_export.TABLES[table]
+    stamp = ctx.clock().astimezone(timezone.utc).strftime("%Y%m%d")
+    return StreamingResponse(
+        tableau_export.csv_chunks(columns, rows(ctx.storage, ctx.scorer, user.id, user.steam_id)),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="cs2-{table}-{stamp}.csv"',
+            "Cache-Control": "no-store",
+            "X-Export-Version": str(tableau_export.EXPORT_VERSION),
+        },
+    )
 
 
 @router.get("/matches/{match_id}")
