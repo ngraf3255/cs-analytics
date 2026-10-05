@@ -17,31 +17,34 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : word.e
 
 /** Message right after POST /steam/sync (before the queued matches are imported). */
 function syncMessage(result: SyncResult): { tone: "ok" | "error"; text: string } | null {
-  const skipped = result.skipped ? ` ${plural(result.skipped, "match")} you already had ${result.skipped === 1 ? "was" : "were"} skipped.` : "";
+  const attached = result.attached ?? 0;
+  const skipped = (attached ? ` Imported ${plural(attached, "new match")} (already analysed on the server, no download needed).` : "")
+    + (result.skipped ? ` ${plural(result.skipped, "match")} you already had ${result.skipped === 1 ? "was" : "were"} skipped.` : "");
   if (result.status === "error") {
     return { tone: "error", text: `${messageFor(syncErrorCode(result.error), "Sync failed.")}${result.jobs.length ? " Matches found before the error are still being imported." : ""}` };
   }
   if (result.jobs.length) return null;  // the job progress tells the rest
   if (result.status === "queue_full") return { tone: "ok", text: `${messageFor("sync_queue_full")}${skipped}` };
   if (result.status === "partial") return { tone: "ok", text: `No new demos to download.${skipped} More matches are waiting. Sync again to continue.` };
-  return { tone: "ok", text: `You’re up to date.${skipped}` };
+  return { tone: "ok", text: attached ? `${skipped.trim()} You’re up to date.` : `You’re up to date.${skipped}` };
 }
 
-/** How the POST /steam/sync request itself ended; null when following jobs after a reload (unknown). */
-type SyncOutcome = { hasMore: boolean; error: string | null } | null;
+/** How the POST /steam/sync request itself ended; null when following jobs after a reload (unknown).
+ * ``attached``: new matches it added to the list without a job (already analysed on the server). */
+type SyncOutcome = { hasMore: boolean; error: string | null; attached?: number } | null;
 
 const syncErrorCode = (error: string | null) => (error === "invalid_auth_code" ? "invalid_auth_code_status" : error);
 
 /** Summary once every job of a sync has finished. */
 function syncSummary(jobs: UploadJob[], outcome: SyncOutcome): { tone: "ok" | "error"; text: string } {
-  const imported = jobs.filter((j) => j.status === "done" && j.match?.status === "imported" && j.created).length;
+  const imported = jobs.filter((j) => j.status === "done" && j.match?.status === "imported" && j.created).length + (outcome?.attached ?? 0);
   const known = jobs.filter((j) => j.status === "done" && j.match?.status === "imported" && !j.created).length;
   const missing = jobs.filter((j) => j.status === "done" && j.match && j.match.status !== "imported").length;
   const failed = jobs.filter((j) => j.status === "failed");
   const parts: string[] = [];
   // "Imported 0 new matches." only adds noise when something else explains the outcome.
   if (imported || !(known || missing || failed.length)) parts.push(`Imported ${plural(imported, "new match")}.`);
-  if (known) parts.push(`${plural(known, "match")} ${known === 1 ? "was" : "were"} already imported.`);
+  if (known) parts.push(`${plural(known, "match")} ${known === 1 ? "was" : "were"} already in your list.`);
   if (missing) parts.push(`${plural(missing, "demo")} couldn’t be imported (see the list below; you can upload ${missing === 1 ? "it" : "them"} by hand).`);
   if (failed.length) parts.push(failed.length === 1 ? messageFor(failed[0].error, "One match failed.") : `${failed.length} matches failed: ${messageFor(failed[0].error, "try syncing again.")}`);
   // The history walk itself stopped early: say why rather than "up to date".
@@ -118,7 +121,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
       const rounds = `${job.match.rounds_count} round${job.match.rounds_count === 1 ? "" : "s"}`;
       setNotice({
         tone: "ok",
-        text: job.created ? `Demo imported: ${mapLabel(job.match.map_name)}, ${rounds}.` : "That demo was already imported. Opening its report.",
+        text: job.created ? `Demo imported: ${mapLabel(job.match.map_name)}, ${rounds}.` : "That demo is already in your matches. Opening its report.",
       });
       await loadMatches();
       setSelected(job.match.id);
@@ -224,9 +227,9 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
     setSyncing(false);
     setHasMore(result.has_more);
     setNotice(syncMessage(result));
-    if (result.skipped) void loadMatches();
+    if (result.skipped || result.attached) void loadMatches();
     const jobs = result.jobs ?? [];
-    const outcome = { hasMore: result.has_more, error: result.status === "error" ? result.error : null };
+    const outcome = { hasMore: result.has_more, error: result.status === "error" ? result.error : null, attached: result.attached ?? 0 };
     if (jobs.some(isJobActive)) {
       await followSyncJobs(jobs, outcome);
     } else {

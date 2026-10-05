@@ -29,7 +29,11 @@ export type Me = {
 export type SyncResult = {
   status: "up_to_date" | "partial" | "queue_full" | "error" | string;
   queued: number;
+  /** New matches already in the user's list (no download). */
   skipped: number;
+  /** New matches already imported on the server (e.g. by another player in the match): added to the
+   * user's list right away, no download. Missing from older API versions. */
+  attached?: number;
   processed: number;
   has_more: boolean;
   error: string | null;

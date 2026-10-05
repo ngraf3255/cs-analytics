@@ -141,7 +141,7 @@ describe("demo upload", () => {
     pick("match.dem");
     await act(() => FakeXHR.last().respond(200, { job: { ...done, created: false } }));
     await advance();
-    expect(screen.getByRole("status")).toHaveTextContent("That demo was already imported. Opening its report.");
+    expect(screen.getByRole("status")).toHaveTextContent("That demo is already in your matches. Opening its report.");
     expect(screen.getByText(/9 of 10 rounds could be scored/)).toBeInTheDocument();
   });
 

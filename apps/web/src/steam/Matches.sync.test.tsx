@@ -75,7 +75,7 @@ describe("Steam sync", () => {
     expect(syncButton()).toBeDisabled();
     await advance(POLL_MS);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Imported 1 new match. 1 match was already imported. You’re up to date.");
+    expect(screen.getByRole("status")).toHaveTextContent("Imported 1 new match. 1 match was already in your list. You’re up to date.");
     expect(syncButton()).toHaveTextContent("SYNC MATCHES");
     expect(syncButton()).toBeEnabled();
     expect(onMeChange).toHaveBeenCalled();
@@ -161,7 +161,7 @@ describe("Steam sync", () => {
     expect(screen.getByText(/Downloading the match demo from Valve in the background/)).toBeInTheDocument();
     await advance(POLL_MS);
     await advance(POLL_MS);
-    expect(screen.getByRole("status")).toHaveTextContent("Imported 1 new match. 1 match was already imported.");
+    expect(screen.getByRole("status")).toHaveTextContent("Imported 1 new match. 1 match was already in your list.");
   });
 
   it("disables Sync until match history is linked", async () => {
@@ -210,5 +210,35 @@ describe("Steam sync", () => {
     await advance();
     await advance(POLL_MS);
     expect(screen.getByRole("status")).toHaveTextContent(/^Imported 1 new match\.$/);
+  });
+
+  it("counts matches another player already imported (attached, no download) as new for this user", async () => {
+    const done = job(finalFirst, { created: true });
+    installFakeApi(routes({
+      "POST /steam/sync": { status: 202, body: { ...posted, queued: 1, attached: 1, processed: 2, jobs: [first] } },
+      "GET /steam/sync": [syncState([]), syncState([done], 0)],
+    }));
+    render(<Matches me={linkedMe} onMeChange={async () => undefined} />);
+    await advance();
+    fireEvent.click(syncButton());
+    await advance();
+    expect(syncButton()).toHaveTextContent("MATCH 1/1");
+    await advance(POLL_MS);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Imported 2 new matches\. You’re up to date\.$/);
+  });
+
+  it("says attached matches were imported even when nothing needed a download", async () => {
+    const api = installFakeApi(routes({
+      "GET /steam/sync": syncState([]),
+      "POST /steam/sync": { status: 200, body: { status: "up_to_date", queued: 0, skipped: 1, attached: 2, processed: 3, has_more: false, error: null, jobs: [] } },
+    }));
+    render(<Matches me={linkedMe} onMeChange={async () => undefined} />);
+    await advance();
+    const lists = api.count("GET /matches?limit=50&offset=0");
+    fireEvent.click(syncButton());
+    await advance();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /^Imported 2 new matches \(already analysed on the server, no download needed\)\. 1 match you already had was skipped\. You’re up to date\.$/);
+    expect(api.count("GET /matches?limit=50&offset=0")).toBeGreaterThan(lists);
   });
 });
