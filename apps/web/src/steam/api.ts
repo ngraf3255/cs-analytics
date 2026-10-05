@@ -1,5 +1,5 @@
 import { ApiError } from "./errors";
-import type { MatchAccess, MatchesAnalytics, MatchReport, MatchSummary, Me, SyncResult, SyncState, UploadJob } from "./types";
+import type { AutoSync, MatchAccess, MatchesAnalytics, MatchReport, MatchSummary, Me, SyncResult, SyncState, UploadJob } from "./types";
 
 const apiBase = (
   import.meta.env.VITE_API_BASE_URL ||
@@ -125,6 +125,8 @@ export const steamApi = {
   putMatchAccess: (body: { auth_code: string; share_code: string; consent: boolean }) =>
     request<MatchAccess>("/steam/match-access", { method: "PUT", body: JSON.stringify(body) }, true),
   deleteMatchAccess: () => request<void>("/steam/match-access", { method: "DELETE" }, true),
+  putAutoSync: (enabled: boolean) =>
+    request<AutoSync>("/steam/auto-sync", { method: "PUT", body: JSON.stringify({ enabled }) }, true),
   getSync: () => request<SyncState>("/steam/sync"),
   postSync: () => request<SyncResult>("/steam/sync", { method: "POST" }, true),
   listMatches: (limit = 20, offset = 0) =>

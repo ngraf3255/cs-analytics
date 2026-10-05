@@ -276,7 +276,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
               ? syncJobsHint(syncJobs)
               : !linked ? "Link your match history above to sync, or upload a CS2 .dem / .dem.bz2 you already have."
                 : relink ? (relink.field === "auth_code" ? "Sync is paused: paste your current Game Authentication Code above." : "Sync is paused: paste a recent share code above (your authentication code is kept).")
-                : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
+                : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}${me.sync.auto_sync?.active ? " · auto-sync on" : ""}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
         </span>
       </div>
       {upload?.phase === "uploading" && (

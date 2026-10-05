@@ -22,6 +22,28 @@ export type SyncStatus = {
   last_imported_count: number;
   /** Matches queued by syncs that are still downloading / parsing in the background. */
   active_jobs?: number;
+  /** Last sync (manual or automatic) that finished OK. Missing from older APIs. */
+  last_synced_at?: string | null;
+  /** Automatic background sync. Missing from older APIs. */
+  auto_sync?: AutoSync;
+};
+
+/** Automatic background sync (GET /steam/sync, /me sync.auto_sync; PUT /steam/auto-sync). */
+export type AutoSync = {
+  /** The user's toggle (on by default). */
+  enabled: boolean;
+  /** It will actually run for this user; else paused_reason says why. */
+  active: boolean;
+  paused_reason: "turned_off" | "not_linked" | "needs_relink" | "server_disabled" | "demo_retrieval_not_configured" | string | null;
+  /** How often linked users are synced (null: off on this server). */
+  interval_seconds: number | null;
+  /** Earliest time of the next automatic sync (null while paused). */
+  next_at: string | null;
+  last_run_at: string | null;
+  /** Error of the last automatic run (null: it worked). */
+  last_error: string | null;
+  /** Consecutive failed syncs (the server backs off). */
+  failures: number;
 };
 
 /** GET /steam/sync: status plus the user's most recent sync jobs, newest first. */

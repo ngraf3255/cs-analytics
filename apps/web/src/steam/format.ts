@@ -29,3 +29,30 @@ export function outdatedText(match: Pick<MatchSummary, "outdated">): string | nu
     : "Parsed by an older version (warmup or knife rounds may still be counted).";
   return `${why} Upload this demo again to update it.`;
 }
+
+const MINUTE = 60_000;
+
+function span(ms: number): string {
+  const minutes = Math.round(ms / MINUTE);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} days`;
+}
+
+/** "just now" / "5 min ago" / "3 h ago" / "2 days ago". */
+export function timeAgo(iso: string, now = Date.now()): string {
+  const ms = now - new Date(iso).getTime();
+  return ms < MINUTE ? "just now" : `${span(ms)} ago`;
+}
+
+/** "in 25 min" / "in 2 h"; "any minute now" when due or overdue. */
+export function timeUntil(iso: string, now = Date.now()): string {
+  const ms = new Date(iso).getTime() - now;
+  return ms < MINUTE ? "any minute now" : `in ${span(ms)}`;
+}
+
+/** "every 30 min" / "every 2 h". */
+export function everyText(seconds: number): string {
+  return `every ${span(seconds * 1000)}`;
+}

@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { steamApi, steamLoginUrl } from "./api";
-import { ApiError } from "./errors";
+import { ApiError, messageFor } from "./errors";
+import { everyText, timeAgo, timeUntil } from "./format";
 import {
   AUTH_CODE_EXAMPLE, AUTH_CODE_URL, SHARE_CODE_EXAMPLE, SHARE_CODE_GUIDE_URL, VALVE_MATCH_HISTORY_DOCS_URL,
   checkAuthCode, checkShareCode, errorField,
 } from "./linkInput";
-import type { Me, NeedsRelink } from "./types";
+import type { AutoSync, Me, NeedsRelink } from "./types";
 
 type Props = {
   me: Me | null;
@@ -110,6 +111,7 @@ function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promi
             Match history linked. Game Authentication Code <code>{access.auth_code_hint}</code>
             {access.updated_at && <> · updated {new Date(access.updated_at).toLocaleString()}</>}
           </p>
+          <AutoSyncStatus me={me} onChange={onChange} />
           {relink ? (
             <>
               <div className="steam-error relink-alert" role="alert">
@@ -138,6 +140,67 @@ function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promi
         <button type="button" className="ghost-button" onClick={logout} disabled={busy}>Sign out</button>
         <button type="button" className="danger-button" onClick={deleteAll} disabled={busy}>Delete my data</button>
       </div>
+      {error && <div className="steam-error" role="alert">{error}</div>}
+    </div>
+  );
+}
+
+/** Why automatic sync isn't running for this user (``auto_sync.paused_reason``). */
+export const AUTO_SYNC_PAUSED_TEXT: Record<string, string> = {
+  turned_off: "auto-sync off",
+  needs_relink: "auto-sync paused until you re-link",
+  not_linked: "auto-sync starts once you link",
+  server_disabled: "auto-sync isn’t available on this server",
+  demo_retrieval_not_configured: "auto-sync starts once the server can download demos",
+};
+
+/** "Last synced 5 min ago · auto-sync on" plus the on/off toggle (linked accounts). */
+export function AutoSyncStatus({ me, onChange }: { me: Me; onChange: () => Promise<unknown> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [override, setOverride] = useState<AutoSync | null>(null);
+  const auto = override ?? me.sync.auto_sync;
+  useEffect(() => setOverride(null), [me]);
+  if (!auto) return null;  // older API without automatic sync
+  const lastSynced = me.sync.last_synced_at ?? null;
+  const serverOff = auto.paused_reason === "server_disabled";
+
+  async function toggle(enabled: boolean) {
+    setBusy(true);
+    setError("");
+    try {
+      setOverride(await steamApi.putAutoSync(enabled));
+      await onChange();
+    } catch (reason) {
+      setError(errorText(reason, "Could not change automatic sync."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const state = auto.active ? "auto-sync on" : AUTO_SYNC_PAUSED_TEXT[auto.paused_reason ?? ""] ?? "auto-sync paused";
+  return (
+    <div className="auto-sync" aria-label="Automatic sync">
+      <p className="auto-sync-status" role="status">
+        {lastSynced ? `Last synced ${timeAgo(lastSynced)}` : "Not synced yet"}, {state}
+        {auto.active && auto.next_at && <span className="steam-muted"> · next check {timeUntil(auto.next_at)}</span>}
+      </p>
+      {auto.active && auto.last_error && (
+        <p className="steam-muted auto-sync-error">
+          Last automatic sync didn’t work: {messageFor(auto.last_error, "unexpected error.")}
+          {auto.failures > 1 && ` (${auto.failures} times in a row; retrying less often)`}
+        </p>
+      )}
+      {!serverOff && (
+        <label className="steam-consent auto-sync-toggle">
+          <input type="checkbox" role="switch" checked={auto.enabled} disabled={busy}
+            onChange={(event) => void toggle(event.target.checked)} />
+          <span>
+            Sync new matches automatically{auto.interval_seconds ? ` (checks Valve ${everyText(auto.interval_seconds)})` : ""}.
+            Off: matches only come in when you click Sync.
+          </span>
+        </label>
+      )}
       {error && <div className="steam-error" role="alert">{error}</div>}
     </div>
   );
@@ -264,8 +327,8 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
       <label className="steam-consent">
         <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
         <span>
-          I allow CS Gooner to store this code encrypted and use it only to fetch my CS2 match history when I click Sync.
-          I can disconnect or delete my data at any time.
+          I allow CS Gooner to store this code encrypted and use it only to fetch my CS2 match history: automatically in
+          the background (I can turn that off) and when I click Sync. I can disconnect or delete my data at any time.
         </span>
       </label>
       <button className="submit-button" type="submit" disabled={busy || !consent}>

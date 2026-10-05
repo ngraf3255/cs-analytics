@@ -1,0 +1,10 @@
+{
+    "enabled": true,
+    "active": true,
+    "paused_reason": null,
+    "interval_seconds": 120,
+    "next_at": "2026-10-05T10:41:06.600130Z",
+    "last_run_at": "2026-10-05T10:38:56.701658Z",
+    "last_error": null,
+    "failures": 0
+}
