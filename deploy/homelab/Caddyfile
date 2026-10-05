@@ -1,0 +1,16 @@
+# TLS termination for api.csgooner.com when the VM has public 80/443.
+# Prefer Cloudflare DNS-only (grey cloud) so large .dem uploads are not capped
+# at Cloudflare's 100 MB Free/Pro proxy limit.
+#
+# If you use Cloudflare Tunnel instead, you do not need this Caddy service —
+# point the tunnel at http://127.0.0.1:8000 and skip the "edge" profile.
+
+api.csgooner.com {
+	encode gzip
+	reverse_proxy api:8000
+
+	# Allow full-length demos (API default UPLOAD_MAX_BYTES = 1 GiB).
+	request_body {
+		max_size 1GB
+	}
+}

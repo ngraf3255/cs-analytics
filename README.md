@@ -8,7 +8,7 @@ An analytics project built around professional Counter-Strike 2 rounds. It combi
 
 ## Round predictor
 
-The new prediction app has a React + TypeScript frontend and a FastAPI service that loads the trained scikit-learn model. The frontend deploys as static assets to the Cloudflare Worker `cs-analytics`; `render.yaml` describes the free Render web service for the API. The existing Streamlit deployment remains available while the new app is being connected to the domain:
+The new prediction app has a React + TypeScript frontend and a FastAPI service that loads the trained scikit-learn model. The frontend deploys as static assets to the Cloudflare Worker `cs-analytics`; the API baseline is the homelab VM (`docs/deploy-homelab.md`). The existing Streamlit deployment remains available while the new app is being connected to the domain:
 
 [Open the current Streamlit predictor](https://cs-analytics-4fqredurpvknehdkr3svw4.streamlit.app/)
 
@@ -35,15 +35,13 @@ The local frontend calls the API through the Vite development proxy. API documen
 
 ### Deploy
 
-**Baseline:** FastAPI + Postgres on a home Proxmox VM (2 vCPU / 8 GB); site on Cloudflare; API at `api.csgooner.com`. See [`docs/deploy-homelab.md`](docs/deploy-homelab.md). The Render blueprint below is optional/legacy.
+**Baseline:** FastAPI + Postgres on a home Proxmox VM (2 vCPU / 8 GB); site on Cloudflare; API at `api.csgooner.com`. Compose/env/Caddy: [`deploy/homelab/`](deploy/homelab/). Steps: [`docs/deploy-homelab.md`](docs/deploy-homelab.md). `render.yaml` is optional/legacy.
 
-1. Create the API service in Render from the repository's `render.yaml` blueprint. The service uses the repository root so it can load `model.pkl`.
-2. The frontend defaults to the Render API URL `https://cs-analytics-cwmo.onrender.com`. Adding `api.csgooner.com` as a Render custom domain is optional; to use it, set the GitHub variable `VITE_API_BASE_URL` to `https://api.csgooner.com`.
-3. The Wrangler config attaches `csgooner.com` and `www.csgooner.com` to the `cs-analytics` Worker as custom domains when it deploys. Cloudflare creates the DNS records and certificates. Remove conflicting DNS records first if Cloudflare reports a conflict.
-4. In GitHub repository **Settings → Secrets and variables → Actions**, add secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The API token needs **Edit Cloudflare Workers** for the account and **Zone → Workers Routes → Write** for the `csgooner.com` zone so Wrangler can manage the custom domains. Optionally set the repository variable `VITE_API_BASE_URL`; it defaults to `https://cs-analytics-cwmo.onrender.com`.
-5. Push frontend changes to `main` to build and deploy automatically, or run **Deploy frontend to Cloudflare Worker** manually from the Actions tab. Use this GitHub Action as the deployment pipeline. If Cloudflare Workers Builds is also connected to this repository, disable its automatic deployment; its default `npx wrangler deploy` runs at the monorepo root and does not target `apps/web`.
-
-The Render free service sleeps after 15 minutes without traffic, so the first API request after idle may take about a minute to wake it.
+1. On the homelab VM: copy `deploy/homelab/.env.example` → `.env`, set secrets, then `docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d --build` (or the systemd unit in the same folder).
+2. Point Cloudflare DNS for `api.csgooner.com` at home (`REPLACE_WITH_HOME_PUBLIC_IP` or a tunnel). Prefer **DNS only** for large demo uploads. Terminate HTTPS with Caddy (`--profile edge`), nginx, or Cloudflare Tunnel.
+3. The frontend production default is `https://api.csgooner.com`. Optionally set GitHub variable `VITE_API_BASE_URL` to the same value and redeploy the Worker.
+4. The Wrangler config attaches `csgooner.com` and `www.csgooner.com` to the `cs-analytics` Worker. In GitHub **Settings → Secrets and variables → Actions**, keep secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+5. Push frontend changes to `main` (or run **Deploy frontend to Cloudflare Worker**) to publish the site. If Cloudflare Workers Builds is also connected, disable its automatic deploy; it does not target `apps/web`.
 
 ## Project overview
 
@@ -98,7 +96,8 @@ cs2-analytics/
 ├── sql/
 ├── tableau/
 ├── model.pkl                # Trained scikit-learn pipeline and input options
-└── render.yaml              # Render API deployment blueprint
+├── deploy/homelab/          # Homelab compose, Dockerfile, Caddy, systemd
+└── render.yaml              # Legacy Render API blueprint (not baseline)
 ```
 
 ## Data source

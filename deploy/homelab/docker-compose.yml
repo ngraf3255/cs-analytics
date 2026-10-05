@@ -1,0 +1,90 @@
+# Homelab: FastAPI + Postgres on one Proxmox VM (2 vCPU / 8 GB).
+# Postgres is NOT published on the public internet — only on the compose network
+# (and optionally 127.0.0.1 for local admin). Put Caddy / nginx / CF Tunnel in
+# front of the API; see docs/deploy-homelab.md.
+#
+# From the repository root on the VM:
+#   cp deploy/homelab/.env.example deploy/homelab/.env   # edit secrets
+#   docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d
+#
+# Placeholders (replace before go-live):
+#   HOMELAB_PUBLIC_IP  — home WAN IP for Cloudflare A record (or use a tunnel)
+#   HOMELAB_VM_LAN_IP  — Proxmox VM LAN IP if you port-forward 443 to this host
+
+name: cs-analytics-homelab
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-csgooners}
+      POSTGRES_USER: ${POSTGRES_USER:-csgooners}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/homelab/.env}
+    volumes:
+      - csa-pgdata:/var/lib/postgresql/data
+    # Bind to loopback only for admin tools on the VM. Do not map 0.0.0.0:5432.
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - csa
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/homelab/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-csgooners}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-csgooners}
+      # Compose overrides keep CORS / public URLs consistent with production.
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.csgooner.com}
+      FRONTEND_URL: ${FRONTEND_URL:-https://csgooner.com}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://csgooner.com,https://www.csgooner.com,http://localhost:5173,http://127.0.0.1:5173}
+      UPLOAD_JOB_DIR: /var/lib/csa/upload-jobs
+      PORT: "8000"
+    volumes:
+      - csa-upload-jobs:/var/lib/csa/upload-jobs
+    # API listens on the VM loopback; Caddy (or the host firewall + tunnel) fronts HTTPS.
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - csa
+
+  # Optional HTTPS edge on the VM (Let's Encrypt). Enable with:
+  #   docker compose -f deploy/homelab/docker-compose.yml --profile edge up -d
+  # Requires 80/443 reachable from the internet (or use Cloudflare Tunnel instead).
+  caddy:
+    profiles: ["edge"]
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - csa-caddy-data:/data
+      - csa-caddy-config:/config
+    networks:
+      - csa
+
+volumes:
+  csa-pgdata:
+  csa-upload-jobs:
+  csa-caddy-data:
+  csa-caddy-config:
+
+networks:
+  csa:
+    driver: bridge
