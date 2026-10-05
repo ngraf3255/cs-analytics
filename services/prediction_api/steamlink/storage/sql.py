@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import (
+    BigInteger,
     Column,
     DateTime,
     Float,
@@ -18,6 +19,7 @@ from sqlalchemy import (
     and_,
     create_engine,
     delete,
+    func,
     event,
     insert,
     or_,
@@ -30,6 +32,7 @@ from sqlalchemy.pool import StaticPool
 
 from .base import (
     UNKNOWN_MATCH_ID,
+    UPLOAD_JOB_ACTIVE,
     UPLOAD_KEY_PREFIX,
     CursorConflict,
     MatchAccess,
@@ -38,6 +41,7 @@ from .base import (
     RoundRecord,
     Storage,
     SyncState,
+    UploadJob,
     User,
 )
 
@@ -122,6 +126,37 @@ rounds = Table(
     Column("opening_weapon", String),
     Column("unscored_reason", String),
 )
+upload_jobs = Table(
+    "upload_jobs", metadata,
+    Column("id", String, primary_key=True),
+    Column("user_id", String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("status", String, nullable=False),
+    Column("stage", String),
+    Column("progress", Float),
+    Column("share_code", String),
+    Column("demo_path", String, nullable=False),
+    Column("demo_sha256", String),
+    Column("size_bytes", BigInteger, nullable=False),
+    Column("attempts", Integer, nullable=False, default=0),
+    Column("error", String),
+    Column("match_id", String),
+    Column("match_created", Integer),
+    Column("created_at", UTCDateTime, nullable=False),
+    Column("updated_at", UTCDateTime, nullable=False),
+    Column("started_at", UTCDateTime),
+    Column("finished_at", UTCDateTime),
+)
+_JOB_UPDATABLE = frozenset({"status", "stage", "progress", "error", "match_id", "match_created", "finished_at"})
+
+
+def _upload_job(row) -> UploadJob:
+    return UploadJob(
+        id=row.id, user_id=row.user_id, status=row.status, demo_path=row.demo_path, size_bytes=row.size_bytes,
+        created_at=row.created_at, updated_at=row.updated_at, stage=row.stage, progress=row.progress,
+        share_code=row.share_code, demo_sha256=row.demo_sha256, attempts=row.attempts, error=row.error,
+        match_id=row.match_id, match_created=None if row.match_created is None else bool(row.match_created),
+        started_at=row.started_at, finished_at=row.finished_at,
+    )
 
 
 def normalize_database_url(url: str) -> str:
@@ -379,6 +414,92 @@ class SqlStorage(Storage):
         cls._insert_rounds(conn, match_id, match)
         return match_id
 
+    # Upload jobs -------------------------------------------------------------
+    def create_upload_job(self, job: UploadJob, *, max_active: int | None = None) -> bool:
+        values = dict(
+            id=job.id, user_id=job.user_id, status=job.status, stage=job.stage, progress=job.progress,
+            share_code=job.share_code, demo_path=job.demo_path, demo_sha256=job.demo_sha256,
+            size_bytes=job.size_bytes, attempts=job.attempts, error=job.error, match_id=job.match_id,
+            match_created=None if job.match_created is None else int(job.match_created),
+            created_at=job.created_at, updated_at=job.updated_at, started_at=job.started_at,
+            finished_at=job.finished_at,
+        )
+        with self.engine.begin() as conn:
+            if max_active is not None:
+                active = conn.execute(select(func.count()).select_from(upload_jobs)
+                                      .where(upload_jobs.c.status.in_(UPLOAD_JOB_ACTIVE))).scalar_one()
+                if active >= max_active:
+                    return False
+            conn.execute(insert(upload_jobs).values(**values))
+        return True
+
+    def get_upload_job(self, user_id: str, job_id: str) -> UploadJob | None:
+        with self.engine.begin() as conn:
+            row = conn.execute(select(upload_jobs).where(
+                and_(upload_jobs.c.user_id == user_id, upload_jobs.c.id == job_id))).first()
+        return _upload_job(row) if row else None
+
+    def list_upload_jobs(self, user_id: str, *, limit: int) -> list[UploadJob]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(upload_jobs).where(upload_jobs.c.user_id == user_id)
+                .order_by(upload_jobs.c.created_at.desc(), upload_jobs.c.id.desc()).limit(limit)
+            ).all()
+        return [_upload_job(row) for row in rows]
+
+    def list_active_upload_jobs(self) -> list[UploadJob]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(upload_jobs).where(upload_jobs.c.status.in_(UPLOAD_JOB_ACTIVE))
+                .order_by(upload_jobs.c.created_at, upload_jobs.c.id)
+            ).all()
+        return [_upload_job(row) for row in rows]
+
+    def claim_next_upload_job(self, now: datetime) -> UploadJob | None:
+        while True:
+            with self.engine.begin() as conn:
+                row = conn.execute(
+                    select(upload_jobs.c.id).where(upload_jobs.c.status == "queued")
+                    .order_by(upload_jobs.c.created_at, upload_jobs.c.id).limit(1)
+                ).first()
+                if row is None:
+                    return None
+                claimed = conn.execute(
+                    update(upload_jobs).where(and_(upload_jobs.c.id == row.id, upload_jobs.c.status == "queued"))
+                    .values(status="processing", stage=None, progress=None, attempts=upload_jobs.c.attempts + 1,
+                            started_at=now, updated_at=now)
+                ).rowcount
+                if claimed == 1:
+                    job = conn.execute(select(upload_jobs).where(upload_jobs.c.id == row.id)).one()
+                    return _upload_job(job)
+            # another worker claimed it first: try the next one
+
+    def update_upload_job(self, job_id: str, now: datetime, **fields) -> None:
+        unknown = set(fields) - _JOB_UPDATABLE
+        if unknown:
+            raise ValueError(f"not updatable: {sorted(unknown)}")
+        if "match_created" in fields and fields["match_created"] is not None:
+            fields["match_created"] = int(fields["match_created"])
+        with self.engine.begin() as conn:
+            conn.execute(update(upload_jobs).where(upload_jobs.c.id == job_id).values(updated_at=now, **fields))
+
+    def upload_jobs_ahead(self, job: UploadJob) -> int:
+        with self.engine.begin() as conn:
+            return conn.execute(
+                select(func.count()).select_from(upload_jobs).where(or_(
+                    upload_jobs.c.status == "processing",
+                    and_(upload_jobs.c.status == "queued", or_(
+                        upload_jobs.c.created_at < job.created_at,
+                        and_(upload_jobs.c.created_at == job.created_at, upload_jobs.c.id < job.id),
+                    )),
+                ))
+            ).scalar_one()
+
+    def delete_finished_upload_jobs(self, before: datetime) -> int:
+        with self.engine.begin() as conn:
+            return conn.execute(delete(upload_jobs).where(and_(
+                upload_jobs.c.status.not_in(UPLOAD_JOB_ACTIVE), upload_jobs.c.updated_at < before))).rowcount
+
     # Reports ---------------------------------------------------------------
     def list_matches(self, user_id: str, *, limit: int, offset: int) -> list[MatchRecord]:
         with self.engine.begin() as conn:
@@ -410,6 +531,7 @@ class SqlStorage(Storage):
         # Explicit child deletes so this does not depend on FK cascade settings.
         with self.engine.begin() as conn:
             match_ids = select(matches.c.id).where(matches.c.user_id == user_id)
+            conn.execute(delete(upload_jobs).where(upload_jobs.c.user_id == user_id))
             conn.execute(delete(rounds).where(rounds.c.match_id.in_(match_ids)))
             conn.execute(delete(matches).where(matches.c.user_id == user_id))
             conn.execute(delete(sync_state).where(sync_state.c.user_id == user_id))

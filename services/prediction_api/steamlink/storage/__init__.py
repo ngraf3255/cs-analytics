@@ -6,5 +6,6 @@ from .base import (  # noqa: F401
     Session,
     Storage,
     SyncState,
+    UploadJob,
     User,
 )

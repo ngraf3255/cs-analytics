@@ -93,6 +93,36 @@ class MatchRecord:
         return not self.share_code.startswith(UPLOAD_KEY_PREFIX)
 
 
+UPLOAD_JOB_ACTIVE = ("queued", "processing")
+
+
+@dataclass(frozen=True)
+class UploadJob:
+    """A manual upload waiting for / undergoing background parsing (see steamlink.jobs)."""
+
+    id: str
+    user_id: str
+    status: str  # queued | processing | done | failed
+    demo_path: str
+    size_bytes: int
+    created_at: datetime
+    updated_at: datetime
+    stage: str | None = None  # decompressing | hashing | parsing | storing (while processing)
+    progress: float | None = None  # 0..1 within the stage, when known
+    share_code: str | None = None
+    demo_sha256: str | None = None
+    attempts: int = 0
+    error: str | None = None
+    match_id: str | None = None
+    match_created: bool | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    @property
+    def active(self) -> bool:
+        return self.status in UPLOAD_JOB_ACTIVE
+
+
 class CursorConflict(Exception):
     """The cursor changed underneath a sync (e.g. the user re-linked)."""
 
@@ -172,6 +202,38 @@ class Storage(ABC):
     ) -> MatchRecord | None:
         """The user's stored match matching any given key, or None (lets uploads skip re-parsing)."""
 
+    # Upload jobs -------------------------------------------------------------
+    @abstractmethod
+    def create_upload_job(self, job: UploadJob, *, max_active: int | None = None) -> bool:
+        """Insert ``job``. If ``max_active`` is given and that many jobs (all users)
+        are already queued/processing, insert nothing and return False."""
+
+    @abstractmethod
+    def get_upload_job(self, user_id: str, job_id: str) -> UploadJob | None: ...
+
+    @abstractmethod
+    def list_upload_jobs(self, user_id: str, *, limit: int) -> list[UploadJob]:
+        """The user's most recent jobs, newest first."""
+
+    @abstractmethod
+    def list_active_upload_jobs(self) -> list[UploadJob]:
+        """All queued/processing jobs (all users), oldest first."""
+
+    @abstractmethod
+    def claim_next_upload_job(self, now: datetime) -> UploadJob | None:
+        """Atomically move the oldest queued job to processing (attempts + 1) and return it."""
+
+    @abstractmethod
+    def update_upload_job(self, job_id: str, now: datetime, **fields) -> None:
+        """Set any of: status, stage, progress, error, match_id, match_created, finished_at."""
+
+    @abstractmethod
+    def upload_jobs_ahead(self, job: UploadJob) -> int:
+        """How many active jobs will be worked on before this queued job."""
+
+    @abstractmethod
+    def delete_finished_upload_jobs(self, before: datetime) -> int: ...
+
     # Reports ---------------------------------------------------------------
     @abstractmethod
     def list_matches(self, user_id: str, *, limit: int, offset: int) -> list[MatchRecord]: ...
@@ -182,4 +244,4 @@ class Storage(ABC):
     # Deletion ---------------------------------------------------------------
     @abstractmethod
     def delete_user(self, user_id: str) -> None:
-        """Delete the user and everything linked to them (sessions, codes, matches, rounds)."""
+        """Delete the user and everything linked to them (sessions, codes, matches, rounds, upload jobs)."""
