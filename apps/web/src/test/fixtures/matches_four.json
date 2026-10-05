@@ -1,0 +1,62 @@
+{
+    "matches": [
+        {
+            "id": "55963b2d57624c5bbeeb9418fc07f8f0",
+            "source": "upload",
+            "share_code": null,
+            "status": "imported",
+            "status_reason": null,
+            "map_name": "de_mirage",
+            "rounds_count": 25,
+            "imported_at": "2026-10-05T08:49:03.912631Z",
+            "score": {
+                "ct": 13,
+                "t": 11
+            }
+        },
+        {
+            "id": "27ed398db2d04d4abccf03ce82d8a869",
+            "source": "upload",
+            "share_code": null,
+            "status": "imported",
+            "status_reason": null,
+            "map_name": "de_mirage",
+            "rounds_count": 10,
+            "imported_at": "2026-10-05T08:49:00.283547Z",
+            "score": {
+                "ct": 2,
+                "t": 8
+            }
+        },
+        {
+            "id": "bbb72a70e4bb4e8e85289142c6c82d62",
+            "source": "upload",
+            "share_code": null,
+            "status": "imported",
+            "status_reason": null,
+            "map_name": "de_nuke",
+            "rounds_count": 18,
+            "imported_at": "2026-10-05T08:14:49.307839Z",
+            "score": {
+                "ct": 13,
+                "t": 5
+            }
+        },
+        {
+            "id": "33acede2b79e47f681721c8bfbaadb88",
+            "source": "steam_sync",
+            "share_code": "CSGO-9Dyih-7YcBA-VXraV-tRjNt-A3VTB",
+            "status": "imported",
+            "status_reason": null,
+            "map_name": "de_ancient",
+            "rounds_count": 8,
+            "imported_at": "2026-10-05T08:14:41.233186Z",
+            "score": {
+                "ct": 6,
+                "t": 2
+            }
+        }
+    ],
+    "limit": 50,
+    "offset": 0
+}

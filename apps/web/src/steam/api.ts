@@ -1,5 +1,5 @@
 import { ApiError } from "./errors";
-import type { MatchAccess, MatchReport, MatchSummary, Me, SyncResult, SyncState, UploadJob } from "./types";
+import type { MatchAccess, MatchesAnalytics, MatchReport, MatchSummary, Me, SyncResult, SyncState, UploadJob } from "./types";
 
 const apiBase = (
   import.meta.env.VITE_API_BASE_URL ||
@@ -133,6 +133,8 @@ export const steamApi = {
   waitForUploadJob,
   waitForSyncJobs,
   listUploadJobs: (limit = 5) => request<{ jobs: UploadJob[] }>(`/matches/upload?limit=${limit}`),
+  /** Analytics across all the user's matches; registered before /matches/{id} on the server. */
+  getMatchesSummary: () => request<MatchesAnalytics>("/matches/summary"),
   getMatch: (id: string) => request<MatchReport>(`/matches/${encodeURIComponent(id)}`),
 };
 

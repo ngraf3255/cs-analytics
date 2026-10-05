@@ -1,0 +1,177 @@
+{
+    "model": {
+        "calibrated_for_matchmaking": false,
+        "coin_flip_brier_score": 0.25,
+        "note": "Retrospective estimate from a model trained on professional CS2 matches using only map, opening-kill side, timing and weapon. Not generated during the match and not calibrated for matchmaking skill levels."
+    },
+    "totals": {
+        "matches": 1,
+        "imported_matches": 1,
+        "not_imported_matches": 0,
+        "rounds": 10,
+        "rounds_with_winner": 10,
+        "scored_rounds": 9,
+        "unscored_rounds": 1,
+        "first_imported_at": "2026-10-05T08:51:00.051729Z",
+        "last_imported_at": "2026-10-05T08:51:00.051729Z"
+    },
+    "prediction": {
+        "scored_rounds": 9,
+        "correct": 8,
+        "hit_rate": 0.8889,
+        "brier_score": 0.1176,
+        "opening_kill_baseline_hit_rate": 0.8889,
+        "calibration": [
+            {
+                "min": 0.5,
+                "max": 0.6,
+                "rounds": 0,
+                "mean_confidence": null,
+                "hit_rate": null
+            },
+            {
+                "min": 0.6,
+                "max": 0.7,
+                "rounds": 0,
+                "mean_confidence": null,
+                "hit_rate": null
+            },
+            {
+                "min": 0.7,
+                "max": 0.8,
+                "rounds": 7,
+                "mean_confidence": 0.7154,
+                "hit_rate": 0.8571
+            },
+            {
+                "min": 0.8,
+                "max": 0.9,
+                "rounds": 2,
+                "mean_confidence": 0.8523,
+                "hit_rate": 1.0
+            },
+            {
+                "min": 0.9,
+                "max": 1.0,
+                "rounds": 0,
+                "mean_confidence": null,
+                "hit_rate": null
+            }
+        ]
+    },
+    "sides": {
+        "rounds_with_winner": 10,
+        "ct_won": 2,
+        "t_won": 8,
+        "ct_win_rate": 0.2,
+        "t_win_rate": 0.8
+    },
+    "opening_kills": {
+        "rounds": 9,
+        "converted": 8,
+        "conversion_rate": 0.8889,
+        "average_seconds": 22.45,
+        "by_side": {
+            "ct": {
+                "rounds": 1,
+                "converted": 1,
+                "conversion_rate": 1.0
+            },
+            "t": {
+                "rounds": 8,
+                "converted": 7,
+                "conversion_rate": 0.875
+            }
+        },
+        "top_weapons": [
+            {
+                "weapon": "ak47",
+                "rounds": 4,
+                "converted": 3,
+                "conversion_rate": 0.75
+            },
+            {
+                "weapon": "mac10",
+                "rounds": 2,
+                "converted": 2,
+                "conversion_rate": 1.0
+            },
+            {
+                "weapon": "hegrenade",
+                "rounds": 1,
+                "converted": 1,
+                "conversion_rate": 1.0
+            },
+            {
+                "weapon": "mp9",
+                "rounds": 1,
+                "converted": 1,
+                "conversion_rate": 1.0
+            },
+            {
+                "weapon": "p250",
+                "rounds": 1,
+                "converted": 1,
+                "conversion_rate": 1.0
+            }
+        ]
+    },
+    "maps": [
+        {
+            "map_name": "de_mirage",
+            "matches": 1,
+            "rounds": 10,
+            "rounds_with_winner": 10,
+            "ct_won": 2,
+            "t_won": 8,
+            "ct_win_rate": 0.2,
+            "t_win_rate": 0.8,
+            "scored_rounds": 9,
+            "correct": 8,
+            "hit_rate": 0.8889,
+            "brier_score": 0.1176
+        }
+    ],
+    "unscored_reasons": [
+        {
+            "reason": "no_opening_kill",
+            "rounds": 1
+        }
+    ],
+    "recent_form": {
+        "window": 10,
+        "recent": {
+            "matches": 1,
+            "scored_rounds": 9,
+            "correct": 8,
+            "hit_rate": 0.8889,
+            "brier_score": 0.1176,
+            "ct_win_rate": 0.2
+        },
+        "earlier": {
+            "matches": 0,
+            "scored_rounds": 0,
+            "correct": 0,
+            "hit_rate": null,
+            "brier_score": null,
+            "ct_win_rate": null
+        },
+        "hit_rate_change": null,
+        "matches": [
+            {
+                "id": "27ed398db2d04d4abccf03ce82d8a869",
+                "map_name": "de_mirage",
+                "imported_at": "2026-10-05T08:51:00.051729Z",
+                "rounds": 10,
+                "score": {
+                    "ct": 2,
+                    "t": 8
+                },
+                "scored_rounds": 9,
+                "correct": 8,
+                "hit_rate": 0.8889,
+                "brier_score": 0.1176
+            }
+        ]
+    }
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, SyncResult, UploadJob } from "./types";
+import { MatchesSummaryPanel } from "./MatchesSummary";
 import { weaponName } from "./weapons";
 
 const MATCH_STATUS: Record<string, string> = {
@@ -100,10 +101,12 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [listError, setListError] = useState("");
+  const [listVersion, setListVersion] = useState(0);  // bumped per list load: refreshes the summary panel
 
   const loadMatches = useCallback(async () => {
     try {
       setMatches((await steamApi.listMatches(50, 0)).matches);
+      setListVersion((n) => n + 1);
       setListError("");
     } catch (reason) {
       setListError(reason instanceof ApiError ? reason.message : "Could not load your matches.");
@@ -275,6 +278,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
       )}
       {notice && <div className={notice.tone === "ok" ? "steam-notice" : "steam-error"} role="status">{notice.text}</div>}
       {listError && <div className="steam-error" role="alert">{listError}</div>}
+      <MatchesSummaryPanel refreshKey={listVersion} />
 
       {matches.length === 0 ? (
         <p className="steam-muted">No imported matches yet.</p>

@@ -2,7 +2,8 @@
  *
  * Fixtures in ./fixtures are real responses from the local API (services/prediction_api, SQLite)
  * captured on 2026-10-05: an upload of the demoparser2 test demo (de_mirage, 10 rounds) and a
- * fake-Valve Steam sync of a Valve MM demo (de_ancient, 8 rounds). */
+ * fake-Valve Steam sync of a Valve MM demo (de_ancient, 8 rounds). summary*.json / matches_four.json:
+ * GET /matches/summary and the list for a user with 4 imported matches (+ ?recent=2, one match, none). */
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
 import type { UploadJob } from "../steam/types";

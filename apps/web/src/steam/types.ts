@@ -92,3 +92,53 @@ export type MatchReport = {
   summary: { rounds: number; scored: number; correct_predictions: number };
   rounds: RoundReport[];
 };
+
+/** Model hit rate / Brier score over a set of scored rounds (null when none were scored). */
+export type ModelTally = { scored_rounds: number; correct: number; hit_rate: number | null; brier_score: number | null };
+export type SideTally = {
+  rounds_with_winner: number;
+  ct_won: number;
+  t_won: number;
+  ct_win_rate: number | null;
+  t_win_rate: number | null;
+};
+export type Conversion = { rounds: number; converted: number; conversion_rate: number | null };
+
+/** GET /matches/summary: analytics across every match in the user's list. Sides are map sides of
+ * everyone in the match (the user's own team isn't stored); rates are 0..1 or null. */
+export type MatchesAnalytics = {
+  model: { calibrated_for_matchmaking: boolean; coin_flip_brier_score: number; note: string };
+  totals: {
+    matches: number;
+    imported_matches: number;
+    not_imported_matches: number;
+    rounds: number;
+    rounds_with_winner: number;
+    scored_rounds: number;
+    unscored_rounds: number;
+    first_imported_at: string | null;
+    last_imported_at: string | null;
+  };
+  prediction: ModelTally & {
+    /** Hit rate of always backing the side that got the opening kill (same rounds). */
+    opening_kill_baseline_hit_rate: number | null;
+    calibration: { min: number; max: number; rounds: number; mean_confidence: number | null; hit_rate: number | null }[];
+  };
+  sides: SideTally;
+  opening_kills: Conversion & {
+    average_seconds: number | null;
+    by_side: { ct: Conversion; t: Conversion };
+    top_weapons: (Conversion & { weapon: string })[];
+  };
+  maps: (SideTally & ModelTally & { map_name: string | null; matches: number; rounds: number })[];
+  unscored_reasons: { reason: string; rounds: number }[];
+  recent_form: {
+    window: number;
+    recent: ModelTally & { matches: number; ct_win_rate: number | null };
+    earlier: ModelTally & { matches: number; ct_win_rate: number | null };
+    /** recent.hit_rate - earlier.hit_rate; null unless both windows have scored rounds. */
+    hit_rate_change: number | null;
+    matches: (ModelTally & { id: string; map_name: string | null; imported_at: string; rounds: number;
+      score: { ct: number; t: number } | null })[];
+  };
+};
