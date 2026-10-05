@@ -309,12 +309,30 @@ def match_report(match_id: str, user: User = Depends(_current_user), ctx: SteamC
     }
 
 
+def build_demo_locator(settings: Settings):
+    """GC-backed locator when bot credentials are set; otherwise the disabled stub."""
+
+    from .valve import UnconfiguredDemoLocator
+
+    if not settings.demo_bot_configured:
+        return UnconfiguredDemoLocator()
+    from .gc import GameCoordinatorDemoLocator
+    from .gc_steamio import SteamioGameCoordinator
+
+    return GameCoordinatorDemoLocator(SteamioGameCoordinator(
+        refresh_token=settings.steam_bot_refresh_token,
+        username=settings.steam_bot_username,
+        password=settings.steam_bot_password,
+        shared_secret=settings.steam_bot_shared_secret,
+    ))
+
+
 def build_steam_context(settings: Settings, scorer: RoundScorer) -> SteamContext:
     """Build production wiring. Creating the engine does not open a DB connection."""
 
     from .demo_parser import Demoparser2Parser
     from .storage.sql import SqlStorage, make_engine
-    from .valve import DemoFetcher, SteamWebMatchHistoryClient, UnconfiguredDemoLocator
+    from .valve import DemoFetcher, SteamWebMatchHistoryClient
 
     http = httpx.Client(timeout=settings.http_timeout_seconds, follow_redirects=False)
     storage = SqlStorage(make_engine(settings.database_url))
@@ -322,7 +340,7 @@ def build_steam_context(settings: Settings, scorer: RoundScorer) -> SteamContext
     history = SteamWebMatchHistoryClient(settings.steam_web_api_key, http)
     clock = lambda: datetime.now(timezone.utc)  # noqa: E731
     sync = SyncService(
-        storage=storage, history=history, locator=UnconfiguredDemoLocator(),
+        storage=storage, history=history, locator=build_demo_locator(settings),
         fetcher=DemoFetcher(http, max_download_bytes=settings.demo_max_download_bytes,
                             max_decompressed_bytes=settings.demo_max_decompressed_bytes),
         parser=Demoparser2Parser(), cipher=cipher, clock=clock,

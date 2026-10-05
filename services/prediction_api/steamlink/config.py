@@ -67,6 +67,19 @@ class Settings:
     demo_max_download_bytes: int = 300 * 1024 * 1024
     demo_max_decompressed_bytes: int = 1024 * 1024 * 1024
     http_timeout_seconds: float = 20.0
+    # Dedicated Steam bot for CS2 Game Coordinator demo URL lookups. Preferred:
+    # a refresh token (STEAM_BOT_REFRESH_TOKEN or STEAM_BOT_REFRESH_TOKEN_FILE).
+    # Fallback: username + password + shared_secret (no interactive Steam Guard).
+    steam_bot_refresh_token: str | None = None
+    steam_bot_username: str | None = None
+    steam_bot_password: str | None = None
+    steam_bot_shared_secret: str | None = None
+
+    @property
+    def demo_bot_configured(self) -> bool:
+        return bool(self.steam_bot_refresh_token) or bool(
+            self.steam_bot_username and self.steam_bot_password and self.steam_bot_shared_secret
+        )
 
     @property
     def steam_enabled(self) -> bool:
@@ -114,8 +127,22 @@ class Settings:
             raise ConfigError("SESSION_COOKIE_SAMESITE must be lax, strict, or none")
         if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
             raise ConfigError("SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true")
+        if (self.steam_bot_username or self.steam_bot_password) and not self.demo_bot_configured:
+            raise ConfigError(
+                "STEAM_BOT_USERNAME/STEAM_BOT_PASSWORD need STEAM_BOT_SHARED_SECRET (or use STEAM_BOT_REFRESH_TOKEN)"
+            )
         if self.sync_max_matches_per_request < 1 or self.sync_max_matches_per_request > 10:
             raise ConfigError("SYNC_MAX_MATCHES_PER_REQUEST must be between 1 and 10")
+
+
+def _read_secret_file(path: str | None) -> str | None:
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read().strip() or None
+    except OSError as exc:
+        raise ConfigError("STEAM_BOT_REFRESH_TOKEN_FILE could not be read") from exc
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -137,6 +164,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         sync_min_interval_seconds=_int(env, "SYNC_MIN_INTERVAL_SECONDS", 30),
         demo_max_download_bytes=_int(env, "DEMO_MAX_DOWNLOAD_BYTES", 300 * 1024 * 1024),
         demo_max_decompressed_bytes=_int(env, "DEMO_MAX_DECOMPRESSED_BYTES", 1024 * 1024 * 1024),
+        steam_bot_refresh_token=(env.get("STEAM_BOT_REFRESH_TOKEN") or None)
+        or _read_secret_file(env.get("STEAM_BOT_REFRESH_TOKEN_FILE")),
+        steam_bot_username=env.get("STEAM_BOT_USERNAME") or None,
+        steam_bot_password=env.get("STEAM_BOT_PASSWORD") or None,
+        steam_bot_shared_secret=env.get("STEAM_BOT_SHARED_SECRET") or None,
     )
     settings.validate()
     return settings
