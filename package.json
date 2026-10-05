@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "pnpm --filter csgooners-web dev",
     "build": "pnpm --filter csgooners-web build",
-    "preview": "pnpm --filter csgooners-web preview"
+    "preview": "pnpm --filter csgooners-web preview",
+    "test": "pnpm --filter csgooners-web test"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

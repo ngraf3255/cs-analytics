@@ -1,0 +1,62 @@
+{
+  "status": "ok",
+  "last_started_at": "2026-10-05T07:30:52.942600Z",
+  "last_finished_at": "2026-10-05T07:30:52.959181Z",
+  "last_error": null,
+  "last_imported_count": 2,
+  "active_jobs": 0,
+  "jobs": [
+    {
+      "id": "18db91adea55339b7089eea3a43b5423",
+      "kind": "steam_sync",
+      "share_code": "CSGO-bmPPF-j5JVQ-QzTJR-JfouU-Pa7WB",
+      "status": "done",
+      "stage": null,
+      "progress": null,
+      "queue_position": null,
+      "error": null,
+      "size_bytes": 0,
+      "created_at": "2026-10-05T07:30:52.956721Z",
+      "started_at": "2026-10-05T07:30:54.022650Z",
+      "finished_at": "2026-10-05T07:30:54.187549Z",
+      "match": {
+        "id": "74c408f6cf1f40d0a67e6ee1f30cc4c3",
+        "source": "steam_sync",
+        "share_code": "CSGO-9Dyih-7YcBA-VXraV-tRjNt-A3VTB",
+        "status": "imported",
+        "status_reason": null,
+        "map_name": "de_ancient",
+        "rounds_count": 8,
+        "imported_at": "2026-10-05T07:30:53.117510Z"
+      },
+      "created": false,
+      "attempts": 1
+    },
+    {
+      "id": "18db91adea10f0f28e7702baef65ab2d",
+      "kind": "steam_sync",
+      "share_code": "CSGO-9Dyih-7YcBA-VXraV-tRjNt-A3VTB",
+      "status": "done",
+      "stage": null,
+      "progress": null,
+      "queue_position": null,
+      "error": null,
+      "size_bytes": 0,
+      "created_at": "2026-10-05T07:30:52.952240Z",
+      "started_at": "2026-10-05T07:30:52.961454Z",
+      "finished_at": "2026-10-05T07:30:54.001798Z",
+      "match": {
+        "id": "74c408f6cf1f40d0a67e6ee1f30cc4c3",
+        "source": "steam_sync",
+        "share_code": "CSGO-9Dyih-7YcBA-VXraV-tRjNt-A3VTB",
+        "status": "imported",
+        "status_reason": null,
+        "map_name": "de_ancient",
+        "rounds_count": 8,
+        "imported_at": "2026-10-05T07:30:53.117510Z"
+      },
+      "created": true,
+      "attempts": 1
+    }
+  ]
+}

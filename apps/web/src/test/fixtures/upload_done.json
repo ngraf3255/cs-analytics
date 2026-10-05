@@ -1,0 +1,28 @@
+{
+  "job": {
+    "id": "fbcc34e7890445a08741fd507ef7d928",
+    "kind": "upload",
+    "share_code": null,
+    "status": "done",
+    "stage": null,
+    "progress": null,
+    "queue_position": null,
+    "error": null,
+    "size_bytes": 60601900,
+    "created_at": "2026-10-05T07:30:40.591094Z",
+    "started_at": "2026-10-05T07:30:40.597817Z",
+    "finished_at": "2026-10-05T07:30:41.391795Z",
+    "match": {
+      "id": "8794afd31e4f4d82b0fb75deb8725393",
+      "source": "upload",
+      "share_code": null,
+      "status": "imported",
+      "status_reason": null,
+      "map_name": "de_mirage",
+      "rounds_count": 10,
+      "imported_at": "2026-10-05T07:30:40.603432Z"
+    },
+    "created": true,
+    "attempts": 1
+  }
+}

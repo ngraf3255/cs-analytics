@@ -1,0 +1,16 @@
+{
+  "matches": [
+    {
+      "id": "8794afd31e4f4d82b0fb75deb8725393",
+      "source": "upload",
+      "share_code": null,
+      "status": "imported",
+      "status_reason": null,
+      "map_name": "de_mirage",
+      "rounds_count": 10,
+      "imported_at": "2026-10-05T07:30:40.603432Z"
+    }
+  ],
+  "limit": 50,
+  "offset": 0
+}

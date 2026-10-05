@@ -1,0 +1,44 @@
+{
+  "status": "up_to_date",
+  "queued": 2,
+  "skipped": 0,
+  "processed": 2,
+  "has_more": false,
+  "error": null,
+  "jobs": [
+    {
+      "id": "18db91adea10f0f28e7702baef65ab2d",
+      "kind": "steam_sync",
+      "share_code": "CSGO-9Dyih-7YcBA-VXraV-tRjNt-A3VTB",
+      "status": "queued",
+      "stage": null,
+      "progress": null,
+      "queue_position": 0,
+      "error": null,
+      "size_bytes": 0,
+      "created_at": "2026-10-05T07:30:52.952240Z",
+      "started_at": null,
+      "finished_at": null,
+      "match": null,
+      "created": null,
+      "attempts": 0
+    },
+    {
+      "id": "18db91adea55339b7089eea3a43b5423",
+      "kind": "steam_sync",
+      "share_code": "CSGO-bmPPF-j5JVQ-QzTJR-JfouU-Pa7WB",
+      "status": "queued",
+      "stage": null,
+      "progress": null,
+      "queue_position": 1,
+      "error": null,
+      "size_bytes": 0,
+      "created_at": "2026-10-05T07:30:52.956721Z",
+      "started_at": null,
+      "finished_at": null,
+      "match": null,
+      "created": null,
+      "attempts": 0
+    }
+  ]
+}
