@@ -121,7 +121,7 @@ set; the API then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`,
 | `CLOUDFLARE_TUNNEL_TOKEN` | required for `--profile tunnel` |
 | `BACKUP_KEEP_DAYS` | default `14`; age prune for `csa-pg-backups` |
 | `STEAM_BOT_REFRESH_TOKEN` | optional; without it, sync stops at `demo_retrieval_not_configured` (uploads still work) |
-| `UPLOAD_MAX_BYTES` | default 1 GiB; lower to `100000000` if you orange-cloud the API |
+| `UPLOAD_MAX_BYTES` | **`100000000` (~100 MB) for Tunnel (Option A default)**; raise to `1073741824` only on Caddy/nginx grey-cloud fallback |
 | `UPLOAD_JOB_DIR` | durable disk path (compose volume `/var/lib/csa/upload-jobs`) |
 | `AUTO_SYNC_INTERVAL_SECONDS` | `1800` default; `0` disables background sync |
 
@@ -141,7 +141,8 @@ Pick **one** edge path. Postgres never goes through any of them.
 
 **Recommended default: Cloudflare Tunnel** (Option A). Residential WAN IPs
 change; a static grey-cloud `A` record will silently break without DDNS. Tunnel
-also avoids opening 80/443 on the house.
+also avoids opening 80/443 on the house. Tradeoff: Tunnel uploads are capped at
+**~100 MB** (see Option A); full demos need the Caddy/nginx fallback.
 
 ### Option A — Cloudflare Tunnel (recommended default)
 
@@ -157,13 +158,22 @@ docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.e
 ```
 
 DNS for `api` becomes a CNAME/Tunnel route managed by Cloudflare (no home IP in
-public DNS). Check tunnel upload/timeout limits; full-length demos that fail on
-the tunnel path can fall back to Option B/C with DNS-only + a higher
-`UPLOAD_MAX_BYTES` path.
+public DNS).
+
+**Upload limit (hard):** Cloudflare's proxy (including Tunnel) caps request
+bodies around **~100 MB**. Full-length CS2 demos are often larger and will get
+**413** on this path. Keep `UPLOAD_MAX_BYTES=100000000` (the
+[`deploy/homelab/.env.example`](../deploy/homelab/.env.example) default) so the
+API rejects oversized bodies before Cloudflare does. For full demos, use
+Option B/C (grey-cloud Caddy/nginx) and raise `UPLOAD_MAX_BYTES` to 1 GiB there.
+Steam share-code sync still works over Tunnel when demos stay under the cap or
+are fetched server-side by the bot.
 
 ### Option B — Caddy on the VM (`--profile edge`) — fallback
 
-Use when Tunnel limits block large `.dem` uploads.
+Use when Tunnel limits block large `.dem` uploads. Set
+`UPLOAD_MAX_BYTES=1073741824` in `.env` for this path (Caddyfile already allows
+1 GiB bodies).
 
 1. Port-forward WAN **80/443** → `REPLACE_WITH_VM_LAN_IP` (or bind the VM to a
    public IP). **Only one host on the WAN IP can own 80/443.** If the lab already
@@ -216,10 +226,11 @@ server {
 | **Default (Tunnel)** | CNAME / Tunnel route | `api` | tunnel hostname (Zero Trust) | as required by Tunnel |
 | Fallback (Caddy/nginx) | A | `api` | current home WAN IP (+ **DDNS**) | **DNS only** (grey) |
 
-Why grey cloud on the fallback: Cloudflare Free/Pro proxy caps uploads around
-**100 MB** and has short response timeouts. Full-length demos exceed that. Keep
-the Worker for `csgooner.com`; only the API hostname should avoid the orange
-cloud unless you intentionally lower `UPLOAD_MAX_BYTES`.
+Why grey cloud on the fallback: Cloudflare Free/Pro proxy (and Tunnel) caps
+uploads around **100 MB**. Full-length demos exceed that, so the Tunnel default
+keeps `UPLOAD_MAX_BYTES=100000000`; grey-cloud Caddy/nginx is the path for 1 GiB
+uploads. Keep the Worker for `csgooner.com`; only the API hostname uses grey
+cloud when you need large demo uploads.
 
 Grey cloud also publishes the home WAN IP in public DNS. Prefer Tunnel when that
 exposure or DDNS churn is undesirable.
@@ -244,11 +255,32 @@ docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.e
   exec -T db-backup /usr/local/bin/backup-pg.sh
 ```
 
-List / copy a dump off the VM:
+List dumps (`compose run` needs a **service** name, not an image; the volume is
+project-prefixed as `cs-analytics-homelab_csa-pg-backups`):
 
 ```sh
-docker compose -f deploy/homelab/docker-compose.yml run --rm --no-deps \
-  -v csa-pg-backups:/backups busybox ls -lah /backups
+# Prefer exec against the running sidecar:
+docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env \
+  exec db-backup ls -lah /backups
+
+# Or one-shot against the named volume:
+docker run --rm -v cs-analytics-homelab_csa-pg-backups:/backups busybox ls -lah /backups
+```
+
+### Off-VM copies (backups and data share one disk)
+
+`csa-pg-backups` and `csa-pgdata` live on the **same VM disk**. A disk failure
+takes both. Copy dumps somewhere else regularly:
+
+```sh
+# Example: rsync a dump to another host / NAS
+docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env \
+  exec -T db-backup cat /backups/csgooners-YYYYMMDDTHHMMSSZ.sql.gz \
+  > /tmp/csgooners-YYYYMMDDTHHMMSSZ.sql.gz
+rsync -av /tmp/csgooners-*.sql.gz user@backup-host:/backups/cs-analytics/
+
+# Or include the whole VM in Proxmox vzdump (schedule outside this compose stack)
+# vzdump <VMID> --mode snapshot --compress zstd --storage <backup-storage>
 ```
 
 ### Calendar nightly (optional systemd timer)

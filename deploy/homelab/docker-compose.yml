@@ -107,7 +107,7 @@ services:
   #   docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env --profile tunnel up -d
   cloudflared:
     profiles: ["tunnel"]
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.9.3
     restart: unless-stopped
     # Token required when starting --profile tunnel (compose interpolates even if profile off,
     # so we do not use :? here — cloudflared fails fast if TUNNEL_TOKEN is empty).
