@@ -151,7 +151,10 @@ entry and per-round report as a synced match. Same feature flag, session,
 
 Each match (list item, job `match`, report `match`) carries `map_name`,
 `rounds_count`, `source` (how it arrived for this user), `imported_at` (when it
-was added to this user's list; the demo has no match date) and `score`
+was added to this user's list), `date` / `date_source` / `played_at` (when the
+match was **played** if known: Steam sync stores the Game Coordinator's match
+time, `date_source: "played"`; CS2 demos carry no date, so uploads fall back to
+`imported_at`, `date_source: "imported"`), `players_recorded` and `score`
 (`{"ct": 13, "t": 5}`: rounds won by the team on each side **at the end**, read
 from the demo's team round totals at the last kill plus the winners of later
 rounds, see `demo_parser.final_score`; `null` for stubs and matches parsed
@@ -174,8 +177,36 @@ wins, model hit rate / Brier), `unscored_reasons`, and `recent_form`
 (`?recent=N`, default 10, 1-50: the last N imported matches newest first, their
 totals vs the earlier ones, `hit_rate_change`). Rates are 0..1, `null` when
 there is nothing to divide by; zero matches return zeros / nulls / empty
-lists. CT / T are map sides of everyone in the match: the user's own team is
-not stored yet. The route is registered before `/matches/{id}`.
+lists. Those all-player numbers count map sides of everyone in the match
+(`scope` labels them `all_players`). The route is registered before `/matches/{id}`.
+
+**`you`: the signed-in player's own numbers.** At parse time every player's
+side each round is stored (`player_rounds`, migration `0007_player_rounds`,
+`demo_parser.extract_player_rounds`): their last `player_spawn` of the round,
+overridden by their side in that round's kills (at halftime the teams switch
+without a new spawn event, so a round whose kills contradict most spawns gets
+its spawn sides swapped), plus kills / deaths (exit frags count for the round
+that just ended, like the scoreboard; the server's post-match kills don't),
+opening kill / death and survived. Rounds before the last `begin_new_match`
+(warmup, a knife round before the restart) have no player rows. Rows are per
+player, not per owner, so every owner of a shared match sees their own side,
+including owners who attached it without a parse. Verified on the four public
+demos: every side equals `team_num` at that round's freeze end (`parse_ticks`)
+and K/D equals the scoreboard totals. `you` has `matches`, `rounds`, `won`,
+`win_rate`, `sides.ct|t` (`rounds` with a known winner, `won`, `win_rate`),
+`results` (won / lost / tied / unknown from the final score and the side the
+player ended on), `kills`, `deaths`, `kd`, `kills_per_round`, `survival_rate`,
+`opening_duels` (taken / won / lost, round win rate after an opening kill /
+death), `maps` (same per map) and `recent_form` (last `recent` matches vs
+earlier: `win_rate_change`, `kd_change`, per-match result / first side / K-D).
+`matches_without_you` counts demos the player isn't in (e.g. uploaded pro
+matches) and `matches_unknown` those parsed before `0007` (no backfill: demos
+aren't kept; uploading the demo again fills it in, once). Matches are ordered
+by `played_at`, else `imported_at`. `GET /matches/{id}` adds `you`
+(`status` `in_match` | `not_in_match` | `unknown`, first / last side, rounds
+won, K/D, opening kills / deaths, `score: {you, them}`, `result`) and per round
+`you` (`side`, `won`, `kills`, `deaths`, `opening_kill`, `opening_death`,
+`survived`, `win_probability` = the model's probability for the player's side).
 
 ### One match, many sources and users (dedupe)
 
