@@ -42,6 +42,17 @@ def is_valid_auth_code(code: str) -> bool:
     return bool(AUTH_CODE_RE.match(code or ""))
 
 
+def normalize_auth_code(text: str | None) -> str:
+    """What a user typed or pasted -> ``ABCD-EFGHI-JKLM`` when possible: spaces dropped,
+    upper-cased, and the dashes put back if they were left out (13 letters/digits).
+    Anything else is returned cleaned up but unchanged in shape (the format check rejects it)."""
+
+    code = re.sub(r"\s+", "", text or "").upper()
+    if re.fullmatch(r"[A-Z0-9]{13}", code):
+        code = f"{code[:4]}-{code[4:9]}-{code[9:]}"
+    return code
+
+
 # --- GetNextMatchSharingCode -------------------------------------------------
 
 @dataclass(frozen=True)

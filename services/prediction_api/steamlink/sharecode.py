@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 DICTIONARY = "ABCDEFGHJKLMNOPQRSTUVWXYZabcdefhijkmnopqrstuvwxyz23456789"
 _INDEX = {ch: i for i, ch in enumerate(DICTIONARY)}
@@ -26,13 +27,39 @@ class ShareCode:
     token: int
 
 
+# A code inside pasted text, e.g. CS2's "copy share link":
+# steam://rungame/730/76561202255233023/+csgo_download_match%20CSGO-GADqf-jjyJ8-cSP2r-smZRo-TO2xK
+_SHARE_CODE_IN_TEXT = re.compile(r"(?<![A-Za-z0-9])CSGO(?:-[" + re.escape(DICTIONARY) + r"]{5}){5}(?![A-Za-z0-9])")
+
+
 def is_valid_share_code(code: str) -> bool:
-    return bool(SHARE_CODE_RE.match(code or ""))
+    """Format check plus range check (a well-formed code can still be out of range)."""
+
+    if not SHARE_CODE_RE.match(code or ""):
+        return False
+    try:
+        decode_unchecked(code)
+    except InvalidShareCode:
+        return False
+    return True
+
+
+def extract_share_code(text: str | None) -> str | None:
+    """The one share code in what a user pasted: the bare code, or a steam:// share link
+    (URL-encoded or not), with surrounding whitespace or quotes. None if there is no code
+    or more than one distinct code. Share codes are case-sensitive, so nothing is re-cased."""
+
+    found = set(_SHARE_CODE_IN_TEXT.findall(unquote((text or "").strip())))
+    return found.pop() if len(found) == 1 else None
 
 
 def decode(code: str) -> ShareCode:
-    if not is_valid_share_code(code):
+    if not SHARE_CODE_RE.match(code or ""):
         raise InvalidShareCode("not a match sharing code")
+    return decode_unchecked(code)
+
+
+def decode_unchecked(code: str) -> ShareCode:
     chars = code[5:].replace("-", "")
     big = 0
     for ch in reversed(chars):

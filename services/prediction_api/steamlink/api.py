@@ -22,14 +22,14 @@ from pydantic import BaseModel
 from . import openid
 from .analytics import RECENT_DEFAULT, SIDES, build_user_summary, match_date, match_result
 from .config import Settings
-from .crypto import AuthCodeCipher
+from .crypto import AuthCodeCipher, DecryptionError
 from .jobs import UploadJobWorker
 from .scoring import RoundScorer
 from .sessions import LOGIN_STATE_COOKIE, CookieSigner
-from .sharecode import is_valid_share_code
+from .sharecode import extract_share_code, is_valid_share_code
 from .storage.base import JOB_KIND_SYNC, JOB_KIND_UPLOAD, Storage, User
 from .sync import SyncRejected, SyncService
-from .valve import MatchHistoryClient, is_valid_auth_code
+from .valve import MatchHistoryClient, is_valid_auth_code, normalize_auth_code
 
 MODEL_NOTE = (
     "Retrospective estimate from a model trained on professional CS2 matches using only "
@@ -81,15 +81,37 @@ def _iso(value: datetime | None) -> str | None:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if value else None
 
 
+# Sync errors only new codes can fix -> which code the user has to replace.
+RELINK_ERRORS = {
+    "invalid_auth_code": "auth_code",  # revoked on Valve's page or mistyped
+    "credentials_unreadable": "auth_code",  # encryption key rotated away
+    "invalid_known_code": "share_code",  # the cursor is too old (> ~30 days) or no longer valid
+}
+
+
+def _needs_relink(ctx: SteamContext, user: User, access) -> dict | None:
+    """``{"reason", "field"}`` when the last sync failed in a way only new codes fix and the
+    codes were not updated since; else None."""
+
+    state = ctx.storage.get_sync_state(user.id, ctx.clock())
+    field = RELINK_ERRORS.get(state.last_error or "")
+    if field is None or state.locked or state.last_finished_at is None:
+        return None
+    if access.updated_at is not None and access.updated_at > state.last_finished_at:
+        return None  # re-linked after that sync
+    return {"reason": state.last_error, "field": field}
+
+
 def _match_access_view(ctx: SteamContext, user: User) -> dict:
     access = ctx.storage.get_match_access(user.id)
     if access is None:
-        return {"linked": False, "auth_code_hint": None, "linked_at": None, "updated_at": None}
+        return {"linked": False, "auth_code_hint": None, "linked_at": None, "updated_at": None, "needs_relink": None}
     return {
         "linked": True,
         "auth_code_hint": f"****-*****-{access.auth_code_last4}",
         "linked_at": _iso(access.consented_at),
         "updated_at": _iso(access.updated_at),
+        "needs_relink": _needs_relink(ctx, user, access),
     }
 
 
@@ -141,7 +163,9 @@ def _clear_session_cookie(response: Response, settings: Settings) -> None:
 
 
 class MatchAccessInput(BaseModel):
-    auth_code: str
+    # Empty while already linked: keep the stored Game Authentication Code and only replace the
+    # share code (Leetify-style: the auth code is given once, a fresh share code when the old one expired).
+    auth_code: str = ""
     share_code: str
     consent: bool
 
@@ -236,14 +260,32 @@ def delete_me(user: User = Depends(_current_user), ctx: SteamContext = Depends(_
 def put_match_access(
     payload: MatchAccessInput, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)
 ) -> dict:
+    """Link (or re-link) match history. Accepts what users paste: the auth code in any case,
+    with spaces or without dashes; the share code bare or inside CS2's steam:// share link.
+    An empty ``auth_code`` while linked keeps the stored one (share code update only).
+    Each 422 ``detail`` names the field to fix (see the web's LinkForm)."""
+
     if not payload.consent:
         raise HTTPException(status_code=422, detail="consent_required")
-    auth_code = payload.auth_code.strip().upper()
-    share_code = payload.share_code.strip()
-    if not is_valid_auth_code(auth_code):
-        raise HTTPException(status_code=422, detail="invalid_auth_code_format")
+    share_code = extract_share_code(payload.share_code) or payload.share_code.strip()
+    if not payload.auth_code.strip():
+        access = ctx.storage.get_match_access(user.id)
+        if access is None:
+            raise HTTPException(status_code=422, detail="auth_code_required")
+        try:
+            auth_code = ctx.cipher.decrypt(user.steam_id, access.auth_code_ciphertext)
+        except DecryptionError:
+            raise HTTPException(status_code=422, detail="credentials_unreadable") from None
+    else:
+        auth_code = normalize_auth_code(payload.auth_code)
+        if not is_valid_auth_code(auth_code):
+            # e.g. the two codes pasted into each other's box
+            detail = "auth_code_is_share_code" if extract_share_code(payload.auth_code) else "invalid_auth_code_format"
+            raise HTTPException(status_code=422, detail=detail)
     if not is_valid_share_code(share_code):
-        raise HTTPException(status_code=422, detail="invalid_share_code_format")
+        detail = ("share_code_is_auth_code" if is_valid_auth_code(normalize_auth_code(payload.share_code))
+                  else "invalid_share_code_format")
+        raise HTTPException(status_code=422, detail=detail)
     result = ctx.history.next_share_code(user.steam_id, auth_code, share_code)
     if result.status == "invalid_auth_code":
         raise HTTPException(status_code=422, detail="invalid_auth_code")
@@ -371,7 +413,7 @@ async def upload_demo(
     from .upload import sniff_demo
 
     settings = ctx.settings
-    share_code = (share_code or "").strip() or None
+    share_code = extract_share_code(share_code) or (share_code or "").strip() or None
     if share_code and not is_valid_share_code(share_code):
         raise HTTPException(status_code=422, detail="invalid_share_code_format")
     # A plain .dem body is the demo itself, so it is also bound by the decompressed limit.
