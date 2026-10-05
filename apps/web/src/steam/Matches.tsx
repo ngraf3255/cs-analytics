@@ -94,6 +94,9 @@ function syncJobsHint(jobs: UploadJob[]): string {
   return "Parsing each demo and scoring its rounds in the background. A full match can take a few minutes; you can leave and come back.";
 }
 
+/** How often the page checks for matches the server's automatic sync found. */
+export const AUTO_SYNC_WATCH_MS = 60_000;
+
 export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<unknown> }) {
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -220,6 +223,34 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
       .catch(() => undefined);  // older API, or not signed in yet
     return () => { signal.cancelled = true; };
   }, [followSyncJobs]);
+
+  // Automatic sync runs on the server: while it is on, check every minute (tab visible, nothing
+  // followed already) whether it queued matches (follow them like a Sync) or imported some.
+  const following = useRef(false);
+  following.current = syncing || syncJobs !== null;
+  const lastSynced = useRef(me.sync.last_synced_at ?? null);
+  lastSynced.current = me.sync.last_synced_at ?? null;
+  const autoActive = !!me.sync.auto_sync?.active;
+  useEffect(() => {
+    if (!autoActive) return;
+    const signal = { cancelled: false };
+    const timer = setInterval(() => {
+      if (following.current || document.visibilityState === "hidden") return;
+      steamApi.getSync()
+        .then(async (state) => {
+          if (signal.cancelled || following.current) return;
+          const active = (state.jobs ?? []).filter(isJobActive).reverse();  // oldest first
+          if (active.length) void followSyncJobs(active, null, signal);
+          else if ((state.last_synced_at ?? null) !== lastSynced.current) {
+            lastSynced.current = state.last_synced_at ?? null;
+            await loadMatches();
+            void onMeChangeRef.current();
+          }
+        })
+        .catch(() => undefined);  // e.g. a free instance waking up: try again next minute
+    }, AUTO_SYNC_WATCH_MS);
+    return () => { signal.cancelled = true; clearInterval(timer); };
+  }, [autoActive, followSyncJobs, loadMatches]);
 
   async function sync() {
     setSyncing(true);
