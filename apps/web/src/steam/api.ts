@@ -14,7 +14,7 @@ async function request<T>(path: string, init: RequestInit = {}, mutating = false
   try {
     response = await fetch(`${apiBase}${path}`, { ...init, headers, credentials: "include" });
   } catch {
-    throw new ApiError(0, "valve_unavailable");
+    throw new ApiError(0, "api_unreachable");  // our API (e.g. a free instance waking up), not Valve
   }
   if (response.status === 204) return undefined as T;
   const body = await response.json().catch(() => ({}));

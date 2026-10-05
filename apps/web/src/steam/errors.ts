@@ -10,6 +10,7 @@ const MESSAGES: Record<string, string> = {
   invalid_share_code: "Valve rejected that share code. It may be too old, mistyped, or from another account.",
   valve_rate_limited: "Valve is rate-limiting requests. Wait a minute and try again.",
   valve_unavailable: "Valve’s match-history service did not respond. Try again shortly.",
+  api_unreachable: "Can’t reach the cs-analytics server. If it was idle it may be waking up; try again in a minute.",
   not_linked: "Link a Game Authentication Code and a recent share code first.",
   already_running: "A sync is already running for your account.",
   too_soon: "Wait about 30 seconds between syncs.",

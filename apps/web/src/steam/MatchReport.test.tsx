@@ -83,4 +83,18 @@ describe("match list and per-round report (real API response shapes)", () => {
     await advance();
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("blames our server, not Valve, when the API itself cannot be reached", async () => {
+    installFakeApi(routes({
+      "GET /matches?limit=50&offset=0": [{ status: 200, body: matchesFixture }],
+      [`GET /matches/${MATCH.id}`]: { status: 0 },
+    }));
+    render(<SteamSection />);
+    await advance();
+    fireEvent.click(screen.getByRole("button", { name: /mirage/i }));
+    await advance();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Can’t reach the cs-analytics server.");
+    expect(alert).not.toHaveTextContent("Valve");
+  });
 });
