@@ -226,6 +226,12 @@ def test_sync_jobs_share_the_queue_cap_with_uploads(app_client):
         full = client.post("/matches/upload", content=b"PBDEMS2\0" + b"\x01" * 64, headers=OCTET)
         assert full.status_code == 429 and full.json()["detail"] == "upload_queue_full"
         assert client.get("/me").json()["sync"]["active_jobs"] == 2
+        import time
+
+        deadline = time.monotonic() + 10
+        while not any(job["stage"] == "parsing" for job in client.get("/steam/sync").json()["jobs"]):
+            assert time.monotonic() < deadline, "worker did not reach the parse slot"
+            time.sleep(0.01)
         jobs = client.get("/steam/sync").json()["jobs"]
         assert sorted(job["status"] for job in jobs) == ["processing", "queued"]
         queued = next(job for job in jobs if job["status"] == "queued")
