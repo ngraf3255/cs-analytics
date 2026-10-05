@@ -39,6 +39,12 @@ describe("match list and per-round report (real API response shapes)", () => {
     expect(screen.getByRole("note")).toHaveTextContent("Retrospective estimate, not calibrated for your games.");
     expect(screen.getByRole("note")).toHaveTextContent(reportFixture.model.note);
     expect(screen.getByText("9 of 10 rounds could be scored. The model’s favourite won 8 of 9.")).toBeInTheDocument();
+    // header: map, score, date, source
+    const header = screen.getByLabelText("Match summary");
+    expect(header).toHaveTextContent("MAPmirage10 rounds");
+    expect(header).toHaveTextContent("SCORE8 – 2CT 2 · T 8 (sides at the end)");
+    expect(header).toHaveTextContent(`DATE${new Date(reportFixture.match.imported_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`);
+    expect(header).toHaveTextContent("SOURCEUploadYou uploaded the demo");
 
     const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
     expect(rows).toHaveLength(10);
@@ -58,6 +64,18 @@ describe("match list and per-round report (real API response shapes)", () => {
 
     fireEvent.click(item);  // collapses
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("report header falls back when the score is unknown and names Steam sync as the source", async () => {
+    const synced = { ...reportFixture, match: { ...reportFixture.match, source: "steam_sync", score: null } };
+    installFakeApi(routes({ [`GET /matches/${MATCH.id}`]: { status: 200, body: synced } }));
+    render(<SteamSection />);
+    await advance();
+    fireEvent.click(screen.getByRole("button", { name: /mirage/i }));
+    await advance();
+    const header = screen.getByLabelText("Match summary");
+    expect(header).toHaveTextContent("SCORE—Not recorded in this demo");
+    expect(header).toHaveTextContent("SOURCESteam syncFrom your match history");
   });
 
   it("shows unavailable / stub matches without a report", async () => {

@@ -7,7 +7,11 @@
     "status_reason": null,
     "map_name": "de_mirage",
     "rounds_count": 10,
-    "imported_at": "2026-10-05T07:30:40.603432Z"
+    "imported_at": "2026-10-05T07:30:40.603432Z",
+    "score": {
+      "ct": 2,
+      "t": 8
+    }
   },
   "model": {
     "calibrated_for_matchmaking": false,

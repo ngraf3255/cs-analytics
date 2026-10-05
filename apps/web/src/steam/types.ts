@@ -48,7 +48,11 @@ export type MatchSummary = {
   status_reason: string | null;
   map_name: string | null;
   rounds_count: number;
+  /** When the match was added to this user's list (demos carry no match date). */
   imported_at: string;
+  /** Final score: rounds won by the team on each side at the end; null if the demo didn't say.
+   * Missing from older API versions. */
+  score?: { ct: number; t: number } | null;
 };
 
 /** A demo being imported in the background: a manual upload (POST /matches/upload) or one match

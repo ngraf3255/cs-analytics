@@ -311,9 +311,20 @@ function MatchReportView({ matchId }: { matchId: string }) {
   if (error) return <div className="steam-error" role="alert">{error}</div>;
   if (!report) return <p className="steam-muted">Loading round report…</p>;
 
-  const { summary } = report;
+  const { summary, match } = report;
+  const score = match.score ?? null;
   return (
     <div className="match-report">
+      <dl className="report-header" aria-label="Match summary">
+        <div><dt>MAP</dt><dd>{mapLabel(match.map_name)}</dd><small>{plural(match.rounds_count, "round")}</small></div>
+        <div>
+          <dt>SCORE</dt>
+          <dd>{score ? `${Math.max(score.ct, score.t)} – ${Math.min(score.ct, score.t)}` : "—"}</dd>
+          <small>{score ? `CT ${score.ct} · T ${score.t} (sides at the end)` : "Not recorded in this demo"}</small>
+        </div>
+        <div><dt>DATE</dt><dd>{new Date(match.imported_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</dd><small>Imported (demos carry no match date)</small></div>
+        <div><dt>SOURCE</dt><dd>{match.source === "upload" ? "Upload" : "Steam sync"}</dd><small>{match.source === "upload" ? "You uploaded the demo" : "From your match history"}</small></div>
+      </dl>
       <div className="calibration-note" role="note">
         <strong>Retrospective estimate, not calibrated for your games.</strong> {report.model.note}
       </div>
