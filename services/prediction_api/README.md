@@ -26,7 +26,8 @@ Optional: `SESSION_COOKIE_SAMESITE` (lax), `SESSION_COOKIE_SECURE` (true),
 `SYNC_MIN_INTERVAL_SECONDS` (30), `DEMO_MAX_DOWNLOAD_BYTES`, `DEMO_MAX_DECOMPRESSED_BYTES`,
 `DEMO_PARSE_ISOLATION` (`subprocess`: each demo is parsed in a short-lived child
 process so its memory goes back to the OS; `inprocess` to debug),
-`DEMO_PARSE_TIMEOUT_SECONDS` (600), `DEMO_PARSE_THREADS` (2).
+`DEMO_PARSE_TIMEOUT_SECONDS` (600), `DEMO_PARSE_THREADS` (2), `UPLOAD_QUEUE_MAX` (3),
+`UPLOAD_JOB_DIR` (`<tmp>/csa-upload-jobs`; uploads wait there for their parse job).
 
 Memory check on a real demo (Linux): `python scripts/measure_demo_memory.py
 <demo.dem> --budget-mb 300 --max-retained-mb 30`, or `CSA_TEST_DEMO=<demo.dem>
@@ -55,22 +56,47 @@ entry and per-round report as a synced match. Same feature flag, session,
 `X-Requested-With: csa` header and Origin check as the other Steam routes.
 
 - Body: the raw file bytes (`Content-Type: application/octet-stream`), streamed
-  to a random temp dir that is always deleted; the raw demo is never stored.
-- Format is sniffed from content, not the filename: bzip2 (`BZh`) is
-  decompressed first, then the file must start with the CS2 magic `PBDEMS2\0`
-  (CS:GO `HL2DEMO` demos are rejected with `not_a_cs2_demo`).
+  to `UPLOAD_JOB_DIR/<job id>.upload` (default `<tmp>/csa-upload-jobs`). The
+  file is deleted as soon as its job finishes; the raw demo is never kept.
+- **Parsing runs in the background** (`steamlink/jobs.py`): the response is
+  `202 {"job": {...}}` as soon as the body is received. Poll
+  `GET /matches/upload/{job_id}` (`{"job": ...}`; `404 upload_job_not_found`
+  for unknown or other users' jobs); `GET /matches/upload?limit=10` lists the
+  user's recent jobs, newest first, so a UI can resume after a reload. A job:
+  `status` `queued | processing | done | failed`; `stage` while processing
+  `decompressing | hashing | parsing | storing`; `progress` 0..1 while
+  decompressing; `queue_position` (jobs ahead) while queued; `error` (a code
+  below) when failed; `match` + `created` when done. Why: on Render's free plan
+  (0.1 CPU) a full-length demo takes 15-50 s and a `.dem.bz2` several minutes.
+- Format is sniffed from content, not the filename: a body that starts with
+  neither bzip2 (`BZh`) nor the CS2 magic `PBDEMS2\0` is rejected at once
+  (`422 not_a_cs2_demo`; CS:GO `HL2DEMO` demos too). An archive is decompressed
+  in the job and must then start with `PBDEMS2\0` (else the job fails with
+  `not_a_cs2_demo`).
 - Optional query `?share_code=CSGO-...` (the match's sharing code) links the
   upload to the Valve match id (`422 invalid_share_code_format` if malformed).
 - Limits: request body `min(UPLOAD_MAX_BYTES, DEMO_MAX_DECOMPRESSED_BYTES)`
   (1 GiB each by default); a `.bz2` archive also `DEMO_MAX_DOWNLOAD_BYTES`
-  (300 MiB), and its decompressed size `DEMO_MAX_DECOMPRESSED_BYTES`. Over the
-  limit -> `413 demo_too_large`. Render has no body cap of its own; a
-  Cloudflare-proxied hostname would cap at 100 MB.
-- Deduped per user (see below); a known, imported demo is not re-parsed
-  (`"created": false`).
-- One parse per process at a time; a concurrent upload gets `429 upload_busy`.
-- Other errors: `422 demo_parse_failed`, `422 demo_has_no_rounds`. Nothing is
-  stored on failure. Uploads never touch the share-code cursor.
+  (300 MiB), and its decompressed size `DEMO_MAX_DECOMPRESSED_BYTES` (job error
+  `demo_too_large`). Over the limit -> `413 demo_too_large`. Render has no body
+  cap of its own; a Cloudflare-proxied hostname would cap at 100 MB.
+- Deduped per user (see below); a known, imported demo is not re-parsed. A
+  plain `.dem` is hashed while it arrives, so a re-upload (or a known
+  `?share_code=`) is answered at once with `200` and a finished job
+  (`"created": false`); a `.bz2` is recognised after decompressing in the job.
+- One worker thread per process works through jobs oldest first and shares the
+  parse slot with Steam sync (one parse at a time; a job waits for a running
+  sync parse). At most `UPLOAD_QUEUE_MAX` (3) jobs, all users, may be queued or
+  processing; more -> `429 upload_queue_full` (checked before the body is read).
+- Restarts: on startup (and when a client polls a queued job with no worker
+  running) the worker resumes interrupted jobs whose file still exists (at most
+  two attempts, then `demo_parse_failed`), fails jobs whose file is gone with
+  `server_restarted` (Render's disk is ephemeral: upload again), deletes
+  finished jobs after 7 days and removes stray files. Assumes one API process
+  per job directory (Render: one instance, one uvicorn worker).
+- Job errors: `demo_parse_failed`, `demo_has_no_rounds`, `not_a_cs2_demo`,
+  `demo_too_large`, `server_restarted`, `internal_error`. Nothing is stored on
+  failure. Uploads never touch the share-code cursor.
 
 ### One match, many sources (dedupe)
 

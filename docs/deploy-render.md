@@ -56,7 +56,7 @@ CS2 demo upload -> parse -> model -> per-round report, then a restart with
    curl https://api.csgooner.com/steam/status    # {"enabled":true,...}
    ```
    Then on csgooner.com: Sign in with Steam -> Upload a `.dem` -> open the match.
-   Deploy logs should show `applied: 0001_steam_sync, 0002_cross_source_dedupe`
+   Deploy logs should show `applied: 0001_steam_sync, 0002_cross_source_dedupe, 0003_upload_jobs`
    once, then `applied: nothing (up to date)` on later deploys.
 
 ## Database
@@ -99,6 +99,7 @@ free instances have no shell. On a paid plan, move it to
 | `STEAM_BOT_REFRESH_TOKEN` | `sync: false` | optional, demo bot |
 | `SYNC_MAX_MATCHES_PER_REQUEST` | `1` | raise only after measuring |
 | `UPLOAD_MAX_BYTES` | `1073741824` | request-body cap for `POST /matches/upload` |
+| `UPLOAD_QUEUE_MAX` / `UPLOAD_JOB_DIR` | defaults | 3 queued-or-parsing uploads (all users) / `<tmp>/csa-upload-jobs` (must be disk, not tmpfs) |
 | `SESSION_COOKIE_DOMAIN` | not set | host-only cookie on `api.csgooner.com` is same-site with `csgooner.com`, so not needed |
 | `SESSION_COOKIE_SAMESITE` | not set (`lax`) | only `none` if the API must stay on `onrender.com` |
 | `DEMO_MAX_DOWNLOAD_BYTES` / `DEMO_MAX_DECOMPRESSED_BYTES` | defaults | 300 MiB `.bz2` / 1 GiB `.dem` |
@@ -117,12 +118,22 @@ are set; the service then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`
   for a `.dem`, and a `.dem.bz2` is also capped at `DEMO_MAX_DOWNLOAD_BYTES`
   (300 MiB). If `api.csgooner.com` is ever Cloudflare-proxied, set
   `UPLOAD_MAX_BYTES=100000000`.
-- **Parsing runs inside the request** (kept simple on purpose), in a
-  short-lived child process (`python -m steamlink.parse_worker`). The body is
-  streamed to a temp dir (deleted in `finally`), then parsed once per process:
-  uploads and Steam sync share one parse slot (`429 upload_busy` for a
-  concurrent upload; a sync waits). The temp dir must be on disk, not a tmpfs
-  (`TMPDIR`), or the demo itself counts as RAM; Render's default is disk.
+- **Parsing runs in the background** (`steamlink/jobs.py`, migration `0003`):
+  `POST /matches/upload` streams the body to `UPLOAD_JOB_DIR`, records an
+  `upload_jobs` row and answers `202 {"job": ...}` right away; the web UI polls
+  `GET /matches/upload/{job_id}` every 2 s and shows queued / unpacking % /
+  parsing / saving. One worker thread per process parses jobs oldest first in
+  a short-lived child process (`python -m steamlink.parse_worker`), sharing one
+  parse slot with Steam sync. At most `UPLOAD_QUEUE_MAX` (3) jobs may be queued
+  or running (`429 upload_queue_full`). The job dir must be on disk, not a
+  tmpfs, or the demo itself counts as RAM; Render's default is disk.
+- **Restarts / deploys:** the disk is ephemeral, so a deploy or restart while a
+  demo is queued or parsing loses the file; on startup that job is marked
+  `failed` / `server_restarted` and the UI asks for the upload again (where the
+  file survives, e.g. locally, the job is resumed; checked by SIGKILLing the API
+  mid-parse and restarting it). Free instances sleep after 15 minutes without
+  requests; the UI keeps polling while a parse runs, so that only bites if the
+  tab is closed during a parse that outlasts 15 minutes.
 - **Memory on 512 MB plans (measured 2026-10-05, full-length demos):** the API
   idles at ~135 MB anonymous memory (~217 MB PSS with shared libraries). Peak
   anonymous memory (API + parse child) for a whole upload -> parse -> store ->
@@ -138,14 +149,32 @@ are set; the service then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`
   upload fails with `demo_parse_failed` and the API keeps running (checked in a
   200 MB cgroup; the old in-process parse took the whole API down there).
   Re-measure with `python scripts/measure_demo_memory.py <demo> --budget-mb 300`.
-- **CPU, not memory, is the slow part on `free` (0.1 CPU):** parsing the 441 MB
-  demo costs ~5 CPU-seconds (so roughly a minute at 0.1 CPU), and decompressing
-  a 260 MB `.dem.bz2` costs ~20 CPU-seconds more (several minutes at 0.1 CPU,
-  still under Render's 100-minute limit; a proxy with a shorter timeout in front
-  would cut it). Uploading the plain `.dem` avoids the decompression.
+- **CPU, not memory, is the slow part on `free` (0.1 CPU).** Measured
+  2026-10-05 with the exact start command in a Linux cgroup with
+  `memory.max=512M`, no swap and `cpu.max="10000 100000"` (0.1 CPU), real HTTP
+  uploads (`csa-overnight/live_server_cpu.sh`; not on Render itself):
+
+  | demo | before: one synchronous request | after: POST answered in | job done after |
+  | --- | --- | --- | --- |
+  | 58 MB SourceTV de_mirage | 14.8 s | 1.4 s | 14.7 s |
+  | 108 MB Valve MM de_ancient | 16.5 s | 4.6 s | 19.3 s |
+  | 372 MB FACEIT de_mirage | 41.7 s | 12.4 s | 47.5 s |
+  | 441 MB HLTV de_nuke | 49.1 s | 14.3 s | 53.5 s |
+  | 260 MB `.dem.bz2` (FACEIT, already imported as `.dem`) | 374.5 s | 5.7 s | 408 s |
+  | same `.dem.bz2` into an empty database | n/a | 4.1 s | 427 s |
+
+  CPU used: ~1.6 s (58 MB), ~4.7 s (441 MB), ~40 s for the `.bz2` (bzip2
+  decompression is most of it). Cold start (migrate + uvicorn + model) is ~26 s
+  wall / 2.6 CPU-s. `/health` stayed up throughout (worst 2.1 s, typically
+  0.1 s; the 0.1 CPU quota itself adds up to ~100 ms per request), no OOM kill,
+  and `DEMO_PARSE_TIMEOUT_SECONDS` (600) never fired: the slowest parse was
+  ~40 s of wall time. The 6-7 minute `.bz2` is why parsing moved to a background
+  job; uploading the plain `.dem` avoids the decompression entirely (the UI
+  says so while unpacking). Render's CPUs may be slower than this box's, so
+  treat these as lower bounds; a paid plan (0.5 CPU) should be ~5x faster.
 - Parser settings: `DEMO_PARSE_ISOLATION` (`subprocess`, or `inprocess` to debug),
   `DEMO_PARSE_TIMEOUT_SECONDS` (600; a hung parse is killed and recorded as a
   parse failure), `DEMO_PARSE_THREADS` (2; demoparser2 threads in the child).
 - Free instances sleep after 15 minutes idle; the first request then takes
-  about a minute. Disk is ephemeral, which is fine: demos only live in a temp
-  dir during parsing.
+  about a minute. Disk is ephemeral: uploaded demos only live in the job dir
+  until their job finishes (see restarts above).
