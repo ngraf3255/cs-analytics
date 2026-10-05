@@ -34,9 +34,9 @@ The local frontend calls the API through the Vite development proxy. API documen
 ### Deploy
 
 1. Create the API service in Render from the repository's `render.yaml` blueprint. The service uses the repository root so it can load `model.pkl`.
-2. Attach `api.csgooner.com` to the Render service and add the DNS record Render specifies in Cloudflare.
+2. The frontend defaults to the Render API URL `https://cs-analytics-cwmo.onrender.com`. Adding `api.csgooner.com` as a Render custom domain is optional; to use it, set the GitHub variable `VITE_API_BASE_URL` to `https://api.csgooner.com`.
 3. In Cloudflare, open the `cs-analytics` Worker and add `csgooner.com` and `www.csgooner.com` under **Settings → Domains & Routes → Add → Custom Domain**. Cloudflare creates the DNS records and certificates. Remove any conflicting CNAME records first if Cloudflare reports a conflict.
-4. In GitHub repository **Settings → Secrets and variables → Actions**, add secrets `CLOUDFLARE_API_TOKEN` (with the **Edit Cloudflare Workers** permission scoped to your account) and `CLOUDFLARE_ACCOUNT_ID`. Optionally set the repository variable `VITE_API_BASE_URL`; it defaults to `https://api.csgooner.com`.
+4. In GitHub repository **Settings → Secrets and variables → Actions**, add secrets `CLOUDFLARE_API_TOKEN` (with the **Edit Cloudflare Workers** permission scoped to your account) and `CLOUDFLARE_ACCOUNT_ID`. Optionally set the repository variable `VITE_API_BASE_URL`; it defaults to `https://cs-analytics-cwmo.onrender.com`.
 5. Push frontend changes to `main` to build and deploy automatically, or run **Deploy frontend to Cloudflare Worker** manually from the Actions tab. If Cloudflare Workers Builds is also connected to this repository, disable its automatic production deployment to avoid duplicate deploys.
 
 The Render free service sleeps after 15 minutes without traffic, so the first API request after idle may take about a minute to wake it.

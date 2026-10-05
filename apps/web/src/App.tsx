@@ -11,7 +11,7 @@ type Prediction = {
   probabilities: { ct: number; t: number };
 };
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
+const apiBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "/api" : "https://cs-analytics-cwmo.onrender.com")).replace(/\/$/, "");
 
 function App() {
   const [options, setOptions] = useState<Options | null>(null);
