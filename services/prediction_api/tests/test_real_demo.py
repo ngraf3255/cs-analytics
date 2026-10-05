@@ -72,6 +72,10 @@ def test_real_demo_upload_parse_score_report(tmp_path):
     known = KNOWN_SCORES.get(_sha256(DEMO) if not DEMO.endswith(".bz2") else None)
     if known:
         assert match["score"] == known
+        # Every round of the match is counted once and warmup / knife rounds are not
+        # (FACEIT: knife round, restart, 24 rounds -> 24, not 25).
+        assert match["rounds_count"] == known["ct"] + known["t"] == len(rounds)
+        assert [r["round_number"] for r in rounds] == list(range(1, len(rounds) + 1))
     if _sha256(DEMO) == DEMOPARSER_FIXTURE_SHA256:
         assert match["map_name"] == "de_mirage" and match["rounds_count"] == 10
         assert [r["actual_winner"] for r in rounds] == ["t", "ct", "t", "t", "ct", "t", "t", "t", "t", "t"]
@@ -184,27 +188,30 @@ def test_player_sides_and_kd_match_the_demos_own_player_state(tmp_path):
 
     from demoparser2 import DemoParser
 
-    from steamlink.demo_parser import TEAM_NUM_TO_SIDE, extract_player_rounds
+    from steamlink.demo_parser import TEAM_NUM_TO_SIDE, extract_player_rounds, match_rounds
 
     demo_path = _plain_demo(tmp_path)
     demo = Demoparser2Parser(isolation="inprocess").parse(demo_path)
     records = extract_player_rounds(demo)
     assert records, "no player rounds"
-    rounds = sorted(demo.rounds, key=lambda r: r.end_tick)
+    rounds = match_rounds(demo)  # numbered from the match start, like the records
     with_freeze = [r for r in rounds if r.freeze_end_tick is not None]
     final_tick = rounds[-1].end_tick
-    frame = DemoParser(demo_path).parse_ticks(["team_num", "kills_total", "deaths_total"],
+    frame = DemoParser(demo_path).parse_ticks(["team_num", "kills_total", "deaths_total", "is_alive"],
                                               ticks=[r.freeze_end_tick for r in with_freeze] + [final_tick])
     by_key = {(r.round_number, r.steam_id): r for r in records}
-    checked = 0
+    checked = missing = 0
     for rnd in with_freeze:
         for row in frame[frame["tick"] == rnd.freeze_end_tick].itertuples():
             side = TEAM_NUM_TO_SIDE.get(int(row.team_num)) if row.team_num == row.team_num else None
             record = by_key.get((rnd.number, str(row.steamid)))
+            if side is not None and record is None and row.is_alive:
+                missing += 1  # alive on a team at freeze end but not tracked
             if side is None or record is None:
-                continue  # spectator / not tracked this round (e.g. before the match restart)
+                continue  # spectator / not tracked this round (e.g. disconnected)
             assert record.side == side, (rnd.number, row.steamid)
             checked += 1
+    assert missing == 0  # e.g. HLTV de_nuke round 1: recorded although the demo has no spawn in it
     checkable = {r.number for r in with_freeze}
     assert checked >= 0.9 * sum(1 for r in records if r.round_number in checkable)
     kills, deaths = Counter(), Counter()

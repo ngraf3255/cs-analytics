@@ -114,3 +114,37 @@ def test_final_score_from_team_totals_at_the_last_kill_plus_later_round_winners(
     assert final_score(_scored_demo([ParsedDeath(1500, "ct", "t", "awp", 0, 0)], many)) is None
     unknown = [ParsedRound(1, 100, 1000, None)]
     assert final_score(_scored_demo([ParsedDeath(500, "ct", "t", "awp", 0, 0)], unknown)) is None
+
+
+def test_warmup_and_knife_rounds_before_the_last_match_restart_are_left_out():
+    """Real FACEIT demo: a knife round, begin_new_match, then the 24 rounds of the match.
+    Only the match's rounds count, numbered from 1, for every extractor."""
+
+    from steamlink.demo_parser import extract_player_rounds, final_score, match_rounds
+
+    rounds = [ParsedRound(1, 100, 900, "t"), ParsedRound(2, 1500, 3000, "ct"), ParsedRound(3, 3200, 4000, "t")]
+    deaths = [ParsedDeath(500, "t", "ct", "knife", 0, 0, "1", "2"),  # knife round
+              ParsedDeath(1100, "t", "ct", "ak47", 0, 0, "1", "2"),  # warmup after the knife round: no round
+              ParsedDeath(1600, "ct", "t", "m4a1", 0, 0, "2", "1"),
+              ParsedDeath(3500, "t", "ct", "ak47", 0, 1, "1", "2")]
+    parsed = ParsedDemo("de_mirage", rounds, deaths, match_start_tick=1000)
+    assert [(r.number, r.end_tick) for r in match_rounds(parsed)] == [(1, 3000), (2, 4000)]
+    records = extract_rounds(parsed)
+    assert records == [RoundRecord(1, "ct", "ct", 1.5625, "m4a1", None), RoundRecord(2, "t", "t", 4.6875, "ak47", None)]
+    assert {r.round_number for r in extract_player_rounds(parsed)} == {1, 2}
+    assert final_score(parsed) == (1, 1)
+    # Without a restart every round counts; a restart after the last round is ignored.
+    assert len(extract_rounds(ParsedDemo("de_mirage", rounds, deaths))) == 3
+    assert len(extract_rounds(ParsedDemo("de_mirage", rounds, deaths, match_start_tick=4000))) == 3
+    # A restart in the middle of a round: deaths before it don't open that round.
+    late = ParsedDemo("de_mirage", [ParsedRound(1, None, 3000, "ct")], deaths, match_start_tick=1200)
+    assert extract_rounds(late)[0].opening_kill_seconds is None and extract_rounds(late)[0].opening_weapon == "m4a1"
+
+
+def test_parse_keeps_the_last_match_restart_before_the_last_round_end():
+    from steamlink.demo_parser import _last_match_start
+
+    rounds = [ParsedRound(1, 100, 900, "t"), ParsedRound(2, 1500, 3000, "ct")]
+    assert _last_match_start([0, 1000], rounds) == 1000
+    assert _last_match_start([0, 1000, 5000], rounds) == 1000  # after the last round: not a restart into it
+    assert _last_match_start([], rounds) is None

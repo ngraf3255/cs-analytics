@@ -22,7 +22,17 @@ Feature definitions match the training data (``data/rounds.parquet`` /
   in that round (so the halftime side swap is just the next spawn), falling
   back to their side in a kill of the round; plus their kills / deaths, opening
   kill / death and whether they survived (see the function). Same single parse
-  pass (``player_spawn`` is one more event in it).
+  pass (``player_spawn`` is one more event in it);
+* warmup / knife rounds (:func:`match_rounds`): rounds that ended at or before the
+  last ``begin_new_match`` (the server's restart into the real match) are not part
+  of the match. They are dropped before anything is extracted, so rounds,
+  rounds_count, per-player rounds, the final score and every statistic built on
+  them see the same rounds, numbered 1..N from the match start (seen on a real
+  FACEIT demo: a knife round, then the restart, then 24 rounds).
+
+``PARSE_VERSION`` is stored with each match (``matches.parse_version``): when
+what the parse extracts changes, it is bumped and matches parsed before are
+flagged so a re-upload of the same demo re-parses and replaces them.
 
 Values are stored as observed. Values the model doesn't know (new maps, other
 knife skins, ...) get an unscored reason when the report is built; they are
@@ -45,6 +55,11 @@ from .storage.base import PlayerRoundRecord, RoundRecord
 logger = logging.getLogger(__name__)
 
 CS2_TICKRATE = 64
+# What a parse extracts (stored per match): 1 = rounds + per-player rounds (migration 0007),
+# 2 = warmup / knife rounds before the last begin_new_match dropped from ALL numbers (not
+# only per-player ones) and rounds renumbered from the match start; players present in a
+# round without any player_spawn (recording started mid-round) recorded from the next round.
+PARSE_VERSION = 2
 TEAM_NUM_TO_SIDE = {2: "t", 3: "ct", "2": "t", "3": "ct", "T": "t", "CT": "ct", "t": "t", "ct": "ct"}
 _OTHER_SIDE = {"ct": "t", "t": "ct"}
 
@@ -85,7 +100,8 @@ class ParsedDemo:
     deaths: list[ParsedDeath] = field(default_factory=list)
     tickrate: int = CS2_TICKRATE
     spawns: list[ParsedSpawn] = field(default_factory=list)
-    # Tick of the last begin_new_match (a restart after warmup / a knife round), if any.
+    # Tick of the last begin_new_match before the last round_end (the restart into the real
+    # match after warmup / a knife round), if any.
     match_start_tick: int | None = None
 
 
@@ -118,14 +134,48 @@ def normalize_weapon(weapon: str | None) -> str | None:
     return weapon[len("weapon_"):] if weapon.startswith("weapon_") else weapon
 
 
+@dataclass(frozen=True)
+class _Window:
+    rnd: ParsedRound  # numbered from the match start
+    start: int  # exclusive lower bound: the previous round_end (or just before the match start)
+    live: int  # first tick of play: the freeze end, else start + 1
+
+
+def _windows(demo: ParsedDemo) -> list[_Window]:
+    """The match's rounds (see :func:`match_rounds`) with their tick windows."""
+
+    ordered = sorted(demo.rounds, key=lambda r: r.end_tick)
+    start_tick = demo.match_start_tick
+    if start_tick is not None and ordered and start_tick >= ordered[-1].end_tick:
+        start_tick = None  # a restart after the last round would drop everything: ignore it
+    windows: list[_Window] = []
+    previous_end = -1
+    for rnd in ordered:
+        start, previous_end = previous_end, rnd.end_tick
+        if start_tick is not None:
+            if rnd.end_tick <= start_tick:
+                continue  # warmup / knife round before the restart into the match
+            start = max(start, start_tick - 1)
+        live = rnd.freeze_end_tick if rnd.freeze_end_tick is not None and rnd.freeze_end_tick > start else start + 1
+        windows.append(_Window(ParsedRound(len(windows) + 1, rnd.freeze_end_tick, rnd.end_tick, rnd.winner_side),
+                               start, live))
+    return windows
+
+
+def match_rounds(demo: ParsedDemo) -> list[ParsedRound]:
+    """The rounds of the match itself, in order and numbered 1..N: rounds that ended at
+    or before the last ``begin_new_match`` (warmup, a knife round, a restarted start) are
+    left out. Every extractor below works on these rounds."""
+
+    return [w.rnd for w in _windows(demo)]
+
+
 def extract_rounds(demo: ParsedDemo) -> list[RoundRecord]:
     records: list[RoundRecord] = []
     deaths = sorted(demo.deaths, key=lambda d: d.tick)
-    previous_end = -1
-    for rnd in sorted(demo.rounds, key=lambda r: r.end_tick):
-        window_start = previous_end
-        previous_end = rnd.end_tick
-        in_round = [d for d in deaths if window_start < d.tick <= rnd.end_tick]
+    for window in _windows(demo):
+        rnd = window.rnd
+        in_round = [d for d in deaths if window.start < d.tick <= rnd.end_tick]
         if rnd.freeze_end_tick is not None:
             in_round = [d for d in in_round if d.tick >= rnd.freeze_end_tick]
         first = in_round[0] if in_round else None
@@ -161,10 +211,6 @@ def extract_rounds(demo: ParsedDemo) -> list[RoundRecord]:
     return records
 
 
-def _live_start(rnd: ParsedRound, window_start: int) -> int:
-    return rnd.freeze_end_tick if rnd.freeze_end_tick is not None else window_start + 1
-
-
 def extract_player_rounds(demo: ParsedDemo) -> list[PlayerRoundRecord]:
     """One record per (round, player with a known side), in round order.
 
@@ -174,9 +220,13 @@ def extract_player_rounds(demo: ParsedDemo) -> list[PlayerRoundRecord]:
       round_end). At halftime the teams switch without a new spawn event (seen
       on real demos), so when the kills contradict most spawns of the round, the
       spawn sides of that round are swapped. Players with neither get no record
-      for that round (e.g. a knife round recorded without SteamIDs);
-    * rounds that ended before the last ``begin_new_match`` (warmup, knife
-      round before a restart) get no records: they are not part of the match;
+      for that round (e.g. they disconnected: seen on real MM demos), except in a
+      round with no ``player_spawn`` at all (the recording started after the
+      spawns, seen on a real HLTV demo): there the players of the next round are
+      taken to have played it too, on the same side unless most players who are
+      in both rounds switched sides;
+    * only the rounds of the match (:func:`match_rounds`): warmup / knife rounds
+      before the last ``begin_new_match`` get no records;
     * kills: enemies killed (teamkills, suicides and world deaths are not kills);
       deaths: any death. Both counted from the round's freeze end up to the next
       round's freeze end, so post-round "exit frags" count for the round that
@@ -189,37 +239,45 @@ def extract_player_rounds(demo: ParsedDemo) -> list[PlayerRoundRecord]:
 
     deaths = sorted(demo.deaths, key=lambda d: d.tick)
     spawns = sorted(demo.spawns, key=lambda s: s.tick)
-    ordered = sorted(demo.rounds, key=lambda r: r.end_tick)
-    starts, previous_end = [], -1
-    for rnd in ordered:
-        starts.append((previous_end, _live_start(rnd, previous_end)))
-        previous_end = rnd.end_tick
-    records: list[PlayerRoundRecord] = []
-    for index, rnd in enumerate(ordered):
-        if demo.match_start_tick is not None and rnd.end_tick < demo.match_start_tick:
-            continue
-        window_start, live_start = starts[index]
-        live_start = max(live_start, window_start + 1)
-        # Stats window: up to the next round's live start (exit frags), the last round up to its end.
-        stats_end = starts[index + 1][1] if index + 1 < len(ordered) else rnd.end_tick + 1
-        live = [d for d in deaths if live_start <= d.tick <= rnd.end_tick]
+    windows = _windows(demo)
+    round_sides: list[dict[str, str]] = []
+    no_spawns: list[bool] = []
+    for window in windows:
+        rnd = window.rnd
         seen: dict[str, str] = {}
-        for death in live:
-            for steamid, side in ((death.attacker_steamid, death.attacker_side),
-                                  (death.victim_steamid, death.victim_side)):
-                if steamid and side in ("ct", "t"):
-                    seen.setdefault(steamid, side)
+        for death in deaths:
+            if window.live <= death.tick <= rnd.end_tick:
+                for steamid, side in ((death.attacker_steamid, death.attacker_side),
+                                      (death.victim_steamid, death.victim_side)):
+                    if steamid and side in ("ct", "t"):
+                        seen.setdefault(steamid, side)
         spawned: dict[str, str] = {}
         for spawn in spawns:
-            if window_start < spawn.tick <= rnd.end_tick and spawn.side in ("ct", "t"):
+            if window.start < spawn.tick <= rnd.end_tick and spawn.side in ("ct", "t"):
                 spawned[spawn.steamid] = spawn.side  # the last spawn of the round wins
         both = [sid for sid in spawned if sid in seen]
         if sum(spawned[sid] != seen[sid] for sid in both) * 2 > len(both):
             spawned = {sid: _OTHER_SIDE[side] for sid, side in spawned.items()}  # stale: teams switched
-        sides = {**spawned, **seen}
+        round_sides.append({**spawned, **seen})
+        no_spawns.append(not spawned)
+    for index in range(len(windows) - 2, -1, -1):  # backwards: a run of such rounds fills from the end
+        if not no_spawns[index]:
+            continue
+        sides, after = round_sides[index], round_sides[index + 1]
+        common = [sid for sid in sides if sid in after]
+        switched = sum(sides[sid] != after[sid] for sid in common) * 2 > len(common) if common else False
+        for sid, side in after.items():
+            sides.setdefault(sid, _OTHER_SIDE[side] if switched else side)
+
+    records: list[PlayerRoundRecord] = []
+    for index, window in enumerate(windows):
+        rnd, sides = window.rnd, round_sides[index]
         if not sides:
             continue
-        counted = [d for d in deaths if live_start <= d.tick < stats_end]
+        # Stats window: up to the next round's live start (exit frags), the last round up to its end.
+        stats_end = windows[index + 1].live if index + 1 < len(windows) else rnd.end_tick + 1
+        live = [d for d in deaths if window.live <= d.tick <= rnd.end_tick]
+        counted = [d for d in deaths if window.live <= d.tick < stats_end]
         opening = live[0] if live else None
         for steamid, side in sides.items():
             kills = sum(1 for d in counted if d.attacker_steamid == steamid and d.victim_steamid != steamid
@@ -241,9 +299,10 @@ def final_score(demo: ParsedDemo) -> tuple[int, int] | None:
     """``(ct, t)``: rounds won by the team on the CT / T side at the end of the demo,
     or None if the demo doesn't say (no cross-team kill with team totals)."""
 
-    if not demo.rounds:
+    played = match_rounds(demo)
+    if not played:
         return None
-    last_end = max(r.end_tick for r in demo.rounds)
+    last_end = played[-1].end_tick
     anchor = None
     for death in sorted(demo.deaths, key=lambda d: d.tick):
         if death.tick > last_end:
@@ -254,7 +313,7 @@ def final_score(demo: ParsedDemo) -> tuple[int, int] | None:
     if anchor is None:
         return None
     score = {anchor.attacker_side: anchor.attacker_score, anchor.victim_side: anchor.victim_score}
-    later = [r for r in demo.rounds if r.end_tick >= anchor.tick]  # not counted yet at the anchor kill
+    later = [r for r in played if r.end_tick >= anchor.tick]  # not counted yet at the anchor kill
     if len(later) > 3 or any(r.winner_side not in ("ct", "t") for r in later):
         return None  # e.g. a side swap could hide in a long stretch without kills
     for rnd in later:
@@ -386,8 +445,16 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
             if (steamid := normalize_steamid(row.get("user_steamid")))
             and (side := TEAM_NUM_TO_SIDE.get(row.get("user_team_num")))
         ],
-        match_start_tick=max(match_starts) if match_starts else None,
+        match_start_tick=_last_match_start(match_starts, rounds),
     )
+
+
+def _last_match_start(match_starts: list[int], rounds: list[ParsedRound]) -> int | None:
+    """The last begin_new_match before the last round_end (a later one would leave no rounds)."""
+
+    last_end = max((r.end_tick for r in rounds), default=None)
+    before = [t for t in match_starts if last_end is None or t < last_end]
+    return max(before) if before else None
 
 
 def parsed_demo_to_json(demo: ParsedDemo) -> dict:

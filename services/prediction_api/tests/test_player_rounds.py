@@ -77,7 +77,29 @@ def test_rounds_before_the_last_match_restart_and_unknown_players_have_no_record
               ParsedDeath(2000, "ct", "t", "m4a1", 0, 0, B1, A1),
               ParsedDeath(2100, "ct", "t", "m4a1", 0, 0, None, None)]  # bot / unknown players: nothing
     records = extract_player_rounds(ParsedDemo("de_mirage", rounds, deaths, match_start_tick=1000))
-    assert {(r.round_number, r.steam_id, r.side) for r in records} == {(2, A1, "t"), (2, B1, "ct")}
+    # The knife round is dropped and the match's first round is round 1 (like extract_rounds).
+    assert {(r.round_number, r.steam_id, r.side) for r in records} == {(1, A1, "t"), (1, B1, "ct")}
+
+
+def test_a_round_without_any_spawn_takes_its_players_from_the_next_round():
+    """Real HLTV demo: the recording starts after round 1's spawns, so a player without a
+    kill or death in round 1 had no side. A round with spawns (e.g. a player who
+    disconnected and has none) is not filled in."""
+
+    rounds = [ParsedRound(1, 100, 1000, "t"), ParsedRound(2, 1200, 2000, "ct"), ParsedRound(3, 2200, 3000, "t")]
+    spawns = [ParsedSpawn(1100, s, side) for s, side in ((A1, "t"), (A2, "t"), (B1, "ct"), (B2, "ct"))]
+    spawns += [ParsedSpawn(2100, s, side) for s, side in ((A1, "t"), (B1, "ct"), (B2, "ct"))]  # A2 left
+    deaths = [ParsedDeath(500, "t", "ct", "ak47", 0, 0, A1, B1)]  # round 1: only A1 and B1 known from the kill
+    records = extract_player_rounds(ParsedDemo("de_nuke", rounds, deaths, spawns=spawns))
+    assert {(r.steam_id, r.side) for r in records if r.round_number == 1} == {
+        (A1, "t"), (A2, "t"), (B1, "ct"), (B2, "ct")}
+    assert by_round(records, A2)[1] == PlayerRoundRecord(1, A2, "t", 0, 0, False, False, True)
+    assert 3 not in by_round(records, A2)  # round 3 had spawns: A2 is not made up
+    # The teams switched between the spawn-less round and the next one: the filled sides switch too.
+    swapped = [ParsedSpawn(1100, s, side) for s, side in ((A1, "ct"), (A2, "ct"), (B1, "t"), (B2, "t"))]
+    records = extract_player_rounds(ParsedDemo("de_nuke", rounds[:2], deaths, spawns=swapped))
+    assert {(r.steam_id, r.side) for r in records if r.round_number == 1} == {
+        (A1, "t"), (A2, "t"), (B1, "ct"), (B2, "ct")}
 
 
 @pytest.mark.parametrize("value, expected", [
