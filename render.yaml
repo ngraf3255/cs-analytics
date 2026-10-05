@@ -76,7 +76,7 @@ services:
         sync: false
       # --- Limits ---
       - key: SYNC_MAX_MATCHES_PER_REQUEST
-        value: "1"
+        value: "3"
       - key: UPLOAD_MAX_BYTES
         # 1 GiB: Render doesn't cap request bodies. Lower to 100000000 if
         # api.csgooner.com is ever proxied through Cloudflare (100 MB cap).

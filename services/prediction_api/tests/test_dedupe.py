@@ -54,9 +54,22 @@ def env(tmp_path):
                                     workdir=str(work), max_compressed_bytes=1 << 20, max_demo_bytes=1 << 20,
                                     now=clock(), share_code=share_code)
 
+    from types import SimpleNamespace
+
+    from steamlink.config import Settings
+    from steamlink.jobs import UploadJobWorker
+
+    ctx = SimpleNamespace(storage=storage, clock=clock, sync=sync,
+                          settings=Settings(allowed_origins=[], upload_job_dir=str(tmp_path / "jobs")))
+    ctx.jobs = UploadJobWorker(ctx)
+
     def run_sync():
+        """POST /steam/sync queues jobs; then run them like the worker thread does."""
         clock.advance(60)
-        return sync.sync(user)
+        outcome = sync.sync(user, max_active=10, job_file=ctx.jobs.job_file)
+        while (job := storage.claim_next_upload_job(clock())) is not None:
+            ctx.jobs.process(job)
+        return outcome
 
     def all_matches():
         return storage.list_matches(user.id, limit=50, offset=0)
@@ -70,7 +83,10 @@ def test_upload_then_sync_dedupes_by_demo_hash_and_attaches_share_code(env):
     first = env["upload"]()
     assert first.created
     outcome = env["sync"]()
-    assert outcome.status == "up_to_date" and outcome.processed == 2 and outcome.imported == 1
+    assert outcome.status == "up_to_date" and outcome.processed == 2 and outcome.queued == 2
+    jobs = {j.share_code: j for j in env["storage"].list_upload_jobs(env["user"].id, limit=10, kind="steam_sync")}
+    assert (jobs[code(1)].match_id, jobs[code(1)].match_created) == (first.match_id, False)  # hash dedupe
+    assert jobs[code(2)].match_created is True
     by_id = {m.id: m for m in env["matches"]()}
     assert len(by_id) == 2  # code(1) == the upload; code(2) is a new match
     merged = by_id[first.match_id]

@@ -1,19 +1,43 @@
-"""User-triggered, bounded, idempotent match sync."""
+"""User-triggered, bounded, idempotent match sync.
+
+``POST /steam/sync`` (:meth:`SyncService.sync`) only talks to Valve's
+match-history API, so it answers in about a second: it walks the share-code
+chain from the user's cursor and, for each new match, either
+
+* skips it because it is already stored (upload with its share code, or an
+  earlier sync): cursor advanced, nothing downloaded; or
+* queues a ``steam_sync`` background job (``upload_jobs`` table, see
+  :mod:`steamlink.jobs`) and advances the cursor in the same transaction.
+
+The job worker then calls :meth:`SyncService.import_job`: locate the demo
+(Game Coordinator), download it, decompress, hash, dedupe, parse (holding the
+parse slot shared with uploads) and store it. Why: on Render's free plan
+(0.1 CPU) one full-length demo takes ~1 minute and a ``.dem.bz2`` several
+minutes, far too long for one request.
+
+Once a match is queued the job owns it: transient failures (demo not ready on
+Valve's side yet, demo bot can't sign in, unexpected error) leave the job
+``failed`` with that error and the next sync queues it again, up to
+``max_job_attempts`` runs. Permanent failures (demo expired, too large,
+unparseable, or still not ready after the last attempt) store a stub match
+(``unavailable`` / ``parse_failed``) that a manual upload can fill in later.
+"""
 
 from __future__ import annotations
 
 import logging
 import secrets
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Callable
 
 from .crypto import AuthCodeCipher, DecryptionError
-from .demo_parser import PARSE_SLOT, DemoParseError, DemoParser, extract_rounds
+from .demo_parser import DemoParser
 from .gc import DemoBotAuthFailed
 from .sharecode import decode
-from .storage.base import CursorConflict, NewMatch, Storage, User
-from .upload import sha256_file
+from .storage.base import JOB_KIND_SYNC, CursorConflict, NewMatch, Storage, UploadJob, User
+from .upload import UploadRejected, UploadResult, import_uploaded_demo
 from .valve import (
     DemoFetcher,
     DemoLocator,
@@ -26,15 +50,32 @@ from .valve import (
 
 log = logging.getLogger(__name__)
 
+# Job errors after which the next sync queues the job again (bounded by max_job_attempts).
+RETRYABLE_JOB_ERRORS = ("demo_not_ready", "demo_bot_auth_failed", "demo_retrieval_not_configured", "internal_error")
+
+# Import pipeline rejections -> the stub match a sync job stores instead (status, status_reason).
+_STUB_FOR_REJECTION = {
+    "demo_too_large": ("unavailable", "demo_too_large"),
+    "not_a_cs2_demo": ("unavailable", "demo_unavailable"),
+    "demo_parse_failed": ("parse_failed", "parser_error"),
+    "demo_has_no_rounds": ("parse_failed", "demo_has_no_rounds"),
+}
+
 
 @dataclass(frozen=True)
 class SyncOutcome:
-    # up_to_date | partial | demo_not_ready | error
+    # up_to_date | partial | queue_full | error
     status: str
-    imported: int = 0
-    processed: int = 0
+    queued: int = 0  # matches newly queued for download + parse by this request
+    skipped: int = 0  # new share codes that were already stored (no download)
     has_more: bool = False
     error: str | None = None
+    # Jobs this request queued (new, re-queued after a transient failure, or already queued).
+    job_ids: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def processed(self) -> int:
+        return self.queued + self.skipped
 
 
 class SyncRejected(Exception):
@@ -43,6 +84,21 @@ class SyncRejected(Exception):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
+
+
+class SyncJobFailed(Exception):
+    """A sync job failed transiently (``reason`` is in RETRYABLE_JOB_ERRORS); no match stored."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _ordered_job_id() -> str:
+    """Random id that sorts by creation time: the queue is ordered by (created_at, id),
+    and the jobs of one sync request can share a timestamp."""
+
+    return f"{time.time_ns():016x}{secrets.token_hex(8)}"
 
 
 class SyncService:
@@ -56,9 +112,10 @@ class SyncService:
         parser: DemoParser,
         cipher: AuthCodeCipher,
         clock: Callable[[], datetime],
-        max_matches: int = 1,
+        max_matches: int = 3,
         lock_ttl_seconds: int = 900,
         min_interval_seconds: int = 30,
+        max_job_attempts: int = 5,
     ):
         self.storage = storage
         self.history = history
@@ -70,8 +127,13 @@ class SyncService:
         self.max_matches = max_matches
         self.lock_ttl_seconds = lock_ttl_seconds
         self.min_interval_seconds = min_interval_seconds
+        self.max_job_attempts = max_job_attempts
 
-    def sync(self, user: User) -> SyncOutcome:
+    # The request: walk the history, queue jobs ------------------------------------
+    def sync(self, user: User, *, max_active: int, job_file: Callable[[str], str]) -> SyncOutcome:
+        """``max_active``: the job queue cap (all users and kinds); ``job_file(job_id)``:
+        where the worker will download that job's demo."""
+
         now = self.clock()
         access = self.storage.get_match_access(user.id)
         if access is None:
@@ -87,7 +149,7 @@ class SyncService:
 
         outcome = SyncOutcome("error", error="internal_error")
         try:
-            outcome = self._run(user)
+            outcome = self._run(user, max_active, job_file)
         except Exception:
             log.exception("sync failed for user %s", user.id)  # no codes in this message
             raise
@@ -95,26 +157,33 @@ class SyncService:
             self.storage.release_sync_lock(
                 user.id, token, self.clock(),
                 status="error" if outcome.status == "error" else "ok",
-                error=outcome.error, imported=outcome.imported,
+                error=outcome.error, imported=outcome.queued,
             )
         return outcome
 
-    def _run(self, user: User) -> SyncOutcome:
-        imported = processed = 0
+    def _run(self, user: User, max_active: int, job_file: Callable[[str], str]) -> SyncOutcome:
+        job_ids = list(self.storage.requeue_sync_jobs(
+            user.id, errors=RETRYABLE_JOB_ERRORS, max_attempts=self.max_job_attempts,
+            max_active=max_active, now=self.clock()))
+        queued = skipped = 0
+
+        def done(status: str, *, has_more: bool = False, error: str | None = None) -> SyncOutcome:
+            return SyncOutcome(status, queued, skipped, has_more, error, tuple(dict.fromkeys(job_ids)))
+
         for _ in range(self.max_matches):
             access = self.storage.get_match_access(user.id)
             if access is None:
-                return SyncOutcome("error", imported, processed, error="not_linked")
+                return done("error", error="not_linked")
             try:
                 auth_code = self.cipher.decrypt(user.steam_id, access.auth_code_ciphertext)
             except DecryptionError:
-                return SyncOutcome("error", imported, processed, error="credentials_unreadable")
+                return done("error", error="credentials_unreadable")
 
             result = self.history.next_share_code(user.steam_id, auth_code, access.cursor_share_code)
             if result.status == "no_new_match":
-                return SyncOutcome("up_to_date", imported, processed)
+                return done("up_to_date")
             if result.status != "ok" or not result.next_code:
-                return SyncOutcome("error", imported, processed, error=result.status)
+                return done("error", error=result.status)
 
             share = decode(result.next_code)
             try:
@@ -123,50 +192,86 @@ class SyncService:
                     user.id, expected_cursor=access.cursor_share_code, share_code=result.next_code,
                     valve_match_id=str(share.match_id), now=self.clock(),
                 ):
-                    processed += 1
+                    skipped += 1
                     continue
             except CursorConflict:
-                return SyncOutcome("error", imported, processed, error="cursor_changed")
-            match = self._import_one(result.next_code)
-            if match is None:
-                return SyncOutcome("error", imported, processed, error="demo_retrieval_not_configured")
-            if match == "bot_auth_failed":
-                return SyncOutcome("error", imported, processed, error="demo_bot_auth_failed")
-            if match == "not_ready":
-                return SyncOutcome("demo_not_ready", imported, processed)
+                return done("error", error="cursor_changed")
+            if not self.locator.configured:
+                return done("error", error="demo_retrieval_not_configured")  # cursor stays put
+
+            now = self.clock()
+            job_id = _ordered_job_id()
+            job = UploadJob(id=job_id, user_id=user.id, status="queued", demo_path=job_file(job_id), size_bytes=0,
+                            created_at=now, updated_at=now, share_code=result.next_code, kind=JOB_KIND_SYNC)
             try:
-                inserted = self.storage.record_match(
-                    user.id, expected_cursor=access.cursor_share_code, match=match, now=self.clock()
-                )
+                status, queued_id = self.storage.enqueue_sync_job(
+                    job, expected_cursor=access.cursor_share_code, max_active=max_active, now=now)
             except CursorConflict:
-                return SyncOutcome("error", imported, processed, error="cursor_changed")
-            processed += 1
-            imported += int(inserted)
-        return SyncOutcome("partial", imported, processed, has_more=True)
+                return done("error", error="cursor_changed")
+            if status == "queue_full":
+                return done("queue_full", has_more=True)
+            job_ids.append(queued_id)
+            queued += status == "queued"
+        return done("partial", has_more=True)
 
-    def _import_one(self, share_code: str):
-        """Return a NewMatch, ``"not_ready"``/``"bot_auth_failed"`` (cursor not advanced), or None (no locator)."""
+    # The background job: download + parse one match ---------------------------------
+    def import_job(
+        self, job: UploadJob, *, workdir: str, max_compressed_bytes: int, max_demo_bytes: int,
+        on_stage: Callable[[str, float | None], None],
+    ) -> UploadResult:
+        """Import the match of a ``steam_sync`` job. Downloads to ``job.demo_path``
+        (the caller removes it and ``workdir``). Returns the stored match (possibly
+        a stub); raises :class:`SyncJobFailed` for transient failures."""
 
-        share = decode(share_code)
-        base = dict(share_code=share_code, valve_match_id=f"{share.match_id}")
+        share = decode(job.share_code)
+        base = dict(share_code=job.share_code, valve_match_id=str(share.match_id), source="steam_sync")
+        existing = self.storage.find_match(job.user_id, share_code=job.share_code,
+                                           valve_match_id=base["valve_match_id"])
+        if existing and existing.status == "imported":
+            return UploadResult(existing.id, False)  # e.g. uploaded while the job was waiting
+
+        reported = [-1.0]
+
+        def download_progress(fraction: float) -> None:
+            if fraction - reported[0] >= 0.05 or fraction >= 1.0 > reported[0]:
+                reported[0] = round(fraction, 2)
+                on_stage("downloading", reported[0])
+
         try:
+            on_stage("locating", None)
             url = self.locator.demo_url(share)
-            with self.fetcher.fetch(url) as demo_path:
-                # Cross-source dedupe key: same hash as a manual upload of this demo.
-                base["demo_sha256"] = sha256_file(demo_path)
-                with PARSE_SLOT:  # shared with uploads: never two parses at once
-                    parsed = self.parser.parse(demo_path)
+            on_stage("downloading", None)
+            self.fetcher.download(url, job.demo_path, on_progress=download_progress)
         except DemoLocatorNotConfigured:
-            return None
+            raise SyncJobFailed("demo_retrieval_not_configured") from None
         except DemoBotAuthFailed:
-            return "bot_auth_failed"
+            raise SyncJobFailed("demo_bot_auth_failed") from None
         except DemoNotReady:
-            return "not_ready"
+            if job.attempts < self.max_job_attempts:
+                raise SyncJobFailed("demo_not_ready") from None
+            return self.record_stub(job, "unavailable", "demo_unavailable")  # gave up waiting
         except DemoUnavailable:
-            return NewMatch(**base, status="unavailable", status_reason="demo_unavailable", map_name=None)
+            return self.record_stub(job, "unavailable", "demo_unavailable")
         except DemoTooLarge:
-            return NewMatch(**base, status="unavailable", status_reason="demo_too_large", map_name=None)
-        except DemoParseError:
-            return NewMatch(**base, status="parse_failed", status_reason="parser_error", map_name=None)
-        rounds = tuple(extract_rounds(parsed))
-        return NewMatch(**base, status="imported", status_reason=None, map_name=parsed.map_name, rounds=rounds)
+            return self.record_stub(job, "unavailable", "demo_too_large")
+
+        try:
+            return import_uploaded_demo(
+                storage=self.storage, parser=self.parser, user_id=job.user_id, raw_path=job.demo_path,
+                workdir=workdir, max_compressed_bytes=max_compressed_bytes, max_demo_bytes=max_demo_bytes,
+                now=self.clock(), share_code=job.share_code, wait_for_parse_slot=True, on_stage=on_stage,
+                source="steam_sync",
+            )
+        except UploadRejected as exc:
+            status, reason = _STUB_FOR_REJECTION.get(exc.reason, ("parse_failed", "parser_error"))
+            return self.record_stub(job, status, reason)
+
+    def record_stub(self, job: UploadJob, status: str, reason: str) -> UploadResult:
+        """Store a not-imported match for this job's share code (deduped: never
+        downgrades an imported match), so it shows up and an upload can fill it in."""
+
+        share = decode(job.share_code)
+        match = NewMatch(share_code=job.share_code, valve_match_id=str(share.match_id), status=status,
+                         status_reason=reason, map_name=None, source="steam_sync")
+        match_id, created = self.storage.record_uploaded_match(job.user_id, match=match, now=self.clock())
+        return UploadResult(match_id, created)

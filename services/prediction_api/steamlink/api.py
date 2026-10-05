@@ -26,7 +26,7 @@ from .jobs import UploadJobWorker
 from .scoring import RoundScorer
 from .sessions import LOGIN_STATE_COOKIE, CookieSigner
 from .sharecode import is_valid_share_code
-from .storage.base import Storage, User
+from .storage.base import JOB_KIND_SYNC, JOB_KIND_UPLOAD, Storage, User
 from .sync import SyncRejected, SyncService
 from .valve import MatchHistoryClient, is_valid_auth_code
 
@@ -92,15 +92,22 @@ def _match_access_view(ctx: SteamContext, user: User) -> dict:
     }
 
 
-def _sync_view(ctx: SteamContext, user: User) -> dict:
+def _sync_view(ctx: SteamContext, user: User, jobs: list | None = None) -> dict:
     state = ctx.storage.get_sync_state(user.id, ctx.clock())
+    if jobs is None:
+        jobs = ctx.storage.list_upload_jobs(user.id, limit=SYNC_JOBS_SHOWN, kind=JOB_KIND_SYNC)
     return {
+        # running: the request is walking the history; matches it queued are in active_jobs
         "status": "running" if state.locked else state.status,
         "last_started_at": _iso(state.last_started_at),
         "last_finished_at": _iso(state.last_finished_at),
         "last_error": state.last_error,
-        "last_imported_count": state.last_imported_count,
+        "last_imported_count": state.last_imported_count,  # matches queued by the last sync
+        "active_jobs": sum(job.active for job in jobs),
     }
+
+
+SYNC_JOBS_SHOWN = 10
 
 
 def _match_view(match) -> dict:
@@ -251,22 +258,44 @@ def delete_match_access(user: User = Depends(_current_user), ctx: SteamContext =
 
 @router.get("/steam/sync")
 def get_sync(user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
-    return _sync_view(ctx, user)
+    """Sync status plus the user's recent sync jobs (newest first): the UI polls this
+    while matches download / parse in the background, and after a reload."""
+
+    jobs = ctx.storage.list_upload_jobs(user.id, limit=SYNC_JOBS_SHOWN, kind=JOB_KIND_SYNC)
+    if any(job.active for job in jobs):
+        ctx.jobs.start()  # self-heal, as for uploads
+    return {**_sync_view(ctx, user, jobs), "jobs": [_job_view(ctx, job) for job in jobs]}
 
 
 @router.post("/steam/sync", dependencies=[Depends(_csrf)])
-def post_sync(user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
+def post_sync(
+    response: Response, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
+) -> dict:
+    """Walk the share-code history from the cursor and queue one background job per
+    new match (known matches are skipped without a download). Answers quickly:
+    202 if any job is queued, else 200. Poll ``GET /steam/sync`` (all sync jobs) or
+    ``GET /matches/upload/{job_id}`` for progress.
+
+    ``status``: up_to_date | partial (more history; sync again) | queue_full (the
+    server's job queue is full; sync again later) | error (see ``error``)."""
+
     try:
-        outcome = ctx.sync.sync(user)
+        outcome = ctx.sync.sync(user, max_active=ctx.settings.upload_queue_max, job_file=ctx.jobs.job_file)
     except SyncRejected as exc:
         status = {"not_linked": 409, "already_running": 409, "too_soon": 429}[exc.reason]
         raise HTTPException(status_code=status, detail=exc.reason) from None
+    jobs = [job for job in (ctx.storage.get_upload_job(user.id, job_id) for job_id in outcome.job_ids) if job]
+    if any(job.active for job in jobs):
+        ctx.jobs.start()
+        response.status_code = 202
     return {
         "status": outcome.status,
-        "imported": outcome.imported,
+        "queued": outcome.queued,
+        "skipped": outcome.skipped,
         "processed": outcome.processed,
         "has_more": outcome.has_more,
         "error": outcome.error,
+        "jobs": [_job_view(ctx, job) for job in jobs],
     }
 
 
@@ -286,9 +315,13 @@ def _job_view(ctx: SteamContext, job) -> dict:
         match = _match_view(found[0]) if found else None
     return {
         "id": job.id,
+        "kind": job.kind,  # upload | steam_sync
+        # steam_sync: the match being imported; upload: the share code the user gave, if any
+        "share_code": job.share_code,
         "status": job.status,  # queued | processing | done | failed
-        "stage": job.stage,  # while processing: decompressing | hashing | parsing | storing
-        "progress": job.progress,  # 0..1 within the stage when known (decompressing), else null
+        # while processing: [steam_sync: locating | downloading |] decompressing | hashing | parsing | storing
+        "stage": job.stage,
+        "progress": job.progress,  # 0..1 within the stage when known (downloading, decompressing), else null
         "queue_position": ctx.storage.upload_jobs_ahead(job) if job.status == "queued" else None,
         "error": job.error,
         "size_bytes": job.size_bytes,
@@ -297,6 +330,7 @@ def _job_view(ctx: SteamContext, job) -> dict:
         "finished_at": _iso(job.finished_at),
         "match": match,
         "created": job.match_created,  # False: the demo / match was already stored (dedupe)
+        "attempts": job.attempts,
     }
 
 
@@ -393,11 +427,13 @@ async def upload_demo(
 
 @router.get("/matches/upload")
 def list_upload_jobs(
-    limit: int = Query(10, ge=1, le=50), user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
+    limit: int = Query(10, ge=1, le=50), kind: str = Query(JOB_KIND_UPLOAD, pattern="^(upload|steam_sync|all)$"),
+    user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
 ) -> dict:
-    """The user's recent uploads, newest first (lets the UI resume showing a running parse)."""
+    """The user's recent uploads (``?kind=steam_sync`` / ``all`` for sync jobs), newest
+    first (lets the UI resume showing a running parse)."""
 
-    jobs = ctx.storage.list_upload_jobs(user.id, limit=limit)
+    jobs = ctx.storage.list_upload_jobs(user.id, limit=limit, kind=None if kind == "all" else kind)
     if any(job.active for job in jobs):
         ctx.jobs.start()  # self-heal: e.g. the worker stopped after a database outage
     return {"jobs": [_job_view(ctx, job) for job in jobs]}
@@ -486,7 +522,7 @@ def build_steam_context(settings: Settings, scorer: RoundScorer) -> SteamContext
                                  threads=settings.demo_parse_threads),
         cipher=cipher, clock=clock,
         max_matches=settings.sync_max_matches_per_request, lock_ttl_seconds=settings.sync_lock_ttl_seconds,
-        min_interval_seconds=settings.sync_min_interval_seconds,
+        min_interval_seconds=settings.sync_min_interval_seconds, max_job_attempts=settings.sync_job_max_attempts,
     )
     return SteamContext(settings=settings, storage=storage, signer=CookieSigner(settings.session_secret),
                         cipher=cipher, history=history, sync=sync, scorer=scorer, http=http, clock=clock)
@@ -500,7 +536,7 @@ def register(app: FastAPI, ctx: SteamContext | None) -> None:
 
 
 def start_background_work(app: FastAPI) -> None:
-    """At app startup: resume / clean up upload jobs a previous process left behind."""
+    """At app startup: resume / clean up upload and sync jobs a previous process left behind."""
 
     ctx = getattr(app.state, "steam", None)
     if ctx is not None and ctx.jobs is not None:

@@ -65,7 +65,7 @@ def import_uploaded_demo(
     *, storage: Storage, parser: DemoParser, user_id: str, raw_path: str, workdir: str,
     max_compressed_bytes: int, max_demo_bytes: int, now, share_code: str | None = None,
     demo_sha256: str | None = None, wait_for_parse_slot: bool = False,
-    on_stage: Callable[[str, float | None], None] = _noop_stage,
+    on_stage: Callable[[str, float | None], None] = _noop_stage, source: str = "upload",
 ) -> UploadResult:
     """Decompress (if .bz2), hash, dedupe, parse and store one uploaded demo.
 
@@ -73,6 +73,7 @@ def import_uploaded_demo(
     ``wait_for_parse_slot``: the background worker waits for a running parse
     (e.g. a Steam sync) to finish; a direct caller gets ``upload_busy`` instead.
     ``on_stage(stage, progress)`` reports decompressing / hashing / parsing / storing.
+    ``source``: ``"upload"``, or ``"steam_sync"`` when a sync job downloaded the demo.
     """
 
     valve_match_id = UNKNOWN_MATCH_ID
@@ -118,6 +119,13 @@ def import_uploaded_demo(
                                   demo_sha256=demo_sha256)
     if existing and existing.status == "imported":
         # Same demo (plain or .bz2), or the same match already synced from Steam: don't parse again.
+        if (share_code and not existing.has_share_code) or existing.demo_sha256 is None:
+            # ...but remember the keys it lacked (e.g. a sync download of an uploaded demo
+            # attaches the share code), so later syncs skip this match without a download.
+            storage.record_uploaded_match(user_id, match=NewMatch(
+                share_code=share_code or UPLOAD_KEY_PREFIX + demo_sha256, valve_match_id=valve_match_id,
+                status=existing.status, status_reason=None, map_name=existing.map_name,
+                demo_sha256=demo_sha256, source=source), now=now)
         return UploadResult(existing.id, False)
     on_stage("parsing", None)
     if not _parse_slot.acquire(blocking=wait_for_parse_slot):
@@ -133,6 +141,6 @@ def import_uploaded_demo(
     on_stage("storing", None)
     match = NewMatch(share_code=share_code or UPLOAD_KEY_PREFIX + demo_sha256, valve_match_id=valve_match_id,
                      status="imported", status_reason=None, map_name=parsed.map_name,
-                     rounds=tuple(extract_rounds(parsed)), demo_sha256=demo_sha256, source="upload")
+                     rounds=tuple(extract_rounds(parsed)), demo_sha256=demo_sha256, source=source)
     match_id, created = storage.record_uploaded_match(user_id, match=match, now=now)
     return UploadResult(match_id, created)

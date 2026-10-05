@@ -1,11 +1,17 @@
-"""Background parsing for manual demo uploads.
+"""Background demo jobs: manual uploads and Steam sync downloads.
 
-``POST /matches/upload`` only receives the file: it writes the body to
-``<job dir>/<job id>.upload``, records an ``upload_jobs`` row and returns 202.
-This module's worker then decompresses, hashes, dedupes, parses (in the parse
-child process, holding the parse slot shared with Steam sync) and stores the
-match, updating the job's stage as it goes. Clients poll
-``GET /matches/upload/{job_id}``.
+Two kinds of ``upload_jobs`` rows, one worker:
+
+* ``upload``: ``POST /matches/upload`` only receives the file: it writes the
+  body to ``<job dir>/<job id>.upload``, records a job and returns 202.
+* ``steam_sync``: ``POST /steam/sync`` walks the share-code history and queues
+  one job per new match (see :mod:`steamlink.sync`). The worker first locates
+  and downloads the demo to ``<job dir>/<job id>.upload``.
+
+Then the worker decompresses, hashes, dedupes, parses (in the parse child
+process, holding the parse slot) and stores the match, updating the job's
+stage as it goes. Clients poll ``GET /matches/upload/{job_id}`` (any kind) or
+``GET /steam/sync`` (the user's sync jobs).
 
 Why: on Render's free plan (0.1 CPU) a full-length demo takes ~15-50 s and a
 260 MB ``.dem.bz2`` ~6 minutes (bzip2 decompression alone is ~35 CPU-seconds),
@@ -17,11 +23,15 @@ works through queued jobs oldest first and exits when none are left, so idle
 processes have no polling thread. The first run in a process also recovers
 jobs a previous process left behind:
 
-* ``processing`` jobs were interrupted (crash, deploy, Render restart): queued
-  again if their file still exists and they haven't been tried twice already,
-  else failed (``server_restarted`` / ``demo_parse_failed``);
-* ``queued`` jobs whose file is gone (Render's disk is ephemeral) fail with
+* ``processing`` uploads were interrupted (crash, deploy, Render restart):
+  queued again if their file still exists and they haven't been tried twice
+  already, else failed (``server_restarted`` / ``demo_parse_failed``);
+* ``queued`` uploads whose file is gone (Render's disk is ephemeral) fail with
   ``server_restarted`` (the user uploads again);
+* sync jobs don't need a surviving file (the demo is downloaded again): an
+  interrupted one is queued again (partial download removed) unless it has
+  already run ``SyncService.max_job_attempts`` times, then a ``parse_failed``
+  stub match is stored; queued ones simply stay queued;
 * finished jobs older than a week are deleted, and stray files in the job
   directory that no active job owns are removed.
 
@@ -40,6 +50,8 @@ import threading
 import time
 from datetime import timedelta
 
+from .storage.base import JOB_KIND_SYNC
+from .sync import SyncJobFailed
 from .upload import UploadRejected, import_uploaded_demo
 
 logger = logging.getLogger(__name__)
@@ -132,7 +144,9 @@ class UploadJobWorker:
     def recover(self) -> None:
         storage, now = self._ctx.storage, self._ctx.clock()
         for job in storage.list_active_upload_jobs():
-            if not os.path.exists(job.demo_path):
+            if job.kind == JOB_KIND_SYNC:
+                self._recover_sync_job(job, now)
+            elif not os.path.exists(job.demo_path):
                 logger.warning("upload job %s: file gone after restart", job.id)
                 storage.update_upload_job(job.id, now, status="failed", stage=None, progress=None,
                                           error="server_restarted", finished_at=now)
@@ -157,6 +171,25 @@ class UploadJobWorker:
                 except OSError:
                     pass
 
+    def _recover_sync_job(self, job, now) -> None:
+        if job.status != "processing":
+            return  # queued: nothing on disk to lose
+        self._remove_files(job)  # partial download
+        storage = self._ctx.storage
+        if job.attempts >= self._ctx.sync.max_job_attempts:
+            logger.warning("sync job %s: interrupted %s times, giving up", job.id, job.attempts)
+            try:
+                stub = self._ctx.sync.record_stub(job, "parse_failed", "parser_error")
+            except Exception:  # e.g. the user was deleted meanwhile
+                logger.exception("sync job %s: could not store the stub match", job.id)
+                stub = None
+            storage.update_upload_job(job.id, now, status="done" if stub else "failed", stage=None, progress=None,
+                                      error=None if stub else "demo_parse_failed",
+                                      match_id=stub.match_id if stub else None,
+                                      match_created=stub.created if stub else None, finished_at=now)
+        else:
+            storage.update_upload_job(job.id, now, status="queued", stage=None, progress=None)
+
     # One job -----------------------------------------------------------------------
     def process(self, job) -> None:
         ctx = self._ctx
@@ -170,21 +203,27 @@ class UploadJobWorker:
 
         try:
             os.makedirs(workdir)
-            result = import_uploaded_demo(
-                storage=storage, parser=ctx.sync.parser, user_id=job.user_id, raw_path=job.demo_path,
-                workdir=workdir, max_compressed_bytes=settings.demo_max_download_bytes,
-                max_demo_bytes=settings.demo_max_decompressed_bytes, now=ctx.clock(),
-                share_code=job.share_code, demo_sha256=job.demo_sha256, wait_for_parse_slot=True,
-                on_stage=on_stage,
-            )
-        except UploadRejected as exc:
-            logger.info("upload job %s failed: %s", job.id, exc.reason)
+            if job.kind == JOB_KIND_SYNC:
+                result = ctx.sync.import_job(
+                    job, workdir=workdir, max_compressed_bytes=settings.demo_max_download_bytes,
+                    max_demo_bytes=settings.demo_max_decompressed_bytes, on_stage=on_stage,
+                )
+            else:
+                result = import_uploaded_demo(
+                    storage=storage, parser=ctx.sync.parser, user_id=job.user_id, raw_path=job.demo_path,
+                    workdir=workdir, max_compressed_bytes=settings.demo_max_download_bytes,
+                    max_demo_bytes=settings.demo_max_decompressed_bytes, now=ctx.clock(),
+                    share_code=job.share_code, demo_sha256=job.demo_sha256, wait_for_parse_slot=True,
+                    on_stage=on_stage,
+                )
+        except (UploadRejected, SyncJobFailed) as exc:
+            logger.info("%s job %s failed: %s", job.kind, job.id, exc.reason)
             self._finish(job, status="failed", error=exc.reason)
         except Exception:
-            logger.exception("upload job %s crashed", job.id)
+            logger.exception("%s job %s crashed", job.kind, job.id)
             self._finish(job, status="failed", error="internal_error")
         else:
-            logger.info("upload job %s done in %.1fs (match %s, created=%s)", job.id,
+            logger.info("%s job %s done in %.1fs (match %s, created=%s)", job.kind, job.id,
                         time.monotonic() - started, result.match_id, result.created)
             self._finish(job, status="done", match_id=result.match_id, match_created=result.created)
         finally:

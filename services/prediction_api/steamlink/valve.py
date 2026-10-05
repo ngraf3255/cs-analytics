@@ -98,7 +98,7 @@ class SteamWebMatchHistoryClient(MatchHistoryClient):
 # --- Demo location -------------------------------------------------------------
 
 class DemoNotReady(Exception):
-    """Transient: try again later; do not advance the cursor."""
+    """Transient: try again later (a sync job fails with demo_not_ready; the next sync re-queues it)."""
 
 
 class DemoUnavailable(Exception):

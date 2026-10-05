@@ -114,10 +114,23 @@ def test_full_flow_link_sync_report_delete(app_client):
     assert response.json()["auth_code_hint"] == "****-*****-FG56"
     assert AUTH not in str(ctx.storage.get_match_access(ctx.storage.get_or_create_user(STEAM_ID, ctx.clock()).id))
 
-    sync = client.post("/steam/sync", headers=H).json()
-    assert sync == {"status": "up_to_date", "imported": 3, "processed": 3, "has_more": False, "error": None}
+    response = client.post("/steam/sync", headers=H)
+    assert response.status_code == 202  # matches queued for background download + parse
+    sync = response.json()
+    assert {k: sync[k] for k in ("status", "queued", "skipped", "processed", "has_more", "error")} == {
+        "status": "up_to_date", "queued": 3, "skipped": 0, "processed": 3, "has_more": False, "error": None}
+    assert [job["kind"] for job in sync["jobs"]] == ["steam_sync"] * 3
+    assert [job["share_code"] for job in sync["jobs"]] == [code(1), code(2), code(3)]
     assert client.post("/steam/sync", headers=H).status_code == 429  # too soon
-    assert client.get("/steam/sync").json()["status"] == "ok"
+    assert ctx.jobs.wait_idle(10)
+    status = client.get("/steam/sync").json()
+    assert status["status"] == "ok" and status["active_jobs"] == 0 and status["last_imported_count"] == 3
+    assert [job["status"] for job in status["jobs"]] == ["done"] * 3
+    assert all(job["match"]["status"] == "imported" and job["created"] for job in status["jobs"])
+    one = client.get(f"/matches/upload/{sync['jobs'][0]['id']}").json()["job"]
+    assert one["kind"] == "steam_sync" and one["status"] == "done"
+    assert client.get("/matches/upload").json()["jobs"] == []  # default: uploads only
+    assert len(client.get("/matches/upload?kind=all").json()["jobs"]) == 3
 
     matches = client.get("/matches").json()["matches"]
     assert len(matches) == 3
@@ -193,3 +206,51 @@ def test_upload_too_large(app_client):
     response = client.post("/matches/upload", content=b"PBDEMS2\0" + b"x" * 500,
                            headers={**H, "Content-Type": "application/octet-stream"})
     assert response.status_code == 413
+
+
+def test_sync_jobs_share_the_queue_cap_with_uploads(app_client):
+    from dataclasses import replace
+
+    from steamlink import upload
+
+    client, ctx = app_client
+    body = {"auth_code": AUTH, "share_code": code(0), "consent": True}
+    assert client.put("/steam/match-access", json=body, headers=H).status_code == 200
+    ctx.settings = replace(ctx.settings, upload_queue_max=2)
+    assert upload._parse_slot.acquire(blocking=False)  # hold the worker at "parsing"
+    try:
+        response = client.post("/steam/sync", headers=H)
+        sync = response.json()
+        assert response.status_code == 202
+        assert (sync["status"], sync["queued"], sync["has_more"]) == ("queue_full", 2, True)
+        full = client.post("/matches/upload", content=b"PBDEMS2\0" + b"\x01" * 64, headers=OCTET)
+        assert full.status_code == 429 and full.json()["detail"] == "upload_queue_full"
+        assert client.get("/me").json()["sync"]["active_jobs"] == 2
+        jobs = client.get("/steam/sync").json()["jobs"]
+        assert sorted(job["status"] for job in jobs) == ["processing", "queued"]
+        queued = next(job for job in jobs if job["status"] == "queued")
+        assert queued["queue_position"] == 1
+    finally:
+        upload._parse_slot.release()
+    assert ctx.jobs.wait_idle(10)
+    ctx.clock.advance(60)
+    rest = client.post("/steam/sync", headers=H).json()
+    assert (rest["status"], rest["queued"]) == ("up_to_date", 1)
+    assert ctx.jobs.wait_idle(10)
+    assert len(client.get("/matches").json()["matches"]) == 3
+
+
+def test_sync_status_poll_restarts_a_stopped_worker(app_client):
+    client, ctx = app_client
+    body = {"auth_code": AUTH, "share_code": code(0), "consent": True}
+    assert client.put("/steam/match-access", json=body, headers=H).status_code == 200
+    start = ctx.jobs.start
+    ctx.jobs.start = lambda: None  # e.g. the worker gave up during a database outage
+    try:
+        assert client.post("/steam/sync", headers=H).status_code == 202
+    finally:
+        ctx.jobs.start = start
+    assert not ctx.jobs.running
+    client.get("/steam/sync")
+    assert ctx.jobs.wait_idle(10)
+    assert [job["status"] for job in client.get("/steam/sync").json()["jobs"]] == ["done"] * 3

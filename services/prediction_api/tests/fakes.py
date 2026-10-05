@@ -67,12 +67,28 @@ class FakeLocator(DemoLocator):
 
 
 class FakeFetcher:
-    """Yields a real temp file. Content defaults to a per-URL demo-like blob;
-    set ``content[url]`` to simulate Valve serving specific bytes."""
+    """Writes / yields a real file. Content defaults to a per-URL demo-like blob;
+    set ``content[url]`` to simulate Valve serving specific bytes (plain .dem or
+    .dem.bz2), ``files[url]`` to serve a local file, ``errors[url]`` to raise."""
 
     def __init__(self):
         self.fetched = []
         self.content = {}
+        self.files = {}
+        self.errors = {}
+
+    def download(self, url, dest, on_progress=None):
+        self.fetched.append(url)
+        if url in self.errors:
+            raise self.errors[url]
+        if url in self.files:
+            import shutil
+            shutil.copyfile(self.files[url], dest)
+        else:
+            with open(dest, "wb") as out:
+                out.write(self.content.get(url, b"PBDEMS2\0" + url.encode()))
+        if on_progress is not None:
+            on_progress(1.0)
 
     @contextmanager
     def fetch(self, url):

@@ -36,7 +36,7 @@ allowed_origins = settings.allowed_origins
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Resume or fail upload parse jobs left behind by a previous process (steamlink.jobs).
+    # Resume or fail upload / sync jobs left behind by a previous process (steamlink.jobs).
     start_background_work(app)
     yield
 

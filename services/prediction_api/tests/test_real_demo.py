@@ -79,3 +79,37 @@ def test_subprocess_and_in_process_parse_identically(tmp_path):
     isolated = Demoparser2Parser(isolation="subprocess").parse(demo)
     assert isolated == Demoparser2Parser(isolation="inprocess").parse(demo)
     assert isolated.rounds and isolated.deaths
+
+
+def test_real_demo_steam_sync_background_job(tmp_path):
+    """Steam sync of a real demo (Valve download faked with the local file): the request
+    only queues a job; the worker downloads, (decompresses,) parses, scores and stores."""
+
+    from steamlink import sharecode
+
+    from fakes import code
+    from test_api_steam import AUTH, H
+
+    client, ctx = make_client(tmp_path)
+    login(client, ctx)
+    ctx.sync.parser = Demoparser2Parser()
+    ctx.sync.max_matches = 1
+    share = sharecode.decode(code(1))
+    ctx.sync.fetcher.files[f"http://replay1.valve.net/730/{share.match_id}_{share.outcome_id}.dem.bz2"] = DEMO
+    assert client.put("/steam/match-access", json={"auth_code": AUTH, "share_code": code(0), "consent": True},
+                      headers=H).status_code == 200
+    response = client.post("/steam/sync", headers=H)
+    assert response.status_code == 202, response.text
+    (job,) = response.json()["jobs"]
+    assert job["status"] in ("queued", "processing") and job["share_code"] == code(1)
+    assert ctx.jobs.wait_idle(1200)
+    job = client.get(f"/matches/upload/{job['id']}").json()["job"]
+    assert job["status"] == "done" and job["created"] is True, job
+    match = job["match"]
+    assert match["status"] == "imported" and match["source"] == "steam_sync" and match["rounds_count"] > 0
+    assert match["share_code"] == code(1)
+    assert client.get(f"/matches/{match['id']}").json()["summary"]["scored"] > 0
+    # The same demo uploaded by hand afterwards is recognised (hash of the decompressed .dem).
+    with open(DEMO, "rb") as fh:
+        _, again = upload_and_wait(client, ctx, fh.read(), timeout=1200)
+    assert again["created"] is False and again["match"]["id"] == match["id"]

@@ -83,20 +83,20 @@ def test_upload_and_sync_share_one_parse_slot():
     assert upload._parse_slot is PARSE_SLOT
 
 
-def test_sync_waits_for_a_running_parse(env):  # noqa: F811
-    svc = env["service"](max_matches=1)
+def test_sync_job_waits_for_a_running_parse(env):  # noqa: F811
+    env.sync(env.service(max_matches=1))  # the request only queues the job: no parse slot needed
     assert PARSE_SLOT.acquire(blocking=False)  # e.g. an upload is parsing
     released = False
     try:
-        worker = threading.Thread(target=lambda: svc.sync(env["user"]))
+        worker = threading.Thread(target=env.drain)
         worker.start()
         worker.join(0.3)
-        assert worker.is_alive() and env["parser"].calls == 0
+        assert worker.is_alive() and env.parser.calls == 0
     finally:
         PARSE_SLOT.release()
         released = True
     worker.join(5)
-    assert released and not worker.is_alive() and env["parser"].calls == 1
+    assert released and not worker.is_alive() and env.parser.calls == 1
 
 
 def test_parse_settings_defaults_and_validation():

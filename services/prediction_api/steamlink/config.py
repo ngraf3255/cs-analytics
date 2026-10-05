@@ -61,7 +61,12 @@ class Settings:
     session_cookie_domain: str | None = None
     session_ttl_seconds: int = 14 * 24 * 3600
     login_state_ttl_seconds: int = 600
-    sync_max_matches_per_request: int = 1
+    # Per POST /steam/sync: share codes walked (each new match becomes a background
+    # job; the job queue cap UPLOAD_QUEUE_MAX applies too). A sync job whose demo
+    # isn't ready yet (or whose download failed transiently) is retried by later
+    # syncs until it ran SYNC_JOB_MAX_ATTEMPTS times.
+    sync_max_matches_per_request: int = 3
+    sync_job_max_attempts: int = 5
     sync_lock_ttl_seconds: int = 900
     sync_min_interval_seconds: int = 30
     demo_max_download_bytes: int = 300 * 1024 * 1024
@@ -157,6 +162,8 @@ class Settings:
             raise ConfigError("UPLOAD_QUEUE_MAX must be positive")
         if self.sync_max_matches_per_request < 1 or self.sync_max_matches_per_request > 10:
             raise ConfigError("SYNC_MAX_MATCHES_PER_REQUEST must be between 1 and 10")
+        if self.sync_job_max_attempts < 1:
+            raise ConfigError("SYNC_JOB_MAX_ATTEMPTS must be positive")
 
 
 def _read_secret_file(path: str | None) -> str | None:
@@ -183,7 +190,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         session_cookie_samesite=(env.get("SESSION_COOKIE_SAMESITE") or "lax").lower(),
         session_cookie_domain=env.get("SESSION_COOKIE_DOMAIN") or None,
         session_ttl_seconds=_int(env, "SESSION_TTL_SECONDS", 14 * 24 * 3600),
-        sync_max_matches_per_request=_int(env, "SYNC_MAX_MATCHES_PER_REQUEST", 1),
+        sync_max_matches_per_request=_int(env, "SYNC_MAX_MATCHES_PER_REQUEST", 3),
+        sync_job_max_attempts=_int(env, "SYNC_JOB_MAX_ATTEMPTS", 5),
         sync_lock_ttl_seconds=_int(env, "SYNC_LOCK_TTL_SECONDS", 900),
         sync_min_interval_seconds=_int(env, "SYNC_MIN_INTERVAL_SECONDS", 30),
         demo_max_download_bytes=_int(env, "DEMO_MAX_DOWNLOAD_BYTES", 300 * 1024 * 1024),
