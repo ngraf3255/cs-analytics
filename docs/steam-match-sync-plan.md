@@ -19,6 +19,7 @@ The existing model predicts a **round** from `map_name`, `opening_kill_side`, `o
 
 - Steam OpenID can verify a SteamID; it does not grant access to CS2 match data and must never ask the user for their Steam password.
 - Match history requires a separate user-created CS2 Game Authentication Code (`steamidkey`) and a known match sharing code (`knowncode`). Treat the auth code as a secret.
+- This follows the onboarding pattern Leetify documents: Steam sign-in identifies the player, then the player supplies a Game Authentication Code once and a recent match share code to start tracking. Leetify says share codes discover newer matches only, expire 30 days after the match, and the CS2 client exposes codes for the last eight matchmaking games while they remain available. See [Leetify's share-code guide](https://leetify.com/blog/share-codes/) and [Steam sign-in explanation](https://leetify.com/blog/phishing/).
 - Valve's 2023 notes say third-party match-history access covers Competitive, Wingman, and Premier, and that the known share code used to request the next code must be no more than one month old. This makes forward sync from a recent starting code plausible; it does not promise a full historical backfill.
 - The match sharing code identifies a match; the demo must still be retrieved and parsed. Match/demo availability and parser compatibility can change with CS2 updates.
 - Current model inputs and categorical vocabularies must be compared with parsed demo data. Unsupported map/weapon values should be reported as unscored, not silently coerced.
@@ -50,13 +51,14 @@ The existing model predicts a **round** from `map_name`, `opening_kill_side`, `o
 - Check the training pipeline's opening-kill definition and normalize map, side, weapon, and kill-time features consistently.
 - Stop or revise the approach if current CS2 demos cannot be retrieved or parsed reliably.
 
-### 2. Choose persistence and secrets before account implementation
+### 2. Build storage-independent code; connect the homelab database last
 
-- Add a durable PostgreSQL service before shipping Steam links. Render's ephemeral filesystem is not suitable for account links or import cursors.
+- Keep repository work moving with a storage interface, schema/migrations, and local development configuration. Do not store production credentials in source control or use Render's ephemeral filesystem for persistent account data.
+- The final infrastructure step is to connect the API to the user's homelab PostgreSQL through `DATABASE_URL`, apply migrations, and verify backups, firewall/TLS, and connectivity from Render.
 - Add tables for users, encrypted Steam match-history auth code, latest processed share code, sync status, match metadata, and parsed rounds.
 - Keep encryption keys and Steam API credentials (if required) in Render environment variables, never in source control or the frontend. Use authenticated encryption; support key rotation planning.
 - Do not store raw `.dem` files after parsing. Define data deletion for imported rows, account disconnect, and failed/partial sync.
-- Confirm provider, cost, backup/retention, and secret-handling choices before creating external resources.
+- Do not enable production account linking or match sync until the homelab DB is connected and credential/cursor persistence is verified.
 
 ### 3. Implement account and sync API
 
@@ -77,9 +79,10 @@ The existing model predicts a **round** from `map_name`, `opening_kill_side`, `o
 - For each round show opening kill details, actual winner, model probability/prediction when scorable, and why any row could not be scored.
 - Show that prediction accuracy on the user's demos is not yet calibrated to their matchmaking population.
 
-### 5. Deploy safely
+### 5. Connect the homelab database and deploy safely (final infrastructure step)
 
-- Configure a durable database, encryption key, public API URL, HTTPS session behavior, allowed origins, and Steam/OpenID return URL.
+- Configure `DATABASE_URL` to the homelab PostgreSQL only after the application flow and migrations are ready. Ensure the database is reachable securely from Render, with backups and restricted inbound access.
+- Configure the encryption key, public API URL, HTTPS session behavior, allowed origins, and Steam/OpenID return URL.
 - Pin parser and related dependencies and verify Linux/Python 3.11 deployment.
 - Measure sync CPU, memory, disk, archive size, and request duration with representative demos before allowing multiple matches per sync.
 - Start with a user-triggered, small-batch sync. Move parsing to a background worker/queue before adding scheduled imports or larger batches.
@@ -104,7 +107,7 @@ The existing model predicts a **round** from `map_name`, `opening_kill_side`, `o
 
 - [x] Steam integration replaces the original manual-upload-first direction.
 - [x] Plan recorded before implementation.
-- [ ] Confirm persistence provider and credential-storage decision.
+- [x] Defer the homelab PostgreSQL connection to the final infrastructure step.
 - [ ] Validate Steam auth-code/share-code/demo flow with a test account and demo.
 - [ ] Implement Steam identity and secure sessions.
 - [ ] Implement durable data and incremental import.
