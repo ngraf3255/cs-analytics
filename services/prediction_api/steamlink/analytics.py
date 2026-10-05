@@ -6,10 +6,23 @@ imported match in the user's list (shared matches included, see
 ``match_owners``) are scored with the same retrospective model as the
 per-match report (``GET /matches/{id}``), one model call per map.
 
-Sides are the map sides (CT / T) of all players in the match: the user's own
-team is not stored yet, so "CT win rate" means "rounds won by the CT side".
-Rounds the model can't score (unknown weapon, no opening kill, ...) still
-count for the side / opening-kill statistics when their winner is known.
+Two scopes:
+
+* ``you`` -- the signed-in player's own rounds, from the per-player rounds
+  stored at parse time (``player_rounds``: the side their SteamID was on each
+  round, so the halftime swap is handled, plus their kills / deaths / opening
+  duels): round win rate overall, as CT and as T and per map, match results,
+  K/D, opening duels and recent form. Matches the player is not in (e.g. an
+  uploaded pro demo) and matches parsed before per-player rounds were recorded
+  are counted separately and left out of these numbers;
+* everything else (``sides``, ``prediction``, ``opening_kills``, ``maps``,
+  ``recent_form``) covers ALL players in every match: "CT win rate" there means
+  "rounds won by the CT side". Rounds the model can't score (unknown weapon, no
+  opening kill, ...) still count for the side / opening-kill statistics when
+  their winner is known.
+
+Matches are ordered by when they were played when known (``played_at``, from
+the Game Coordinator for Steam sync), else by when they were added.
 """
 
 from __future__ import annotations
@@ -19,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import timezone
 
 from .scoring import RoundScore, RoundScorer
-from .storage.base import MatchRecord, RoundRecord, Storage
+from .storage.base import MatchRecord, PlayerRoundRecord, RoundRecord, Storage
 
 SIDES = ("ct", "t")
 # Bins of the model's confidence in its favourite (max(P(CT), P(T)) is always >= 0.5).
@@ -94,13 +107,191 @@ def _score_by_map(scorer: RoundScorer, imported: list[tuple[MatchRecord, list[Ro
     return scores
 
 
-def build_user_summary(storage: Storage, scorer: RoundScorer, user_id: str, *, recent: int = RECENT_DEFAULT) -> dict:
-    """The JSON of ``GET /matches/summary`` for ``user_id`` (see the module docstring)."""
+def iso(value):
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if value else None
 
-    def iso(value):
-        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if value else None
 
-    listed = storage.list_matches_with_rounds(user_id)  # newest first
+def match_date(match: MatchRecord) -> dict:
+    """When the match was played if known, else when it was added to the user's list (labelled)."""
+
+    return {"date": iso(match.played_at or match.imported_at),
+            "date_source": "played" if match.played_at else "imported",
+            "played_at": iso(match.played_at)}
+
+
+def _sort_key(match: MatchRecord):
+    return match.played_at or match.imported_at
+
+
+@dataclass
+class _Mine:
+    """The player's own rounds over a set of matches."""
+
+    matches: int = 0
+    rounds: int = 0
+    with_winner: int = 0
+    won: int = 0
+    side_rounds: dict = field(default_factory=lambda: {"ct": 0, "t": 0})
+    side_won: dict = field(default_factory=lambda: {"ct": 0, "t": 0})
+    kills: int = 0
+    deaths: int = 0
+    survived: int = 0
+    opening_kills: int = 0
+    opening_deaths: int = 0
+    won_after_opening_kill: int = 0
+    won_after_opening_death: int = 0
+    results: dict = field(default_factory=lambda: {"won": 0, "lost": 0, "tied": 0, "unknown": 0})
+
+    def add_round(self, mine: PlayerRoundRecord, winner: str | None) -> None:
+        self.rounds += 1
+        self.side_rounds[mine.side] = self.side_rounds.get(mine.side, 0) + 1
+        self.kills += mine.kills
+        self.deaths += mine.deaths
+        self.survived += int(mine.survived)
+        self.opening_kills += int(mine.opening_kill)
+        self.opening_deaths += int(mine.opening_death)
+        if winner in SIDES:
+            won = int(winner == mine.side)
+            self.with_winner += 1
+            self.won += won
+            self.side_won[mine.side] = self.side_won.get(mine.side, 0) + won
+            self.won_after_opening_kill += won if mine.opening_kill else 0
+            self.won_after_opening_death += won if mine.opening_death else 0
+
+    def merge(self, other: "_Mine") -> None:
+        for name in ("matches", "rounds", "with_winner", "won", "kills", "deaths", "survived", "opening_kills",
+                     "opening_deaths", "won_after_opening_kill", "won_after_opening_death"):
+            setattr(self, name, getattr(self, name) + getattr(other, name))
+        for side in SIDES:
+            self.side_rounds[side] += other.side_rounds[side]
+            self.side_won[side] += other.side_won[side]
+        for key in self.results:
+            self.results[key] += other.results[key]
+
+    def kd(self) -> float | None:
+        return round(self.kills / self.deaths, 2) if self.deaths else (float(self.kills) if self.kills else None)
+
+    def rounds_view(self) -> dict:
+        return {"rounds": self.rounds, "rounds_with_winner": self.with_winner, "won": self.won,
+                "win_rate": _rate(self.won, self.with_winner)}
+
+    def view(self) -> dict:
+        return {
+            "matches": self.matches, **self.rounds_view(), "results": dict(self.results),
+            "kills": self.kills, "deaths": self.deaths, "kd": self.kd(),
+            "kills_per_round": round(self.kills / self.rounds, 2) if self.rounds else None,
+            "survived": self.survived, "survival_rate": _rate(self.survived, self.rounds),
+        }
+
+
+def _player_match(match: MatchRecord, rounds: list[RoundRecord], mine: list[PlayerRoundRecord]):
+    """(_Mine for one match, per-side rounds with a known winner, match result view)."""
+
+    winners = {r.round_number: r.winner_side for r in rounds}
+    tally = _Mine(matches=1)
+    with_winner = {"ct": 0, "t": 0}
+    for record in mine:
+        winner = winners.get(record.round_number)
+        tally.add_round(record, winner)
+        if winner in SIDES and record.side in SIDES:
+            with_winner[record.side] += 1
+    result = match_result(match, mine)
+    tally.results[result["result"] or "unknown"] += 1
+    return tally, with_winner, result
+
+
+def match_result(match: MatchRecord, mine: list[PlayerRoundRecord]) -> dict:
+    """The player's final score and result, from the final score (sides at the end) and the
+    side they ended the match on."""
+
+    if not mine or match.score_ct is None or match.score_t is None:
+        return {"score": None, "result": None}
+    last_side = mine[-1].side
+    you, them = (match.score_ct, match.score_t) if last_side == "ct" else (match.score_t, match.score_ct)
+    return {"score": {"you": you, "them": them}, "result": "won" if you > them else "lost" if you < them else "tied"}
+
+
+def build_player_summary(imported: list[tuple[MatchRecord, list[RoundRecord]]],
+                         player_rounds: dict[str, list[PlayerRoundRecord]], steam_id: str, *, recent: int) -> dict:
+    """The ``you`` section of ``GET /matches/summary``: ``imported`` newest first."""
+
+    total, with_winner_total = _Mine(), {"ct": 0, "t": 0}
+    per_map: dict = defaultdict(lambda: [_Mine(), {"ct": 0, "t": 0}])
+    per_match: list = []
+    without_you = unknown = 0
+    for match, rounds in imported:
+        mine = player_rounds.get(match.id, [])
+        if not mine:
+            if match.players_recorded:
+                without_you += 1
+            else:
+                unknown += 1
+            continue
+        tally, with_winner, result = _player_match(match, rounds, mine)
+        total.merge(tally)
+        entry = per_map[match.map_name]
+        entry[0].merge(tally)
+        for side in SIDES:
+            with_winner_total[side] += with_winner[side]
+            entry[1][side] += with_winner[side]
+        per_match.append((match, tally, result, mine))
+
+    def sides(tally: _Mine, with_winner: dict) -> dict:
+        return {side: {"rounds": with_winner[side], "won": tally.side_won[side],
+                       "win_rate": _rate(tally.side_won[side], with_winner[side])} for side in SIDES}
+
+    def window(items) -> dict:
+        tally = _Mine()
+        for _, t, _, _ in items:
+            tally.merge(t)
+        return {"matches": tally.matches, "rounds": tally.rounds, "won": tally.won,
+                "win_rate": _rate(tally.won, tally.with_winner), "kd": tally.kd(), "results": dict(tally.results)}
+
+    recent_items, earlier_items = per_match[:recent], per_match[recent:]
+    recent_view, earlier_view = window(recent_items), window(earlier_items)
+    win_change = kd_change = None
+    if recent_view["win_rate"] is not None and earlier_view["win_rate"] is not None:
+        win_change = round(recent_view["win_rate"] - earlier_view["win_rate"], 4)
+    if recent_view["kd"] is not None and earlier_view["kd"] is not None:
+        kd_change = round(recent_view["kd"] - earlier_view["kd"], 2)
+    taken = total.opening_kills + total.opening_deaths
+    return {
+        "steam_id": steam_id,
+        **total.view(),
+        "matches_without_you": without_you,  # demos you are not in (e.g. an uploaded pro match)
+        "matches_unknown": unknown,  # parsed before per-player rounds were recorded: re-upload to include
+        "sides": sides(total, with_winner_total),
+        "opening_duels": {
+            "taken": taken, "won": total.opening_kills, "lost": total.opening_deaths,
+            "win_rate": _rate(total.opening_kills, taken),
+            "round_win_rate_after_opening_kill": _rate(total.won_after_opening_kill, total.opening_kills),
+            "round_win_rate_after_opening_death": _rate(total.won_after_opening_death, total.opening_deaths),
+        },
+        "maps": [
+            {"map_name": map_name, **tally.view(), "sides": sides(tally, with_winner)}
+            for map_name, (tally, with_winner) in sorted(
+                per_map.items(), key=lambda kv: (-kv[1][0].matches, -kv[1][0].rounds, kv[0] or "~"))
+        ],
+        "recent_form": {
+            "window": recent, "recent": recent_view, "earlier": earlier_view,
+            "win_rate_change": win_change, "kd_change": kd_change,
+            "matches": [
+                {"id": m.id, "map_name": m.map_name, **match_date(m), "first_side": mine[0].side,
+                 "rounds": t.rounds, "won": t.won, "win_rate": _rate(t.won, t.with_winner),
+                 "kills": t.kills, "deaths": t.deaths, **result}
+                for m, t, result, mine in recent_items
+            ],
+        },
+    }
+
+
+def build_user_summary(storage: Storage, scorer: RoundScorer, user_id: str, *, steam_id: str | None = None,
+                       recent: int = RECENT_DEFAULT) -> dict:
+    """The JSON of ``GET /matches/summary`` for ``user_id`` (see the module docstring);
+    ``steam_id``: the user's SteamID64 for the ``you`` section (omitted when None)."""
+
+    listed = storage.list_matches_with_rounds(user_id)
+    listed.sort(key=lambda item: _sort_key(item[0]), reverse=True)  # newest played (else added) first
     imported = [(m, rs) for m, rs in listed if m.status == "imported"]
     scores = _score_by_map(scorer, imported)
 
@@ -160,7 +351,7 @@ def build_user_summary(storage: Storage, scorer: RoundScorer, user_id: str, *, r
     opening_total = sum(o["rounds"] for o in opening.values())
     opening_converted = sum(o["converted"] for o in opening.values())
     model_view = total.model()
-    return {
+    summary = {
         "model": {"calibrated_for_matchmaking": False, "coin_flip_brier_score": COIN_FLIP_BRIER},
         "totals": {
             "matches": len(listed),
@@ -212,10 +403,18 @@ def build_user_summary(storage: Storage, scorer: RoundScorer, user_id: str, *, r
             "earlier": earlier_view,
             "hit_rate_change": change,
             "matches": [
-                {"id": m.id, "map_name": m.map_name, "imported_at": iso(m.imported_at), "rounds": t.rounds,
+                {"id": m.id, "map_name": m.map_name, "imported_at": iso(m.imported_at), **match_date(m),
+                 "rounds": t.rounds,
                  "score": None if m.score_ct is None or m.score_t is None else {"ct": m.score_ct, "t": m.score_t},
                  **t.model()}
                 for m, t in recent_items
             ],
         },
+        # Which numbers above cover everyone in the match (not just the signed-in player).
+        "scope": {"sides": "all_players", "prediction": "all_players", "opening_kills": "all_players",
+                  "maps": "all_players", "recent_form": "all_players", "you": "signed_in_player"},
     }
+    if steam_id is not None:
+        summary["you"] = build_player_summary(imported, storage.list_player_rounds(user_id, steam_id), steam_id,
+                                              recent=recent)
+    return summary

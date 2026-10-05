@@ -672,7 +672,7 @@ def step_store_report(run: Run, scorer) -> str:
                 if job.status != "done" or not job.match_id:
                     raise Failed(f"the sync job ended {job.status} with error {job.error}")
                 match_id, created = job.match_id, job.match_created
-            report = build_match_report(storage, scorer, user.id, match_id)
+            report = build_match_report(storage, scorer, user.id, match_id, steam_id=user.steam_id)
             if report is None:
                 raise Failed("the match was stored but is not in the user's list")
             match = report["match"]
@@ -681,7 +681,7 @@ def step_store_report(run: Run, scorer) -> str:
             run.report = report
             from .analytics import build_user_summary
 
-            run.summary = build_user_summary(storage, scorer, user.id)
+            run.summary = build_user_summary(storage, scorer, user.id, steam_id=user.steam_id)
             summary = report["summary"]
             backend = "PostgreSQL" if engine.dialect.name == "postgresql" else "SQLite"
             return (f"match {match_id} stored in {backend} ({'new' if created else 'already stored'}, "
@@ -737,7 +737,17 @@ def print_summary(r: Reporter, summary: dict) -> None:
            f"{totals['rounds']} rounds, {totals['scored_rounds']} scored; model hit rate {pct(pred['hit_rate'])} "
            f"(opening-kill baseline {pct(pred['opening_kill_baseline_hit_rate'])}), Brier {brier} "
            f"(coin flip {summary['model']['coin_flip_brier_score']}); CT side won {pct(sides['ct_win_rate'])} "
-           f"of {sides['rounds_with_winner']} rounds")
+           f"of {sides['rounds_with_winner']} rounds (all players)")
+    you = summary.get("you")
+    if you is not None:
+        if you["matches"]:
+            r.line(f"You ({you['steam_id']}): in {you['matches']} match(es), won {pct(you['win_rate'])} of "
+                   f"{you['rounds_with_winner']} rounds (CT {pct(you['sides']['ct']['win_rate'])}, "
+                   f"T {pct(you['sides']['t']['win_rate'])}), K/D {you['kd'] if you['kd'] is not None else 'n/a'} "
+                   f"({you['kills']}/{you['deaths']}), opening duels won {pct(you['opening_duels']['win_rate'])}")
+        else:
+            r.line(f"You ({you['steam_id']}): not in any of these demos ({you['matches_without_you']} without you, "
+                   f"{you['matches_unknown']} parsed before per-player rounds were recorded)")
 
 
 # --- main --------------------------------------------------------------------------

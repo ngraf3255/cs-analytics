@@ -223,3 +223,55 @@ def test_player_sides_and_kd_match_the_demos_own_player_state(tmp_path):
         assert [r.side for r in mine] == ["t"] * 10
         assert (sum(r.kills for r in mine), sum(r.deaths for r in mine), sum(r.opening_kill for r in mine),
                 sum(r.opening_death for r in mine), sum(r.survived for r in mine)) == (11, 4, 1, 0, 6)
+
+
+def test_real_demo_personal_analytics_for_a_player_in_the_demo(tmp_path):
+    """Sign in as a SteamID that is really in the demo, upload it, and check the ``you``
+    numbers of GET /matches/summary and GET /matches/{id} against the parse."""
+
+    from steamlink.demo_parser import extract_player_rounds, extract_rounds
+
+    from test_summary import session
+
+    demo_path = _plain_demo(tmp_path)
+    parsed = Demoparser2Parser(isolation="inprocess").parse(demo_path)
+    records = extract_player_rounds(parsed)
+    is_fixture = _sha256(demo_path) == DEMOPARSER_FIXTURE_SHA256
+    player = FIXTURE_PLAYER if is_fixture else max({r.steam_id for r in records},
+                                                    key=lambda s: sum(r.steam_id == s for r in records))
+    mine = [r for r in records if r.steam_id == player]
+    winners = {r.round_number: r.winner_side for r in extract_rounds(parsed)}
+
+    client, ctx = make_client(tmp_path)
+    ctx.sync.parser = Demoparser2Parser()
+    me = session(client, ctx, player)
+    with open(DEMO, "rb") as fh:
+        response, job = upload_and_wait(me, ctx, fh.read(), timeout=1200)
+    assert response.status_code == 202 and job["status"] == "done", job
+    match_id = job["match"]["id"]
+    assert job["match"]["players_recorded"] is True and job["match"]["date_source"] == "imported"
+
+    you = me.get("/matches/summary").json()["you"]
+    won = sum(1 for r in mine if winners[r.round_number] == r.side)
+    assert (you["steam_id"], you["matches"], you["rounds"], you["won"]) == (player, 1, len(mine), won)
+    assert (you["kills"], you["deaths"]) == (sum(r.kills for r in mine), sum(r.deaths for r in mine))
+    assert you["sides"]["ct"]["rounds"] + you["sides"]["t"]["rounds"] == you["rounds_with_winner"]
+    report = me.get(f"/matches/{match_id}").json()
+    assert report["you"]["status"] == "in_match" and report["you"]["rounds"] == len(mine)
+    assert [r["you"]["side"] for r in report["rounds"] if r["you"]] == [r.side for r in mine]
+    score = report["match"]["score"]
+    if score:
+        side = mine[-1].side
+        assert report["you"]["score"] == {"you": score[side], "them": score["t" if side == "ct" else "ct"]}
+    if is_fixture:  # on T all match, T won 8-2
+        assert (you["won"], you["win_rate"], you["sides"]["t"]["win_rate"], you["kd"]) == (8, 0.8, 0.8, 2.75)
+        assert you["opening_duels"]["taken"] == 1 and you["opening_duels"]["win_rate"] == 1.0
+        assert report["you"]["result"] == "won" and report["you"]["score"] == {"you": 8, "them": 2}
+
+    # Someone who is not in the demo, sharing the same match, gets "not in this match".
+    other = session(client, ctx, "76561198000000555")
+    with open(DEMO, "rb") as fh:
+        upload_and_wait(other, ctx, fh.read(), timeout=1200)
+    assert other.get(f"/matches/{match_id}").json()["you"]["status"] == "not_in_match"
+    other_you = other.get("/matches/summary").json()["you"]
+    assert (other_you["matches"], other_you["matches_without_you"]) == (0, 1)

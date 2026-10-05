@@ -20,7 +20,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from . import openid
-from .analytics import RECENT_DEFAULT, build_user_summary
+from .analytics import RECENT_DEFAULT, SIDES, build_user_summary, match_date, match_result
 from .config import Settings
 from .crypto import AuthCodeCipher
 from .jobs import UploadJobWorker
@@ -121,8 +121,12 @@ def _match_view(match) -> dict:
         "map_name": match.map_name,
         "rounds_count": match.rounds_count,
         "imported_at": _iso(match.imported_at),  # when it was added to this user's list
+        # When the match was played if known (Steam sync: Game Coordinator), else imported_at:
+        # date_source says which ("played" | "imported"); played_at is null when unknown.
+        **match_date(match),
         # Final score: rounds won by the team on each side at the end (null if unknown).
         "score": None if match.score_ct is None or match.score_t is None else {"ct": match.score_ct, "t": match.score_t},
+        "players_recorded": match.players_recorded,  # per-player sides/stats stored for this match
     }
 
 
@@ -468,30 +472,34 @@ def matches_summary(
     conversion and recent form (last ``recent`` matches vs the ones before).
     Registered before ``/matches/{match_id}`` so "summary" is not taken for an id."""
 
-    summary = build_user_summary(ctx.storage, ctx.scorer, user.id, recent=recent)
+    summary = build_user_summary(ctx.storage, ctx.scorer, user.id, steam_id=user.steam_id, recent=recent)
     summary["model"]["note"] = MODEL_NOTE
     return summary
 
 
 @router.get("/matches/{match_id}")
 def match_report(match_id: str, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
-    report = build_match_report(ctx.storage, ctx.scorer, user.id, match_id)
+    report = build_match_report(ctx.storage, ctx.scorer, user.id, match_id, steam_id=user.steam_id)
     if report is None:
         raise HTTPException(status_code=404, detail="match_not_found")
     return report
 
 
-def build_match_report(storage: Storage, scorer: RoundScorer, user_id: str, match_id: str) -> dict | None:
+def build_match_report(storage: Storage, scorer: RoundScorer, user_id: str, match_id: str, *,
+                       steam_id: str | None = None) -> dict | None:
     """The per-round analytics report of ``GET /matches/{match_id}`` (None: not in the
-    user's list). Also used by ``python -m steamlink.live_check``."""
+    user's list). Also used by ``python -m steamlink.live_check``. ``steam_id``: the
+    signed-in player, whose side / stats each round are added as ``you``."""
 
     found = storage.get_match(user_id, match_id)
     if found is None:
         return None
     match, rounds = found
+    mine = {r.round_number: r for r in storage.get_player_rounds(match_id, steam_id)} if steam_id else {}
     scores = scorer.score_rounds(match.map_name, rounds)
     round_views, scored, correct = [], 0, 0
     for rnd, score in zip(rounds, scores):
+        record = mine.get(rnd.round_number)
         prediction = None
         if score.unscored_reason is None:
             scored += 1
@@ -508,12 +516,45 @@ def build_match_report(storage: Storage, scorer: RoundScorer, user_id: str, matc
             },
             "prediction": prediction,
             "unscored_reason": score.unscored_reason,
+            # The signed-in player's round (null: not in this round / match, or not recorded).
+            "you": None if record is None else {
+                "side": record.side,
+                "won": None if rnd.winner_side not in SIDES else rnd.winner_side == record.side,
+                "kills": record.kills, "deaths": record.deaths, "opening_kill": record.opening_kill,
+                "opening_death": record.opening_death, "survived": record.survived,
+                "win_probability": None if prediction is None else prediction["probabilities"][record.side],
+            },
         })
-    return {
+    report = {
         "match": _match_view(match),
         "model": {"calibrated_for_matchmaking": False, "note": MODEL_NOTE},
         "summary": {"rounds": len(rounds), "scored": scored, "correct_predictions": correct},
         "rounds": round_views,
+    }
+    if steam_id is not None:
+        report["you"] = _you_in_match(match, rounds, [mine[n] for n in sorted(mine)], steam_id)
+    return report
+
+
+def _you_in_match(match, rounds, mine, steam_id: str) -> dict:
+    """The signed-in player's summary of one match. ``status``: ``in_match``,
+    ``not_in_match`` (e.g. an uploaded pro demo) or ``unknown`` (parsed before
+    per-player rounds were recorded: re-upload the demo to fill it in)."""
+
+    if not mine:
+        return {"status": "not_in_match" if match.players_recorded else "unknown", "steam_id": steam_id}
+    winners = {r.round_number: r.winner_side for r in rounds}
+    decided = [r for r in mine if winners.get(r.round_number) in SIDES]
+    won = sum(1 for r in decided if winners[r.round_number] == r.side)
+    kills, deaths = sum(r.kills for r in mine), sum(r.deaths for r in mine)
+    return {
+        "status": "in_match", "steam_id": steam_id, "first_side": mine[0].side, "last_side": mine[-1].side,
+        "rounds": len(mine), "won": won, "win_rate": round(won / len(decided), 4) if decided else None,
+        "kills": kills, "deaths": deaths,
+        "kd": round(kills / deaths, 2) if deaths else (float(kills) if kills else None),
+        "opening_kills": sum(r.opening_kill for r in mine), "opening_deaths": sum(r.opening_death for r in mine),
+        "survived": sum(r.survived for r in mine),
+        **match_result(match, mine),
     }
 
 
