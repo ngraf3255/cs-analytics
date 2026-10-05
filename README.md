@@ -14,7 +14,14 @@ The new prediction app has a React + TypeScript frontend and a FastAPI service t
 
 ### Run locally
 
-Start the API in one terminal:
+Install the frontend dependencies and start the frontend from the repository root:
+
+```sh
+pnpm install
+pnpm dev
+```
+
+In a second terminal, start the API:
 
 ```sh
 cd services/prediction_api
@@ -22,23 +29,15 @@ python -m pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-Start the frontend in another terminal:
-
-```sh
-cd apps/web
-npm install
-npm run dev
-```
-
-The local frontend calls the API through the Vite development proxy. API documentation is available at `http://localhost:8000/docs`.
+The local frontend calls the API through the Vite development proxy. API documentation is available at `http://localhost:8000/docs`. Frontend commands (`dev`, `build`, and `preview`) are available from the root through pnpm. The devcontainer installs Node 20 and pnpm 10.30.3.
 
 ### Deploy
 
 1. Create the API service in Render from the repository's `render.yaml` blueprint. The service uses the repository root so it can load `model.pkl`.
 2. Attach `api.csgooners.com` to the Render service and add the DNS record Render specifies in Cloudflare.
-3. Create a Cloudflare Pages project with `apps/web` as its root directory, `npm run build` as its build command, and `dist` as its output directory.
-4. Set the Pages build environment variable `VITE_API_BASE_URL` to `https://api.csgooners.com`.
-5. Add `csgooners.com` and `www.csgooners.com` as Pages custom domains. Verify that the app can load options and return a prediction.
+3. Create a Cloudflare Pages project and attach `csgooners.com` and `www.csgooners.com` to it. GitHub Actions builds the frontend and uploads `apps/web/dist` using Wrangler, so Pages does not need to build the repo itself.
+4. In GitHub repository **Settings → Secrets and variables → Actions**, add secrets `CLOUDFLARE_API_TOKEN` (with Cloudflare Pages edit permission) and `CLOUDFLARE_ACCOUNT_ID`. Add the repository variable `CLOUDFLARE_PAGES_PROJECT` with the Pages project name. Optionally set `VITE_API_BASE_URL`; it defaults to `https://api.csgooners.com`.
+5. Push frontend changes to `main` to build and deploy automatically, or run **Deploy frontend to Cloudflare Pages** manually from the Actions tab. If the Pages project already has Cloudflare Git integration enabled, disable its automatic branch deployments so it does not race the GitHub Action.
 
 The Render free service sleeps after 15 minutes without traffic, so the first API request after idle may take about a minute to wake it.
 

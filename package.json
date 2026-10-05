@@ -1,0 +1,13 @@
+{
+  "name": "csgooners",
+  "private": true,
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter csgooners-web dev",
+    "build": "pnpm --filter csgooners-web build",
+    "preview": "pnpm --filter csgooners-web preview"
+  }
+}
