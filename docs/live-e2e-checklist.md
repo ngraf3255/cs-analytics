@@ -5,7 +5,7 @@ things left before `python -m steamlink.live_check` can pass against real Steam,
 and then before it works on csgooner.com. Do them in order. Each step says who
 does it, where, and what to run afterwards.
 
-Status (2026-10-05): none of these is done. An attempt to sign up the bot account was stopped by Steam's hCaptcha.
+Status (Oct 5, 2026, 6:30 AM CT): none of these steps is done yet. Step 1 is stuck: Steam's sign-up page showed an hCaptcha, so a person has to create the bot account. Everything else is built and passes offline: all tests on SQLite and PostgreSQL, and `live_check --fake` (7/7 PASS).
 
 | # | What | Who / where | Then run |
 | --- | --- | --- | --- |
