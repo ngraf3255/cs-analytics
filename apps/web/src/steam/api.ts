@@ -112,6 +112,37 @@ export async function waitForSyncJobs(
   return current;
 }
 
+export type ExportTable = "rounds" | "matches";
+
+/** GET /matches/export/{table}.csv (the signed-in user's own matches, Tableau-ready) and save it
+ * as a file. Uses fetch (cookie auth works cross-origin) + a blob link, since a plain link can't
+ * carry the credentials mode / report errors. Returns the file name. */
+export async function downloadExport(table: ExportTable, now: Date = new Date()): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase}/matches/export/${table}.csv`, { credentials: "include" });
+  } catch {
+    throw new ApiError(0, "api_unreachable");
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(response.status, typeof body?.detail === "string" ? body.detail : "unknown_error");
+  }
+  const blob = await response.blob();
+  const stamp = now.toISOString().slice(0, 10).replaceAll("-", "");
+  const filename = `cs2-${table}-${stamp}.csv`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return filename;
+}
+
 export function steamLoginUrl(next = "/#matches"): string {
   const path = next.startsWith("/") ? next : `/${next}`;
   return `${apiBase}/auth/steam/login?next=${encodeURIComponent(path)}`;
@@ -137,6 +168,7 @@ export const steamApi = {
   listUploadJobs: (limit = 5) => request<{ jobs: UploadJob[] }>(`/matches/upload?limit=${limit}`),
   /** Analytics across all the user's matches; registered before /matches/{id} on the server. */
   getMatchesSummary: () => request<MatchesAnalytics>("/matches/summary"),
+  downloadExport,
   getMatch: (id: string) => request<MatchReport>(`/matches/${encodeURIComponent(id)}`),
 };
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { steamApi } from "./api";
 import { ApiError, messageFor } from "./errors";
 import { kdText, resultText } from "./format";
+import { TableauExport } from "./TableauExport";
 import type { MatchesAnalytics, YouAnalytics } from "./types";
 import { weaponName } from "./weapons";
 
@@ -233,6 +234,7 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
           : "CT / T are the map sides of everyone in the match; your own team isn’t tracked yet."}{" "}
         Model numbers are a retrospective estimate, not calibrated for matchmaking.
       </p>
+      <TableauExport />
     </section>
   );
 }

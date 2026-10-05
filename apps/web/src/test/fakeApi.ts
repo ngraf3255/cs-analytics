@@ -8,7 +8,8 @@
  * SteamID that is in the FACEIT de_mirage demo, and for a user in none of their demos (recaptured after
  * warmup / knife rounds were left out: FACEIT 24 rounds). *_outdated.json / upload_updated.json: a match
  * parsed by an older parser version, and the re-upload that updated one. me_auto_sync.json / auto_sync_on|off.json:
- * a user synced by the automatic scheduler (AUTO_SYNC_INTERVAL_SECONDS=120) and PUT /steam/auto-sync. */
+ * a user synced by the automatic scheduler (AUTO_SYNC_INTERVAL_SECONDS=120) and PUT /steam/auto-sync.
+ * export_rounds_personal.csv: GET /matches/export/rounds.csv for that per-player SteamID (4 matches, 60 rounds). */
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
 import type { UploadJob } from "../steam/types";
@@ -42,7 +43,8 @@ export function installFakeApi(routes: Record<string, Reply | Reply[] | Handler>
     return {
       status: reply.status,
       ok: reply.status >= 200 && reply.status < 300,
-      json: async () => reply.body ?? {},
+      json: async () => (typeof reply.body === "string" ? JSON.parse(reply.body) : reply.body ?? {}),
+      blob: async () => new Blob([typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body ?? {})]),
     } as Response;
   });
   vi.stubGlobal("fetch", fetchMock);
