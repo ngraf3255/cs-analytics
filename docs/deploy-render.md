@@ -56,7 +56,7 @@ CS2 demo upload -> parse -> model -> per-round report, then a restart with
    curl https://api.csgooner.com/steam/status    # {"enabled":true,...}
    ```
    Then on csgooner.com: Sign in with Steam -> Upload a `.dem` -> open the match.
-   Deploy logs should show `applied: 0001_steam_sync, 0002_cross_source_dedupe, 0003_upload_jobs`
+   Deploy logs should show `applied: 0001_steam_sync, 0002_cross_source_dedupe, 0003_upload_jobs, 0004_sync_jobs, 0005_shared_matches`
    once, then `applied: nothing (up to date)` on later deploys.
 
 ## Database

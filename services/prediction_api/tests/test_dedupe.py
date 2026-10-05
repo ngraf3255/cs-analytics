@@ -1,6 +1,6 @@
 """Cross-source dedupe: the same match arriving by upload and by Steam sync (either order) is stored once.
 
-Keys (any one matching = same match, per user): share code, Valve match id
+Keys (any one matching = same match; across users see test_shared_matches.py): share code, Valve match id
 (decoded from the share code; unknown for uploads without one), SHA-256 of the
 decompressed .dem (known whenever we had the file).
 Runs on SQLite by default and on PostgreSQL with CSA_TEST_DATABASE_URL.
@@ -202,7 +202,8 @@ def test_migration_backfills_uploads_stored_before_dedupe(tmp_path):
                 "INSERT INTO matches (id, user_id, share_code, valve_match_id, status, rounds_count, imported_at) "
                 "VALUES (:id, 'u', :share, :vid, 'imported', 0, '2026-10-04 12:00:00+00')"),
                 {"id": mid, "share": share, "vid": "upload" if share.startswith("upload:") else "1001"})
-    assert apply_migrations(engine) == ["0002_cross_source_dedupe", "0003_upload_jobs", "0004_sync_jobs"]
+    assert apply_migrations(engine) == ["0002_cross_source_dedupe", "0003_upload_jobs", "0004_sync_jobs",
+                                        "0005_shared_matches"]
     storage = SqlStorage(engine)
     up = storage.find_match("u", demo_sha256="abc123")
     assert up is not None and up.id == "m1" and up.source == "upload" and not up.has_share_code

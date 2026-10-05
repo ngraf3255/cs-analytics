@@ -72,7 +72,10 @@ class NewMatch:
     rounds: tuple[RoundRecord, ...] = ()
     # SHA-256 of the decompressed .dem when we had the file (sync download or upload).
     demo_sha256: str | None = None
-    source: str = "steam_sync"  # steam_sync | upload (how the match first arrived)
+    source: str = "steam_sync"  # steam_sync | upload (how the match arrived for this user)
+    # True when share_code came from Valve's match history (Steam sync); a share code
+    # typed in with an upload is only a hint (see Storage, "Dedupe").
+    share_code_verified: bool = False
 
 
 @dataclass(frozen=True)
@@ -84,9 +87,10 @@ class MatchRecord:
     status_reason: str | None
     map_name: str | None
     rounds_count: int
-    imported_at: datetime
-    source: str = "steam_sync"
+    imported_at: datetime  # when the match was added to this user's list
+    source: str = "steam_sync"  # how it arrived for this user: steam_sync | upload
     demo_sha256: str | None = None
+    share_code_verified: bool = False
 
     @property
     def has_share_code(self) -> bool:
@@ -171,41 +175,61 @@ class Storage(ABC):
         self, user_id: str, token: str, now: datetime, *, status: str, error: str | None, imported: int
     ) -> None: ...
 
-    # Dedupe (all sources): a match is "the same" for a user when ANY of its
-    # share code, Valve match id (if known) or demo SHA-256 (if known) is
-    # already stored. Then no second row is written; instead the stored row
-    # (a) gains keys it lacked (e.g. an upload learns its share code from sync)
-    # and (b) is upgraded with the new rounds if it was not imported yet
-    # (e.g. Steam had no demo, then the user uploaded it).
+    # Dedupe (all sources and all users). Matches are shared: one ``matches`` row
+    # per real match, listed for every user who owns it (``match_owners``). A
+    # match is "the same" when its demo SHA-256 is already stored (the server
+    # hashed the bytes, so this is always trusted), or when its share code /
+    # Valve match id is already stored AND either the share code is verified on
+    # both sides (it came from Valve's match history, i.e. Steam sync) or the
+    # stored match is already in this user's own list. A share code typed in
+    # with an upload is only a hint: it never attaches another user's match.
+    # Then no second row is written and nothing is parsed again; instead the
+    # stored match (a) is added to this user's list, (b) gains keys it lacked
+    # (e.g. an upload learns its share code from sync; a verified share code
+    # replaces a contradicting hint) and (c) is upgraded with the new rounds if
+    # it was not imported yet (e.g. Steam had no demo, then the user uploaded it).
 
     @abstractmethod
     def record_match(self, user_id: str, *, expected_cursor: str, match: NewMatch, now: datetime) -> bool:
-        """In ONE transaction: insert the match + rounds (or dedupe as above) and
-        move the cursor from ``expected_cursor`` to ``match.share_code``. Returns
-        True if a new match row was inserted. Raises :class:`CursorConflict` if
-        the cursor no longer equals ``expected_cursor``."""
+        """In ONE transaction: store the match + rounds (or dedupe as above; the
+        share code counts as verified) and move the cursor from ``expected_cursor``
+        to ``match.share_code``. Returns True if the match was newly added to the
+        user's list. Raises :class:`CursorConflict` if the cursor no longer equals
+        ``expected_cursor``."""
 
     @abstractmethod
     def skip_known_match(
         self, user_id: str, *, expected_cursor: str, share_code: str, valve_match_id: str, now: datetime
-    ) -> bool:
-        """If this share code / Valve match id is already stored AND imported, attach
-        the share code to it if missing and advance the cursor (one transaction);
-        return True so sync can skip downloading the demo. Otherwise change nothing
-        and return False. Raises :class:`CursorConflict` like :meth:`record_match`."""
+    ) -> str | None:
+        """Sync found this (verified) share code. If it resolves to a stored,
+        imported match (see "Dedupe"), add that match to the user's list and
+        advance the cursor in one transaction, and return ``"added"`` (it was not
+        in the user's list yet, e.g. another player imported it) or ``"owned"``
+        (already in the list): sync skips the download. Otherwise change nothing
+        and return None. Raises :class:`CursorConflict` like :meth:`record_match`."""
+
+    @abstractmethod
+    def claim_known_match(
+        self, user_id: str, *, share_code: str | None, valve_match_id: str | None, demo_sha256: str | None,
+        share_code_verified: bool, source: str, now: datetime,
+    ) -> tuple[MatchRecord, bool] | None:
+        """If these keys resolve to a stored, imported match (see "Dedupe"), make
+        sure it is in the user's list (merging keys it lacked) and return
+        ``(match as the user sees it, newly_added)`` so the caller skips parsing.
+        Otherwise change nothing and return None."""
 
     @abstractmethod
     def record_uploaded_match(self, user_id: str, *, match: NewMatch, now: datetime) -> tuple[str, bool]:
-        """Store a manually uploaded match (cursor untouched), deduped as above.
-        ``match.share_code`` is the real share code if the user gave one, else
-        ``upload:<sha256>``. Returns ``(match_id, inserted)``."""
+        """Store a parsed (or stub) match (cursor untouched), deduped as above.
+        ``match.share_code`` is the real share code if known, else
+        ``upload:<sha256>``. Returns ``(match_id, newly_added_to_user)``."""
 
     @abstractmethod
     def find_match(
         self, user_id: str, *, share_code: str | None = None, valve_match_id: str | None = None,
         demo_sha256: str | None = None,
     ) -> MatchRecord | None:
-        """The user's stored match matching any given key, or None (lets uploads skip re-parsing)."""
+        """The match in this user's list matching any given key, or None."""
 
     # Upload jobs -------------------------------------------------------------
     @abstractmethod
@@ -269,4 +293,5 @@ class Storage(ABC):
     # Deletion ---------------------------------------------------------------
     @abstractmethod
     def delete_user(self, user_id: str) -> None:
-        """Delete the user and everything linked to them (sessions, codes, matches, rounds, upload jobs)."""
+        """Delete the user and everything linked to them (sessions, codes, upload jobs,
+        their place in shared matches; matches nobody else owns, with their rounds)."""

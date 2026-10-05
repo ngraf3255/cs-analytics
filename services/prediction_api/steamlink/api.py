@@ -113,7 +113,7 @@ SYNC_JOBS_SHOWN = 10
 def _match_view(match) -> dict:
     return {
         "id": match.id,
-        "source": match.source,  # how the match first arrived: upload | steam_sync
+        "source": match.source,  # how the match arrived for this user: upload | steam_sync
         "share_code": match.share_code if match.has_share_code else None,
         "status": match.status,
         "status_reason": match.status_reason,
@@ -292,6 +292,7 @@ def post_sync(
         "status": outcome.status,
         "queued": outcome.queued,
         "skipped": outcome.skipped,
+        "attached": outcome.attached,
         "processed": outcome.processed,
         "has_more": outcome.has_more,
         "error": outcome.error,
@@ -397,15 +398,18 @@ async def upload_demo(
         digest = hasher.hexdigest() if kind == "dem" and hasher is not None else None
         now = ctx.clock()
         valve_match_id = str(decode(share_code).match_id) if share_code else UNKNOWN_MATCH_ID
-        existing = None
+        known = None
         if digest or share_code:
-            existing = ctx.storage.find_match(user.id, share_code=share_code, valve_match_id=valve_match_id,
-                                              demo_sha256=digest)
-        if existing and existing.status == "imported":
-            # Already stored (same .dem, or same match by share code): no parse, finished job.
+            # Already stored (same .dem, by this or another user; or this user's match by share
+            # code): added to the user's list if needed, no parse, finished job.
+            known = ctx.storage.claim_known_match(
+                user.id, share_code=share_code, valve_match_id=valve_match_id, demo_sha256=digest,
+                share_code_verified=False, source="upload", now=now)
+        if known is not None:
+            record, added = known
             job = UploadJob(id=job_id, user_id=user.id, status="done", demo_path=raw_path, size_bytes=written,
                             created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest,
-                            match_id=existing.id, match_created=False, finished_at=now)
+                            match_id=record.id, match_created=added, finished_at=now)
             ctx.storage.create_upload_job(job)
             response.status_code = 200
             return {"job": _job_view(ctx, job)}

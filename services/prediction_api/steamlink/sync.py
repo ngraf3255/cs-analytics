@@ -67,7 +67,10 @@ class SyncOutcome:
     # up_to_date | partial | queue_full | error
     status: str
     queued: int = 0  # matches newly queued for download + parse by this request
-    skipped: int = 0  # new share codes that were already stored (no download)
+    skipped: int = 0  # new share codes already in the user's list (no download)
+    # new share codes already imported (e.g. by another player in the match): added to
+    # the user's list right away, no download or parse
+    attached: int = 0
     has_more: bool = False
     error: str | None = None
     # Jobs this request queued (new, re-queued after a transient failure, or already queued).
@@ -75,7 +78,7 @@ class SyncOutcome:
 
     @property
     def processed(self) -> int:
-        return self.queued + self.skipped
+        return self.queued + self.skipped + self.attached
 
 
 class SyncRejected(Exception):
@@ -157,7 +160,7 @@ class SyncService:
             self.storage.release_sync_lock(
                 user.id, token, self.clock(),
                 status="error" if outcome.status == "error" else "ok",
-                error=outcome.error, imported=outcome.queued,
+                error=outcome.error, imported=outcome.queued + outcome.attached,
             )
         return outcome
 
@@ -165,10 +168,11 @@ class SyncService:
         job_ids = list(self.storage.requeue_sync_jobs(
             user.id, errors=RETRYABLE_JOB_ERRORS, max_attempts=self.max_job_attempts,
             max_active=max_active, now=self.clock()))
-        queued = skipped = 0
+        queued = skipped = attached = 0
 
         def done(status: str, *, has_more: bool = False, error: str | None = None) -> SyncOutcome:
-            return SyncOutcome(status, queued, skipped, has_more, error, tuple(dict.fromkeys(job_ids)))
+            return SyncOutcome(status, queued=queued, skipped=skipped, attached=attached, has_more=has_more,
+                               error=error, job_ids=tuple(dict.fromkeys(job_ids)))
 
         for _ in range(self.max_matches):
             access = self.storage.get_match_access(user.id)
@@ -187,11 +191,16 @@ class SyncService:
 
             share = decode(result.next_code)
             try:
-                # Already stored (e.g. uploaded with this share code): don't download it again.
-                if self.storage.skip_known_match(
+                # Already stored (an earlier sync, an upload with this share code, or another
+                # player's sync of the same match): don't download it again.
+                known = self.storage.skip_known_match(
                     user.id, expected_cursor=access.cursor_share_code, share_code=result.next_code,
                     valve_match_id=str(share.match_id), now=self.clock(),
-                ):
+                )
+                if known == "added":
+                    attached += 1
+                    continue
+                if known == "owned":
                     skipped += 1
                     continue
             except CursorConflict:
@@ -225,10 +234,12 @@ class SyncService:
 
         share = decode(job.share_code)
         base = dict(share_code=job.share_code, valve_match_id=str(share.match_id), source="steam_sync")
-        existing = self.storage.find_match(job.user_id, share_code=job.share_code,
-                                           valve_match_id=base["valve_match_id"])
-        if existing and existing.status == "imported":
-            return UploadResult(existing.id, False)  # e.g. uploaded while the job was waiting
+        # e.g. uploaded, or imported by another player, while the job was waiting
+        known = self.storage.claim_known_match(
+            job.user_id, share_code=job.share_code, valve_match_id=base["valve_match_id"], demo_sha256=None,
+            share_code_verified=True, source="steam_sync", now=self.clock())
+        if known is not None:
+            return UploadResult(known[0].id, known[1])
 
         reported = [-1.0]
 
@@ -260,7 +271,7 @@ class SyncService:
                 storage=self.storage, parser=self.parser, user_id=job.user_id, raw_path=job.demo_path,
                 workdir=workdir, max_compressed_bytes=max_compressed_bytes, max_demo_bytes=max_demo_bytes,
                 now=self.clock(), share_code=job.share_code, wait_for_parse_slot=True, on_stage=on_stage,
-                source="steam_sync",
+                source="steam_sync", share_code_verified=True,
             )
         except UploadRejected as exc:
             status, reason = _STUB_FOR_REJECTION.get(exc.reason, ("parse_failed", "parser_error"))
@@ -272,6 +283,6 @@ class SyncService:
 
         share = decode(job.share_code)
         match = NewMatch(share_code=job.share_code, valve_match_id=str(share.match_id), status=status,
-                         status_reason=reason, map_name=None, source="steam_sync")
+                         status_reason=reason, map_name=None, source="steam_sync", share_code_verified=True)
         match_id, created = self.storage.record_uploaded_match(job.user_id, match=match, now=self.clock())
         return UploadResult(match_id, created)

@@ -120,10 +120,12 @@ entry and per-round report as a synced match. Same feature flag, session,
   (300 MiB), and its decompressed size `DEMO_MAX_DECOMPRESSED_BYTES` (job error
   `demo_too_large`). Over the limit -> `413 demo_too_large`. Render has no body
   cap of its own; a Cloudflare-proxied hostname would cap at 100 MB.
-- Deduped per user (see below); a known, imported demo is not re-parsed. A
+- Deduped across users (see below); a known, imported demo is not re-parsed. A
   plain `.dem` is hashed while it arrives, so a re-upload (or a known
-  `?share_code=`) is answered at once with `200` and a finished job
-  (`"created": false`); a `.bz2` is recognised after decompressing in the job.
+  `?share_code=` already in the user's list) is answered at once with `200` and
+  a finished job; `"created"` is true when the match was new to this user's
+  list (e.g. another player had imported it), false when it already was there.
+  A `.bz2` is recognised after decompressing in the job.
 - One worker thread per process works through jobs (uploads and Steam sync
   downloads) oldest first, one parse at a time. At most `UPLOAD_QUEUE_MAX` (3)
   jobs, all users and kinds, may be queued or processing; more ->
@@ -139,26 +141,36 @@ entry and per-round report as a synced match. Same feature flag, session,
   `demo_too_large`, `server_restarted`, `internal_error`. Nothing is stored on
   failure. Uploads never touch the share-code cursor.
 
-### One match, many sources (dedupe)
+### One match, many sources and users (dedupe)
 
-The same match can arrive by upload and by Steam sync, in either order. It is
-stored once per user: a new arrival is "the same match" if **any** key matches
-a stored row:
+The same match can arrive by upload and by Steam sync, in either order, and
+from every player who was in it. It is stored **once** (`matches`) and listed
+for every user who has it (`match_owners`: user, how it arrived for them,
+when). A new arrival is "the same match" if a key matches a stored row:
 
-| Key | Known when | Column / index |
-| --- | --- | --- |
-| share code | Steam sync, or upload with `?share_code=` | `UNIQUE (user_id, share_code)`; uploads without one store `upload:<sha256>` |
-| Valve match id | decoded from the share code | partial `UNIQUE (user_id, valve_match_id) WHERE valve_match_id <> 'upload'` |
-| demo SHA-256 | whenever we had the file (upload, or the demo sync downloaded) | `UNIQUE (user_id, demo_sha256)` (NULLs don't collide) |
+| Key | Known when | Trusted across users? | Index |
+| --- | --- | --- | --- |
+| demo SHA-256 | whenever we had the file (upload, or the demo sync downloaded) | yes (we hashed the bytes) | `UNIQUE (demo_sha256)` (NULLs don't collide) |
+| share code | Steam sync (`share_code_verified = 1`), or upload `?share_code=` (a hint) | only if verified on both sides | `UNIQUE (share_code)`; uploads without one store `upload:<sha256>` |
+| Valve match id | decoded from the share code | as the share code | partial `UNIQUE (valve_match_id) WHERE valve_match_id <> 'upload'` |
 
-On a match, no second row is written. The stored row gains keys it lacked
-(an upload learns its share code from a later sync; never overwrites a known
-key), keeps its `source` (first arrival), and if it was not imported (e.g.
-Steam had no demo: `unavailable`) it is upgraded with the uploaded rounds. Sync
-checks the share code / match id **before** downloading, so a match uploaded
-with its share code is never downloaded again; the cursor still advances. The
-demo hash covers uploads without a share code, assuming Valve serves the same
-bytes the CS2 client saved (a re-encoded file would only match via share code).
+On a match, nothing is downloaded or parsed again and no second row is
+written: the match is added to the user's list, gains keys it lacked (an
+upload learns its share code from a later sync; a verified share code replaces
+a contradicting upload hint, whose row falls back to `upload:<sha256>`), and if
+it was not imported (e.g. Steam had no demo: `unavailable`) it is upgraded with
+the uploaded rounds. Sync checks the share code / match id **before**
+downloading: a match another player already synced is attached at once
+(`POST /steam/sync` counts it in `attached`), as is one this user uploaded with
+its share code (`skipped`); the cursor still advances. An upload's share-code
+hint only links to matches already in the uploader's own list, so a mislabelled
+upload can't attach or overwrite another user's match; Steam sync re-downloads
+such a match once to check its hash. The demo hash assumes Valve serves the
+same bytes the CS2 client saved (a re-encoded file only matches via a verified
+share code). Deleting an account removes the user from shared matches; a match
+is deleted only when nobody else has it (`matches.user_id`, "first importer",
+is handed to another owner). Migration `0005_shared_matches` (Python, so the
+backfill can merge transitively) merges existing per-user copies.
 
 Tests: `pip install -r requirements-dev.txt && pytest`
 

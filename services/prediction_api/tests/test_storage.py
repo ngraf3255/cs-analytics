@@ -18,7 +18,8 @@ NOW = datetime(2026, 10, 4, 12, 0, 0, tzinfo=timezone.utc)
 def storage(tmp_path):
     engine = make_test_engine(tmp_path)
     applied = apply_migrations(engine)
-    assert applied == ["0001_steam_sync", "0002_cross_source_dedupe", "0003_upload_jobs", "0004_sync_jobs"]
+    assert applied == ["0001_steam_sync", "0002_cross_source_dedupe", "0003_upload_jobs", "0004_sync_jobs",
+                       "0005_shared_matches"]
     # Metadata tables must match the migration (re-create is a no-op if identical).
     metadata.create_all(engine)
     return SqlStorage(engine)
@@ -128,7 +129,7 @@ def test_concurrent_migration_runs_apply_once(tmp_path):
         results = list(pool.map(lambda _: apply_migrations(engine), range(4)))
     from steamlink.migrate import MIGRATIONS_DIR
 
-    all_versions = sorted(p.stem for p in MIGRATIONS_DIR.glob("*.sql"))
+    all_versions = sorted(p.stem for p in MIGRATIONS_DIR.iterdir() if p.suffix in (".sql", ".py"))
     # Every migration applied exactly once across the racing runners.
     assert sorted(v for r in results for v in r) == all_versions
 

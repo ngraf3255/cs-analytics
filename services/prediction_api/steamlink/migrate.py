@@ -5,7 +5,10 @@ Usage (from services/prediction_api, with DATABASE_URL set)::
     python -m steamlink.migrate                  # fails if DATABASE_URL is unset
     python -m steamlink.migrate --if-configured  # no-op if DATABASE_URL is unset
 
-Each file runs in its own transaction and is recorded in ``schema_migrations``.
+Migrations are ``NNNN_name.sql`` files (portable SQL statements) or
+``NNNN_name.py`` modules with an ``upgrade(conn)`` function (for backfills that
+are awkward in portable SQL; ``conn`` is a SQLAlchemy Connection). Each file
+runs in its own transaction and is recorded in ``schema_migrations``.
 On PostgreSQL a session advisory lock serialises concurrent runners (e.g. two
 instances starting at once), so a migration is never applied twice.
 """
@@ -48,6 +51,15 @@ def _migration_lock(engine: Engine):
             lock_conn.commit()
 
 
+def _load_module(path: Path):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(f"csa_migration_{path.stem}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def apply_migrations(engine: Engine, migrations_dir: Path = MIGRATIONS_DIR) -> list[str]:
     with _migration_lock(engine):
         return _apply(engine, migrations_dir)
@@ -60,12 +72,16 @@ def _apply(engine: Engine, migrations_dir: Path) -> list[str]:
         ))
         applied = {row[0] for row in conn.execute(text("SELECT version FROM schema_migrations"))}
     newly_applied = []
-    for path in sorted(migrations_dir.glob("*.sql")):
+    paths = sorted(p for p in migrations_dir.iterdir() if p.suffix in (".sql", ".py") and p.stem[:4].isdigit())
+    for path in paths:
         if path.stem in applied:
             continue
         with engine.begin() as conn:
-            for statement in _statements(path.read_text()):
-                conn.execute(text(statement))
+            if path.suffix == ".py":
+                _load_module(path).upgrade(conn)
+            else:
+                for statement in _statements(path.read_text()):
+                    conn.execute(text(statement))
             conn.execute(
                 text("INSERT INTO schema_migrations (version, applied_at) VALUES (:v, :t)"),
                 {"v": path.stem, "t": datetime.now(timezone.utc).isoformat()},
