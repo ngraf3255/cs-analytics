@@ -3,6 +3,16 @@
   "name": "cs-analytics",
   "compatibility_date": "2026-10-04",
   "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "csgooner.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.csgooner.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"
