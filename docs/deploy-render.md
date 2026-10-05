@@ -102,6 +102,7 @@ free instances have no shell. On a paid plan, move it to
 | `SESSION_COOKIE_DOMAIN` | not set | host-only cookie on `api.csgooner.com` is same-site with `csgooner.com`, so not needed |
 | `SESSION_COOKIE_SAMESITE` | not set (`lax`) | only `none` if the API must stay on `onrender.com` |
 | `DEMO_MAX_DOWNLOAD_BYTES` / `DEMO_MAX_DECOMPRESSED_BYTES` | defaults | 300 MiB `.bz2` / 1 GiB `.dem` |
+| `DEMO_PARSE_ISOLATION` / `DEMO_PARSE_TIMEOUT_SECONDS` / `DEMO_PARSE_THREADS` | defaults | `subprocess` / 600 / 2 (see memory below) |
 
 Steam features turn on when **both** `DATABASE_URL` and `TOKEN_ENCRYPTION_KEYS`
 are set; the service then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`,
@@ -116,17 +117,35 @@ are set; the service then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`
   for a `.dem`, and a `.dem.bz2` is also capped at `DEMO_MAX_DOWNLOAD_BYTES`
   (300 MiB). If `api.csgooner.com` is ever Cloudflare-proxied, set
   `UPLOAD_MAX_BYTES=100000000`.
-- **Parsing runs inside the request** (kept simple on purpose). The body is
-  streamed to a temp dir (deleted in `finally`), then parsed once per process
-  (`429 upload_busy` for a concurrent upload). Time is fine: the 60 MB public
-  CS2 demo parses in ~0.3 s on one core, so even at 0.1 CPU it's seconds, well
-  under Render's limit. The browser shows "parsing" after the upload finishes.
-- **Memory is the real risk on 512 MB plans.** Measured locally: the API idles
-  at ~206 MB RSS (pandas + scikit-learn + model); parsing the 60 MB / 10-round
-  demo peaks at ~319 MB. A full 24-30 round matchmaking demo (often 150-350 MB)
-  has not been measured and may exceed 512 MB on `free`/`starter`. If uploads
-  get OOM-killed (Render event "Out of memory"), move to a 2 GB plan (`1c-2g`),
-  or lower `UPLOAD_MAX_BYTES`, or move parsing to a background worker.
+- **Parsing runs inside the request** (kept simple on purpose), in a
+  short-lived child process (`python -m steamlink.parse_worker`). The body is
+  streamed to a temp dir (deleted in `finally`), then parsed once per process:
+  uploads and Steam sync share one parse slot (`429 upload_busy` for a
+  concurrent upload; a sync waits). The temp dir must be on disk, not a tmpfs
+  (`TMPDIR`), or the demo itself counts as RAM; Render's default is disk.
+- **Memory on 512 MB plans (measured 2026-10-05, full-length demos):** the API
+  idles at ~135 MB anonymous memory (~217 MB PSS with shared libraries). Peak
+  anonymous memory (API + parse child) for a whole upload -> parse -> store ->
+  score: ~228 MB on a 372 MB / 25-round FACEIT demo, ~232 MB on a 441 MB /
+  18-round HLTV demo, ~231 MB for the same FACEIT demo as `.bz2`. demoparser2
+  memory-maps the whole `.dem`, so total memory (PSS) reaches ~780 MB on the
+  441 MB demo, but those are clean file pages the kernel drops under pressure:
+  the exact Render start command (migrate + uvicorn) in a Linux cgroup with
+  `memory.max=512M` and no swap took real HTTP uploads of all four test demos
+  with no OOM kill, and the API's heap went back to ~150 MB after each. After
+  each parse the child exits, so the API doesn't keep ~80 MB of parser heap.
+  If memory runs out anyway, the child (oom_score_adj 1000) is killed, the
+  upload fails with `demo_parse_failed` and the API keeps running (checked in a
+  200 MB cgroup; the old in-process parse took the whole API down there).
+  Re-measure with `python scripts/measure_demo_memory.py <demo> --budget-mb 300`.
+- **CPU, not memory, is the slow part on `free` (0.1 CPU):** parsing the 441 MB
+  demo costs ~5 CPU-seconds (so roughly a minute at 0.1 CPU), and decompressing
+  a 260 MB `.dem.bz2` costs ~20 CPU-seconds more (several minutes at 0.1 CPU,
+  still under Render's 100-minute limit; a proxy with a shorter timeout in front
+  would cut it). Uploading the plain `.dem` avoids the decompression.
+- Parser settings: `DEMO_PARSE_ISOLATION` (`subprocess`, or `inprocess` to debug),
+  `DEMO_PARSE_TIMEOUT_SECONDS` (600; a hung parse is killed and recorded as a
+  parse failure), `DEMO_PARSE_THREADS` (2; demoparser2 threads in the child).
 - Free instances sleep after 15 minutes idle; the first request then takes
   about a minute. Disk is ephemeral, which is fine: demos only live in a temp
   dir during parsing.

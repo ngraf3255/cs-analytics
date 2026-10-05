@@ -23,7 +23,14 @@ these are also required: `SESSION_SECRET` (32+ chars), `PUBLIC_API_URL`,
 
 Optional: `SESSION_COOKIE_SAMESITE` (lax), `SESSION_COOKIE_SECURE` (true),
 `SESSION_COOKIE_DOMAIN`, `SYNC_MAX_MATCHES_PER_REQUEST` (1),
-`SYNC_MIN_INTERVAL_SECONDS` (30), `DEMO_MAX_DOWNLOAD_BYTES`, `DEMO_MAX_DECOMPRESSED_BYTES`.
+`SYNC_MIN_INTERVAL_SECONDS` (30), `DEMO_MAX_DOWNLOAD_BYTES`, `DEMO_MAX_DECOMPRESSED_BYTES`,
+`DEMO_PARSE_ISOLATION` (`subprocess`: each demo is parsed in a short-lived child
+process so its memory goes back to the OS; `inprocess` to debug),
+`DEMO_PARSE_TIMEOUT_SECONDS` (600), `DEMO_PARSE_THREADS` (2).
+
+Memory check on a real demo (Linux): `python scripts/measure_demo_memory.py
+<demo.dem> --budget-mb 300 --max-retained-mb 30`, or `CSA_TEST_DEMO=<demo.dem>
+pytest tests/test_demo_memory.py`.
 
 Generate an encryption key (comma-separate several, newest first, to rotate):
 
