@@ -69,6 +69,17 @@ def test_httpx_request_logging_is_silenced():
     assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
 
 
+def test_replay_url_allowlist_accepts_padded_match_id():
+    check_replay_url("http://replay382.valve.net/730/003767418281950970048_1750155669.dem.bz2")
+    check_replay_url("https://replay1.valve.net/730/3230642215713767580_3230647599455273103.dem.bz2")
+
+
+@pytest.mark.parametrize("url", ["http://replay1.valve.net/730/1_2.dem", "http://replay1.valve.net/570/1_2.dem.bz2"])
+def test_replay_url_allowlist_rejects_wrong_path(url):
+    with pytest.raises(ValueError):
+        check_replay_url(url)
+
+
 @pytest.mark.parametrize("url", [
     "http://evil.com/730/1_2.dem.bz2",
     "http://replay1.valve.net.evil.com/730/1_2.dem.bz2",

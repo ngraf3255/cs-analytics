@@ -35,7 +35,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 NEXT_CODE_URL = "https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1"
 AUTH_CODE_RE = re.compile(r"^[A-Z0-9]{4}-[A-Z0-9]{5}-[A-Z0-9]{4}$")
 REPLAY_HOST_RE = re.compile(r"^replay\d{1,4}\.valve\.net$")
-REPLAY_PATH_RE = re.compile(r"^/730/\d{1,20}_\d{1,20}\.dem\.bz2$")
+REPLAY_PATH_RE = re.compile(r"^/730/\d{1,24}_\d{1,20}\.dem\.bz2$")  # match id is zero-padded (21 digits seen)
 
 
 def is_valid_auth_code(code: str) -> bool:
