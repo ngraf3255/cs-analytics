@@ -1,4 +1,4 @@
-name: Deploy frontend to Cloudflare Pages
+name: Deploy frontend to Cloudflare Worker
 
 on:
   push:
@@ -20,7 +20,6 @@ jobs:
     name: Build and deploy frontend
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
       VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://api.csgooners.com' }}
     steps:
       - name: Check out repository
@@ -34,12 +33,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Check deployment configuration
-        run: test -n "$CLOUDFLARE_PAGES_PROJECT"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -47,12 +43,13 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy static assets to Cloudflare Worker
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4"
           packageManager: pnpm
-          command: pages deploy apps/web/dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=main
+          workingDirectory: apps/web
+          command: deploy
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}

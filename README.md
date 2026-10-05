@@ -8,7 +8,7 @@ An analytics project built around professional Counter-Strike 2 rounds. It combi
 
 ## Round predictor
 
-The new prediction app has a React + TypeScript frontend and a FastAPI service that loads the trained scikit-learn model. The frontend is set up for Cloudflare Pages; `render.yaml` describes the free Render web service for the API. The existing Streamlit deployment remains available while the new app is being connected to the domain:
+The new prediction app has a React + TypeScript frontend and a FastAPI service that loads the trained scikit-learn model. The frontend deploys as static assets to the Cloudflare Worker `cs-analytics`; `render.yaml` describes the free Render web service for the API. The existing Streamlit deployment remains available while the new app is being connected to the domain:
 
 [Open the current Streamlit predictor](https://cs-analytics-4fqredurpvknehdkr3svw4.streamlit.app/)
 
@@ -35,9 +35,9 @@ The local frontend calls the API through the Vite development proxy. API documen
 
 1. Create the API service in Render from the repository's `render.yaml` blueprint. The service uses the repository root so it can load `model.pkl`.
 2. Attach `api.csgooners.com` to the Render service and add the DNS record Render specifies in Cloudflare.
-3. Create a Cloudflare Pages project and attach `csgooners.com` and `www.csgooners.com` to it. GitHub Actions builds the frontend and uploads `apps/web/dist` using Wrangler, so Pages does not need to build the repo itself.
-4. In GitHub repository **Settings → Secrets and variables → Actions**, add secrets `CLOUDFLARE_API_TOKEN` (with Cloudflare Pages edit permission) and `CLOUDFLARE_ACCOUNT_ID`. Add the repository variable `CLOUDFLARE_PAGES_PROJECT` with the Pages project name. Optionally set `VITE_API_BASE_URL`; it defaults to `https://api.csgooners.com`.
-5. Push frontend changes to `main` to build and deploy automatically, or run **Deploy frontend to Cloudflare Pages** manually from the Actions tab. If the Pages project already has Cloudflare Git integration enabled, disable its automatic branch deployments so it does not race the GitHub Action.
+3. In Cloudflare, open the `cs-analytics` Worker and add `csgooners.com` and `www.csgooners.com` under **Settings → Domains & Routes → Add → Custom Domain**. Cloudflare creates the DNS records and certificates. Remove any conflicting CNAME records first if Cloudflare reports a conflict.
+4. In GitHub repository **Settings → Secrets and variables → Actions**, add secrets `CLOUDFLARE_API_TOKEN` (with the **Edit Cloudflare Workers** permission scoped to your account) and `CLOUDFLARE_ACCOUNT_ID`. Optionally set the repository variable `VITE_API_BASE_URL`; it defaults to `https://api.csgooners.com`.
+5. Push frontend changes to `main` to build and deploy automatically, or run **Deploy frontend to Cloudflare Worker** manually from the Actions tab. If Cloudflare Workers Builds is also connected to this repository, disable its automatic production deployment to avoid duplicate deploys.
 
 The Render free service sleeps after 15 minutes without traffic, so the first API request after idle may take about a minute to wake it.
 
@@ -50,7 +50,7 @@ The analysis uses 16,527 professional CS2 rounds to study round outcomes and tra
 - PostgreSQL, SQL, Python, pandas, and scikit-learn
 - React, TypeScript, and Vite
 - FastAPI and Render for the prediction service
-- Cloudflare Pages for frontend hosting
+- Cloudflare Workers for frontend hosting
 - Tableau for the analytics dashboard
 
 ### Database
