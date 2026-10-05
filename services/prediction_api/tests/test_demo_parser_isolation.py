@@ -1,15 +1,18 @@
 """Demo parsing in a child process, the shared parse slot, and parser settings (no real demo needed)."""
 
 import subprocess
+import threading
 
 import pytest
 
-from steamlink import demo_parser
+from steamlink import demo_parser, upload
 from steamlink.config import ConfigError, load_settings
 from steamlink.demo_parser import (
-    DemoParseError, Demoparser2Parser, ParsedDeath, ParsedDemo, ParsedRound,
+    PARSE_SLOT, DemoParseError, Demoparser2Parser, ParsedDeath, ParsedDemo, ParsedRound,
     parsed_demo_from_json, parsed_demo_to_json,
 )
+
+from test_sync import env  # noqa: F401  (fixture)
 
 SAMPLE = ParsedDemo(
     map_name="de_mirage",
@@ -74,6 +77,26 @@ def test_worker_failures_become_parse_errors(monkeypatch, outcome):
 def test_unknown_isolation_rejected():
     with pytest.raises(ValueError):
         Demoparser2Parser(isolation="thread")
+
+
+def test_upload_and_sync_share_one_parse_slot():
+    assert upload._parse_slot is PARSE_SLOT
+
+
+def test_sync_waits_for_a_running_parse(env):  # noqa: F811
+    svc = env["service"](max_matches=1)
+    assert PARSE_SLOT.acquire(blocking=False)  # e.g. an upload is parsing
+    released = False
+    try:
+        worker = threading.Thread(target=lambda: svc.sync(env["user"]))
+        worker.start()
+        worker.join(0.3)
+        assert worker.is_alive() and env["parser"].calls == 0
+    finally:
+        PARSE_SLOT.release()
+        released = True
+    worker.join(5)
+    assert released and not worker.is_alive() and env["parser"].calls == 1
 
 
 def test_parse_settings_defaults_and_validation():

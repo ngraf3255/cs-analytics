@@ -5,10 +5,9 @@ from __future__ import annotations
 
 import hashlib
 import os
-import threading
 from dataclasses import dataclass
 
-from .demo_parser import DemoParseError, DemoParser, extract_rounds
+from .demo_parser import PARSE_SLOT, DemoParseError, DemoParser, extract_rounds
 from .sharecode import InvalidShareCode, decode
 from .storage.base import UNKNOWN_MATCH_ID, UPLOAD_KEY_PREFIX, NewMatch, Storage, User
 from .valve import DemoTooLarge, DemoUnavailable, decompress_bz2
@@ -21,8 +20,9 @@ BZIP2_MAGIC = b"BZh"
 # arriving via Steam sync is matched on the share code / match id, or on the
 # demo hash once sync downloads it (Valve serves the same file the client saves).
 
-# Parsing is memory-heavy; allow one upload parse per process at a time.
-_parse_slot = threading.BoundedSemaphore(1)
+# Parsing is memory-heavy; one parse per process at a time, shared with Steam
+# sync. An upload that finds the slot taken gets 429 instead of waiting.
+_parse_slot = PARSE_SLOT
 
 
 class UploadRejected(Exception):

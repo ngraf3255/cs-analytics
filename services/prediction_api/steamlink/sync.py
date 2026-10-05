@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from .crypto import AuthCodeCipher, DecryptionError
-from .demo_parser import DemoParseError, DemoParser, extract_rounds
+from .demo_parser import PARSE_SLOT, DemoParseError, DemoParser, extract_rounds
 from .gc import DemoBotAuthFailed
 from .sharecode import decode
 from .storage.base import CursorConflict, NewMatch, Storage, User
@@ -154,7 +154,8 @@ class SyncService:
             with self.fetcher.fetch(url) as demo_path:
                 # Cross-source dedupe key: same hash as a manual upload of this demo.
                 base["demo_sha256"] = sha256_file(demo_path)
-                parsed = self.parser.parse(demo_path)
+                with PARSE_SLOT:  # shared with uploads: never two parses at once
+                    parsed = self.parser.parse(demo_path)
         except DemoLocatorNotConfigured:
             return None
         except DemoBotAuthFailed:
