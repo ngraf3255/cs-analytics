@@ -37,4 +37,35 @@ Demo URL resolution needs a CS2 Game Coordinator integration
 (`UnconfiguredDemoLocator`, see TODO in `steamlink/valve.py`); until then sync
 stops with `demo_retrieval_not_configured` and does not advance the cursor.
 
+### Manual demo upload (`POST /matches/upload`)
+
+Interim path while Game Coordinator demo retrieval has no bot account: a
+signed-in user uploads a CS2 `.dem` or `.dem.bz2` and gets the same match list
+entry and per-round report as a synced match. Same feature flag, session,
+`X-Requested-With: csa` header and Origin check as the other Steam routes.
+
+- Body: the raw file bytes (`Content-Type: application/octet-stream`), streamed
+  to a random temp dir that is always deleted; the raw demo is never stored.
+- Format is sniffed from content, not the filename: bzip2 (`BZh`) is
+  decompressed first, then the file must start with the CS2 magic `PBDEMS2\0`
+  (CS:GO `HL2DEMO` demos are rejected with `not_a_cs2_demo`).
+- Limits: request body and decompressed demo `DEMO_MAX_DECOMPRESSED_BYTES`
+  (1 GiB); a `.bz2` archive also `DEMO_MAX_DOWNLOAD_BYTES` (300 MiB). Over the
+  limit -> `413 demo_too_large`. Your proxy/host body limit applies too.
+- Idempotent per user on the SHA-256 of the decompressed demo (`.dem` and
+  `.dem.bz2` of the same demo are the same match); known demos are not re-parsed
+  (`"created": false`).
+- One parse per process at a time; a concurrent upload gets `429 upload_busy`.
+- Other errors: `422 demo_parse_failed`, `422 demo_has_no_rounds`. Nothing is
+  stored on failure. Uploads never touch the share-code cursor.
+
 Tests: `pip install -r requirements-dev.txt && pytest`
+
+Real-demo end-to-end test (demoparser2 -> features -> model -> SQLite -> report).
+Skipped unless `CSA_TEST_DEMO` is set; demos are too big to commit:
+
+```sh
+curl -L -o /tmp/test_demo.dem \
+  https://raw.githubusercontent.com/LaihoE/demoparser/main/src/parser/test_demo.dem
+CSA_TEST_DEMO=/tmp/test_demo.dem pytest tests/test_real_demo.py
+```
