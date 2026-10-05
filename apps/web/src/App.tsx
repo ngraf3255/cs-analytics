@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { SteamSection } from "./steam/SteamSection";
 
 type Options = {
   maps: string[];
@@ -173,6 +174,8 @@ function App() {
             {error && <div className="error-message" role="alert">{error}</div>}
           </div>
         </section>
+
+        <SteamSection />
 
         <section id="about" className="model-info">
           <div className="info-intro"><span className="section-kicker">THE MODEL</span><h2>One opening duel.<br /><em>A lot of signal.</em></h2></div>
