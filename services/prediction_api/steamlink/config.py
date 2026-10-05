@@ -1,0 +1,139 @@
+"""Environment-driven settings for Steam linking and match sync.
+
+Steam linking and sync are disabled unless both ``DATABASE_URL`` and
+``TOKEN_ENCRYPTION_KEYS`` are set. When they are set, the remaining required
+settings are validated at startup so a half-configured deploy fails loudly
+instead of running with insecure defaults.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from typing import Mapping
+from urllib.parse import urlsplit
+
+DEFAULT_ORIGINS = (
+    "http://localhost:5173,http://127.0.0.1:5173,https://csgooner.com,https://www.csgooner.com"
+)
+
+
+class ConfigError(RuntimeError):
+    """Raised when Steam sync is enabled but its configuration is incomplete or unsafe."""
+
+
+def _split_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _int(env: Mapping[str, str], name: str, default: int) -> int:
+    raw = env.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be an integer") from exc
+
+
+def _bool(env: Mapping[str, str], name: str, default: bool) -> bool:
+    raw = env.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+@dataclass(frozen=True)
+class Settings:
+    allowed_origins: list[str]
+    database_url: str | None = None
+    token_encryption_keys: list[str] = field(default_factory=list)
+    session_secret: str | None = None
+    # Public base URL of this API, e.g. https://api.csgooner.com. Used for the
+    # OpenID realm and the exact return URL.
+    public_api_url: str | None = None
+    # Where to send the browser after login, e.g. https://csgooner.com.
+    frontend_url: str | None = None
+    steam_web_api_key: str | None = None
+    session_cookie_name: str = "csa_session"
+    session_cookie_secure: bool = True
+    session_cookie_samesite: str = "lax"
+    session_cookie_domain: str | None = None
+    session_ttl_seconds: int = 14 * 24 * 3600
+    login_state_ttl_seconds: int = 600
+    sync_max_matches_per_request: int = 1
+    sync_lock_ttl_seconds: int = 900
+    demo_max_download_bytes: int = 300 * 1024 * 1024
+    demo_max_decompressed_bytes: int = 1024 * 1024 * 1024
+    http_timeout_seconds: float = 20.0
+
+    @property
+    def steam_enabled(self) -> bool:
+        return bool(self.database_url) and bool(self.token_encryption_keys)
+
+    @property
+    def openid_return_url(self) -> str:
+        if not self.public_api_url:
+            raise ConfigError("PUBLIC_API_URL is not configured")
+        return self.public_api_url.rstrip("/") + "/auth/steam/callback"
+
+    @property
+    def openid_realm(self) -> str:
+        if not self.public_api_url:
+            raise ConfigError("PUBLIC_API_URL is not configured")
+        return self.public_api_url.rstrip("/") + "/"
+
+    def validate(self) -> None:
+        if "*" in self.allowed_origins:
+            raise ConfigError("ALLOWED_ORIGINS cannot contain '*' because credentials are allowed")
+        if not self.steam_enabled:
+            return
+        missing = [
+            name
+            for name, value in (
+                ("SESSION_SECRET", self.session_secret),
+                ("PUBLIC_API_URL", self.public_api_url),
+                ("FRONTEND_URL", self.frontend_url),
+            )
+            if not value
+        ]
+        if missing:
+            raise ConfigError(
+                "Steam sync is enabled (DATABASE_URL and TOKEN_ENCRYPTION_KEYS are set) but "
+                f"these settings are missing: {', '.join(missing)}"
+            )
+        if len(self.session_secret or "") < 32:
+            raise ConfigError("SESSION_SECRET must be at least 32 characters")
+        for name, url in (("PUBLIC_API_URL", self.public_api_url), ("FRONTEND_URL", self.frontend_url)):
+            parts = urlsplit(url or "")
+            if parts.scheme not in {"http", "https"} or not parts.netloc or parts.query or parts.fragment:
+                raise ConfigError(f"{name} must be an absolute http(s) URL without query or fragment")
+        if self.session_cookie_samesite not in {"lax", "strict", "none"}:
+            raise ConfigError("SESSION_COOKIE_SAMESITE must be lax, strict, or none")
+        if self.session_cookie_samesite == "none" and not self.session_cookie_secure:
+            raise ConfigError("SESSION_COOKIE_SAMESITE=none requires SESSION_COOKIE_SECURE=true")
+        if self.sync_max_matches_per_request < 1 or self.sync_max_matches_per_request > 10:
+            raise ConfigError("SYNC_MAX_MATCHES_PER_REQUEST must be between 1 and 10")
+
+
+def load_settings(env: Mapping[str, str] | None = None) -> Settings:
+    env = os.environ if env is None else env
+    settings = Settings(
+        allowed_origins=_split_csv(env.get("ALLOWED_ORIGINS", DEFAULT_ORIGINS)),
+        database_url=env.get("DATABASE_URL") or None,
+        token_encryption_keys=_split_csv(env.get("TOKEN_ENCRYPTION_KEYS", "")),
+        session_secret=env.get("SESSION_SECRET") or None,
+        public_api_url=(env.get("PUBLIC_API_URL") or "").rstrip("/") or None,
+        frontend_url=(env.get("FRONTEND_URL") or "").rstrip("/") or None,
+        steam_web_api_key=env.get("STEAM_WEB_API_KEY") or None,
+        session_cookie_secure=_bool(env, "SESSION_COOKIE_SECURE", True),
+        session_cookie_samesite=(env.get("SESSION_COOKIE_SAMESITE") or "lax").lower(),
+        session_cookie_domain=env.get("SESSION_COOKIE_DOMAIN") or None,
+        session_ttl_seconds=_int(env, "SESSION_TTL_SECONDS", 14 * 24 * 3600),
+        sync_max_matches_per_request=_int(env, "SYNC_MAX_MATCHES_PER_REQUEST", 1),
+        sync_lock_ttl_seconds=_int(env, "SYNC_LOCK_TTL_SECONDS", 900),
+        demo_max_download_bytes=_int(env, "DEMO_MAX_DOWNLOAD_BYTES", 300 * 1024 * 1024),
+        demo_max_decompressed_bytes=_int(env, "DEMO_MAX_DECOMPRESSED_BYTES", 1024 * 1024 * 1024),
+    )
+    settings.validate()
+    return settings

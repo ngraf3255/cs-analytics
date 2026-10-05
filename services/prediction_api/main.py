@@ -12,6 +12,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from steamlink.config import load_settings
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODEL_PATH = Path(os.environ.get("MODEL_PATH", REPOSITORY_ROOT / "model.pkl"))
@@ -26,12 +28,8 @@ model = saved_model["model"]
 map_options = [str(value) for value in saved_model["map_options"]]
 weapon_options = [str(value) for value in saved_model["weapon_options"]]
 
-default_origins = "http://localhost:5173,http://127.0.0.1:5173,https://csgooner.com,https://www.csgooner.com"
-allowed_origins = [
-    origin.strip()
-    for origin in os.environ.get("ALLOWED_ORIGINS", default_origins).split(",")
-    if origin.strip()
-]
+settings = load_settings()
+allowed_origins = settings.allowed_origins
 
 app = FastAPI(
     title="CS2 Round Prediction API",
@@ -41,9 +39,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=False,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    # Credentials are needed for the Steam session cookie. Origins come from
+    # ALLOWED_ORIGINS and may never be "*" (enforced in load_settings).
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "X-Requested-With"],
 )
 
 
