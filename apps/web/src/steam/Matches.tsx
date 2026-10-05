@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, SyncResult, UploadJob } from "./types";
+import { weaponName } from "./weapons";
 
 const MATCH_STATUS: Record<string, string> = {
   demo_unavailable: "Demo is no longer available from Valve.",
@@ -334,7 +335,7 @@ function MatchReportView({ matchId }: { matchId: string }) {
               <td>{round.round_number}</td>
               <td>
                 {round.opening_kill
-                  ? `${sideName(round.opening_kill.side)} · ${round.opening_kill.weapon ?? "?"} · ${round.opening_kill.seconds != null ? `${round.opening_kill.seconds.toFixed(1)}s` : "?"}`
+                  ? `${sideName(round.opening_kill.side)} · ${weaponName(round.opening_kill.weapon)} · ${round.opening_kill.seconds != null ? `${round.opening_kill.seconds.toFixed(1)}s` : "?"}`
                   : "—"}
               </td>
               <td><span className={`actual-chip ${round.actual_winner ?? ""}`}>{sideName(round.actual_winner)}</span></td>

@@ -44,7 +44,10 @@ describe("match list and per-round report (real API response shapes)", () => {
     expect(rows).toHaveLength(10);
     const cells = (row: HTMLElement) => within(row).getAllByRole("cell").map((c) => c.textContent);
     // round 1: T p250 opening at 20.7 s, T won, model favoured T 71%
-    expect(cells(rows[0])).toEqual(["1", "T · p250 · 20.7s", "T", "T favoured · CT 29% / T 71%"]);
+    expect(cells(rows[0])).toEqual(["1", "T · P250 · 20.7s", "T", "T favoured · CT 29% / T 71%"]);
+    // weapon codes are shown with their in-game names
+    const openings = rows.map((row) => cells(row)[1]).join(" ");
+    expect(openings).not.toMatch(/m4a1_silencer|usp_silencer|galilar|p250/);
     // round 5: T opened but CT won (a model miss)
     expect(cells(rows[4])[0]).toBe("5");
     expect(cells(rows[4])[2]).toBe("CT");
