@@ -309,6 +309,31 @@ won, K/D, opening kills / deaths, `score: {you, them}`, `result`) and per round
 `you` (`side`, `won`, `kills`, `deaths`, `opening_kill`, `opening_death`,
 `survived`, `win_probability` = the model's probability for the player's side).
 
+### Tableau export (`GET /matches/export/rounds.csv`, `GET /matches/export/matches.csv`)
+
+Signed-in only (401 otherwise); the user's own list only (uploads, Steam sync
+and shared matches they are attached to via `match_owners`), never other
+users' matches. `steamlink/export.py` builds both tables; the response is
+streamed UTF-8 CSV (`Content-Disposition: attachment`, `Cache-Control:
+no-store`, `X-Export-Version: 1`). `rounds.csv` has one row per stored round
+of every imported match; `matches.csv` one row per match (stubs too, see
+`status`). Warmup / knife rounds are never stored, so never exported; matches
+from an older parser are exported as stored with `needs_reupload` = 1. The
+`you_*` columns come from the user's SteamID64 per-player rounds and are empty
+when they are not in the match / round. Dates are ISO 8601 UTC to the second,
+plus `match_day` (`YYYY-MM-DD`); flags are `1`/`0`; text starting with
+`= + - @` gets a leading `'` (CSV formula injection). Columns, meanings and
+how to connect Tableau: [`tableau/README.md`](../../tableau/README.md).
+The same tables offline from the database (read-only, SQLite or PostgreSQL):
+
+```bash
+python -m steamlink.export --database-url "$DATABASE_URL" --steam-id 7656119... --out-dir ../../tableau/app
+# or from the repo root: python python/export_app_tableau.py --database-url ... --steam-id ...
+```
+
+The web app's summary panel has an "Export for Tableau" control (Rounds CSV /
+Matches CSV) that downloads them with the session cookie.
+
 ### One match, many sources and users (dedupe)
 
 The same match can arrive by upload and by Steam sync, in either order, and
