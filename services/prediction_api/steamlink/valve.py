@@ -197,23 +197,29 @@ class DemoFetcher:
             raise DemoNotReady() from None
 
     def _decompress(self, src: str, dest: str) -> None:
-        decompressor = bz2.BZ2Decompressor()
-        written = 0
-        try:
-            with open(src, "rb") as inp, open(dest, "wb") as out:
-                while not decompressor.eof:
-                    if decompressor.needs_input:
-                        chunk = inp.read(1 << 20)
-                        if not chunk:
-                            break
-                    else:
-                        chunk = b""  # drain buffered output before feeding more input
-                    data = decompressor.decompress(chunk, max_length=1 << 20)
-                    written += len(data)
-                    if written > self._max_decompressed:
-                        raise DemoTooLarge()
-                    out.write(data)
-        except OSError:
-            raise DemoUnavailable() from None
-        if not decompressor.eof:
-            raise DemoUnavailable()
+        decompress_bz2(src, dest, self._max_decompressed)
+
+
+def decompress_bz2(src: str, dest: str, max_bytes: int) -> None:
+    """Stream-decompress ``src`` to ``dest``; raise DemoTooLarge past ``max_bytes``."""
+
+    decompressor = bz2.BZ2Decompressor()
+    written = 0
+    try:
+        with open(src, "rb") as inp, open(dest, "wb") as out:
+            while not decompressor.eof:
+                if decompressor.needs_input:
+                    chunk = inp.read(1 << 20)
+                    if not chunk:
+                        break
+                else:
+                    chunk = b""  # drain buffered output before feeding more input
+                data = decompressor.decompress(chunk, max_length=1 << 20)
+                written += len(data)
+                if written > max_bytes:
+                    raise DemoTooLarge()
+                out.write(data)
+    except OSError:
+        raise DemoUnavailable() from None
+    if not decompressor.eof:
+        raise DemoUnavailable()

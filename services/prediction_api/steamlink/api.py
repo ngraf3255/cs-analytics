@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -273,6 +274,46 @@ def list_matches(
 ) -> dict:
     matches = ctx.storage.list_matches(user.id, limit=limit, offset=offset)
     return {"matches": [_match_view(m) for m in matches], "limit": limit, "offset": offset}
+
+
+@router.post("/matches/upload", dependencies=[Depends(_csrf)])
+async def upload_demo(request: Request, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
+    """Body: the raw ``.dem`` or ``.dem.bz2`` bytes (Content-Type: application/octet-stream)."""
+
+    import shutil
+    import tempfile
+
+    from .upload import UploadRejected, import_uploaded_demo
+
+    limit = ctx.settings.demo_max_decompressed_bytes
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail="demo_too_large")
+    workdir = tempfile.mkdtemp(prefix="csa-upload-")
+    try:
+        raw_path = f"{workdir}/upload.bin"
+        written = 0
+        with open(raw_path, "wb") as out:
+            async for chunk in request.stream():
+                written += len(chunk)
+                if written > limit:
+                    raise HTTPException(status_code=413, detail="demo_too_large")
+                out.write(chunk)
+        if written == 0:
+            raise HTTPException(status_code=422, detail="not_a_cs2_demo")
+        try:
+            result = await run_in_threadpool(
+                import_uploaded_demo, storage=ctx.storage, parser=ctx.sync.parser, user=user, raw_path=raw_path,
+                workdir=workdir, max_compressed_bytes=ctx.settings.demo_max_download_bytes,
+                max_demo_bytes=limit, now=ctx.clock(),
+            )
+        except UploadRejected as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.reason) from None
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+    found = ctx.storage.get_match(user.id, result.match_id)
+    assert found is not None
+    return {"match": _match_view(found[0]), "created": result.created}
 
 
 @router.get("/matches/{match_id}")
