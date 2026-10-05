@@ -12,7 +12,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from steamlink.api import build_steam_context, register as register_steam
 from steamlink.config import load_settings
+from steamlink.scoring import RoundScorer
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -45,6 +47,11 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "X-Requested-With"],
 )
+
+# Steam linking/sync is feature-flagged: disabled (routes return 503) unless
+# DATABASE_URL and TOKEN_ENCRYPTION_KEYS are set.
+scorer = RoundScorer(model, map_options, weapon_options)
+register_steam(app, build_steam_context(settings, scorer) if settings.steam_enabled else None)
 
 
 class PredictionInput(BaseModel):
