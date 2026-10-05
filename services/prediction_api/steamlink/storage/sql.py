@@ -270,25 +270,45 @@ class SqlStorage(Storage):
             ).first()
             inserted = False
             if not existing:
-                match_id = uuid.uuid4().hex
-                conn.execute(insert(matches).values(
-                    id=match_id, user_id=user_id, share_code=match.share_code, valve_match_id=match.valve_match_id,
-                    status=match.status, status_reason=match.status_reason, map_name=match.map_name,
-                    rounds_count=len(match.rounds), imported_at=now,
-                ))
-                if match.rounds:
-                    conn.execute(insert(rounds), [
-                        dict(match_id=match_id, round_number=r.round_number, winner_side=r.winner_side,
-                             opening_kill_side=r.opening_kill_side, opening_kill_seconds=r.opening_kill_seconds,
-                             opening_weapon=r.opening_weapon, unscored_reason=r.unscored_reason)
-                        for r in match.rounds
-                    ])
+                self._insert_match(conn, user_id, match, now)
                 inserted = True
             conn.execute(
                 update(match_access).where(match_access.c.user_id == user_id)
                 .values(cursor_share_code=match.share_code, updated_at=now)
             )
             return inserted
+
+    def record_uploaded_match(self, user_id: str, *, match: NewMatch, now: datetime) -> tuple[str, bool]:
+        try:
+            with self.engine.begin() as conn:
+                existing = conn.execute(select(matches.c.id).where(
+                    and_(matches.c.user_id == user_id, matches.c.share_code == match.share_code))).first()
+                if existing:
+                    return existing.id, False
+                match_id = self._insert_match(conn, user_id, match, now)
+                return match_id, True
+        except IntegrityError:  # concurrent duplicate upload
+            with self.engine.begin() as conn:
+                row = conn.execute(select(matches.c.id).where(
+                    and_(matches.c.user_id == user_id, matches.c.share_code == match.share_code))).one()
+                return row.id, False
+
+    @staticmethod
+    def _insert_match(conn, user_id: str, match: NewMatch, now: datetime) -> str:
+        match_id = uuid.uuid4().hex
+        conn.execute(insert(matches).values(
+            id=match_id, user_id=user_id, share_code=match.share_code, valve_match_id=match.valve_match_id,
+            status=match.status, status_reason=match.status_reason, map_name=match.map_name,
+            rounds_count=len(match.rounds), imported_at=now,
+        ))
+        if match.rounds:
+            conn.execute(insert(rounds), [
+                dict(match_id=match_id, round_number=r.round_number, winner_side=r.winner_side,
+                     opening_kill_side=r.opening_kill_side, opening_kill_seconds=r.opening_kill_seconds,
+                     opening_weapon=r.opening_weapon, unscored_reason=r.unscored_reason)
+                for r in match.rounds
+            ])
+        return match_id
 
     # Reports ---------------------------------------------------------------
     def list_matches(self, user_id: str, *, limit: int, offset: int) -> list[MatchRecord]:

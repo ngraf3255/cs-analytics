@@ -128,6 +128,12 @@ class Storage(ABC):
         ``match.share_code``. Returns True if a new match row was inserted.
         Raises :class:`CursorConflict` if the cursor no longer equals ``expected_cursor``."""
 
+    @abstractmethod
+    def record_uploaded_match(self, user_id: str, *, match: NewMatch, now: datetime) -> tuple[str, bool]:
+        """Store a manually uploaded match (cursor untouched). ``match.share_code``
+        must be a unique upload key (e.g. ``upload:<sha256>``). Returns
+        ``(match_id, inserted)``; re-uploading the same file is a no-op."""
+
     # Reports ---------------------------------------------------------------
     @abstractmethod
     def list_matches(self, user_id: str, *, limit: int, offset: int) -> list[MatchRecord]: ...

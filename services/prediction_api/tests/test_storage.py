@@ -93,3 +93,14 @@ def test_migration_columns_match_sqlalchemy_metadata(tmp_path):
     for table in metadata.sorted_tables:
         db_cols = {col["name"] for col in inspector.get_columns(table.name)}
         assert db_cols == {col.name for col in table.columns}, table.name
+
+
+def test_uploaded_match_is_idempotent_and_leaves_cursor(storage):
+    user = storage.get_or_create_user("76561198000000009", NOW)
+    match = NewMatch(share_code="upload:abc", valve_match_id="upload", status="imported", status_reason=None,
+                     map_name="de_nuke", rounds=(RoundRecord(1, "ct", "ct", 5.0, "awp", None),))
+    first_id, inserted = storage.record_uploaded_match(user.id, match=match, now=NOW)
+    again_id, again = storage.record_uploaded_match(user.id, match=match, now=NOW)
+    assert inserted and not again and first_id == again_id
+    assert storage.get_match_access(user.id) is None
+    assert len(storage.get_match(user.id, first_id)[1]) == 1
