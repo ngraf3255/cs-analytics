@@ -21,7 +21,7 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Callable, Iterator
 from urllib.parse import urlsplit
 
 import httpx
@@ -110,6 +110,9 @@ class DemoLocatorNotConfigured(Exception):
 
 
 class DemoLocator(ABC):
+    # False for the placeholder below: sync then stops before queueing a download.
+    configured: bool = True
+
     @abstractmethod
     def demo_url(self, share: ShareCode) -> str:
         """Return the Valve replay URL for a match or raise DemoNotReady/DemoUnavailable."""
@@ -126,6 +129,8 @@ class UnconfiguredDemoLocator(DemoLocator):
     live account, so sync stops with ``demo_retrieval_not_configured`` and keeps the
     cursor unchanged until a real locator is plugged in.
     """
+
+    configured = False
 
     def demo_url(self, share: ShareCode) -> str:
         raise DemoLocatorNotConfigured()
@@ -176,7 +181,25 @@ class DemoFetcher:
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
 
-    def _download(self, url: str, dest: str) -> None:
+    def download(self, url: str, dest: str, on_progress: Callable[[float], None] | None = None) -> None:
+        """Download the (compressed) demo at a Valve replay URL to ``dest``.
+
+        ``on_progress(fraction)`` is called as bytes arrive when the size is known.
+        Raises DemoUnavailable (404), DemoNotReady (other status / network error)
+        or DemoTooLarge; a partial ``dest`` is removed on error.
+        """
+
+        check_replay_url(url)
+        try:
+            self._download(url, dest, on_progress)
+        except BaseException:
+            try:
+                os.remove(dest)
+            except OSError:
+                pass
+            raise
+
+    def _download(self, url: str, dest: str, on_progress: Callable[[float], None] | None = None) -> None:
         try:
             with self._http.stream("GET", url, follow_redirects=False) as response:
                 if response.status_code == 404:
@@ -186,6 +209,7 @@ class DemoFetcher:
                 declared = response.headers.get("content-length")
                 if declared and declared.isdigit() and int(declared) > self._max_download:
                     raise DemoTooLarge()
+                total = int(declared) if declared and declared.isdigit() else 0
                 written = 0
                 with open(dest, "wb") as out:
                     for chunk in response.iter_bytes():
@@ -193,6 +217,8 @@ class DemoFetcher:
                         if written > self._max_download:
                             raise DemoTooLarge()
                         out.write(chunk)
+                        if on_progress is not None and total:
+                            on_progress(min(written / total, 1.0))
         except httpx.HTTPError:
             raise DemoNotReady() from None
 

@@ -6,7 +6,7 @@ import pytest
 
 from steamlink import sharecode
 from steamlink.valve import (
-    DemoFetcher, DemoTooLarge, DemoUnavailable, SteamWebMatchHistoryClient, check_replay_url, is_valid_auth_code,
+    DemoFetcher, DemoNotReady, DemoTooLarge, DemoUnavailable, SteamWebMatchHistoryClient, check_replay_url, is_valid_auth_code,
 )
 
 KNOWN = "CSGO-GADqf-jjyJ8-cSP2r-smZRo-TO2xK"
@@ -137,3 +137,29 @@ def test_fetch_404_is_unavailable():
     with pytest.raises(DemoUnavailable):
         with _fetcher(b"", status=404).fetch(GOOD_URL):
             pass
+
+
+def test_download_reports_progress_and_keeps_the_compressed_file(tmp_path):
+    payload = bz2.compress(os.urandom(300_000))
+    dest = tmp_path / "job.upload"
+    seen = []
+    _fetcher(payload).download(GOOD_URL, str(dest), on_progress=seen.append)
+    assert dest.read_bytes() == payload  # the job pipeline decompresses (with its own progress)
+    assert seen and seen[-1] == 1.0 and seen == sorted(seen)
+
+
+@pytest.mark.parametrize("payload,status,limits,error", [
+    (b"x" * 5000, 200, {"max_download_bytes": 1000}, DemoTooLarge),
+    (b"", 404, {}, DemoUnavailable),
+    (b"", 503, {}, DemoNotReady),
+])
+def test_download_errors_remove_the_partial_file(tmp_path, payload, status, limits, error):
+    dest = tmp_path / "job.upload"
+    with pytest.raises(error):
+        _fetcher(payload, status=status, **limits).download(GOOD_URL, str(dest))
+    assert not dest.exists()
+
+
+def test_download_only_from_valve_replay_hosts(tmp_path):
+    with pytest.raises(ValueError):
+        _fetcher(b"x").download("http://169.254.169.254/730/1_2.dem.bz2", str(tmp_path / "x"))
