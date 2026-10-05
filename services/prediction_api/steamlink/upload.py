@@ -39,6 +39,7 @@ class UploadRejected(Exception):
 class UploadResult:
     match_id: str
     created: bool
+    updated: bool = False  # an outdated stored match was re-parsed and its rounds replaced
 
 
 def sha256_file(path: str) -> str:
@@ -159,5 +160,5 @@ def import_uploaded_demo(
                      played_at_source=played_at_source if played_at else None)
     match_id, created = storage.record_uploaded_match(user_id, match=match, now=now)
     if known is not None:
-        return UploadResult(known[0].id, known[1])
+        return UploadResult(known[0].id, known[1], updated=True)
     return UploadResult(match_id, created)

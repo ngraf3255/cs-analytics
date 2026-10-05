@@ -9,7 +9,10 @@
 -- match's warmup rounds cannot be told apart reliably from its stored rows, so
 -- older matches are only flagged (API: match "outdated"); re-uploading the same
 -- demo re-parses it and replaces its rounds and player rounds.
+-- upload_jobs.match_updated: 1 when the job re-parsed such an outdated match and
+-- replaced its rounds (the UI says "updated" rather than "already in your list").
 -- Portable SQL: runs on PostgreSQL and SQLite.
 
 ALTER TABLE matches ADD COLUMN parse_version INTEGER NOT NULL DEFAULT 0;
 UPDATE matches SET parse_version = 1 WHERE players_recorded = 1 AND status = 'imported';
+ALTER TABLE upload_jobs ADD COLUMN match_updated INTEGER;

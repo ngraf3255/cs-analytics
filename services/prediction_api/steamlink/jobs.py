@@ -228,17 +228,18 @@ class UploadJobWorker:
             # match_created set at queue time: the upload request already added the (outdated,
             # re-parsed here) match to the user's list.
             self._finish(job, status="done", match_id=result.match_id,
-                         match_created=result.created or bool(job.match_created))
+                         match_created=result.created or bool(job.match_created), match_updated=result.updated)
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
             self._remove_files(job)
 
     def _finish(self, job, *, status: str, error: str | None = None, match_id: str | None = None,
-                match_created: bool | None = None) -> None:
+                match_created: bool | None = None, match_updated: bool | None = None) -> None:
         now = self._ctx.clock()
         try:
             self._ctx.storage.update_upload_job(job.id, now, status=status, stage=None, progress=None, error=error,
-                                                match_id=match_id, match_created=match_created, finished_at=now)
+                                                match_id=match_id, match_created=match_created,
+                                                match_updated=match_updated, finished_at=now)
         except Exception:  # e.g. the database went away; recovery fixes the row on the next start
             logger.exception("upload job %s: could not record the result", job.id)
 

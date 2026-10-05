@@ -175,6 +175,7 @@ class UploadJob:
     error: str | None = None
     match_id: str | None = None
     match_created: bool | None = None
+    match_updated: bool | None = None  # the job re-parsed an outdated stored match (see PARSE_VERSION)
     started_at: datetime | None = None
     finished_at: datetime | None = None
     kind: str = JOB_KIND_UPLOAD

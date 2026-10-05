@@ -341,6 +341,8 @@ def _job_view(ctx: SteamContext, job) -> dict:
         "finished_at": _iso(job.finished_at),
         "match": match,
         "created": job.match_created,  # False: the demo / match was already stored (dedupe)
+        # True: the match was stored by an older parser and this job re-parsed it (now up to date)
+        "updated": bool(job.match_updated),
         "attempts": job.attempts,
     }
 

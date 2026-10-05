@@ -177,8 +177,10 @@ upload_jobs = Table(
     Column("started_at", UTCDateTime),
     Column("finished_at", UTCDateTime),
     Column("kind", String, nullable=False, default="upload"),
+    Column("match_updated", Integer),
 )
-_JOB_UPDATABLE = frozenset({"status", "stage", "progress", "error", "match_id", "match_created", "finished_at"})
+_JOB_UPDATABLE = frozenset({"status", "stage", "progress", "error", "match_id", "match_created", "match_updated",
+                            "finished_at"})
 
 
 def _upload_job(row) -> UploadJob:
@@ -188,6 +190,7 @@ def _upload_job(row) -> UploadJob:
         share_code=row.share_code, demo_sha256=row.demo_sha256, attempts=row.attempts, error=row.error,
         match_id=row.match_id, match_created=None if row.match_created is None else bool(row.match_created),
         started_at=row.started_at, finished_at=row.finished_at, kind=row.kind,
+        match_updated=None if row.match_updated is None else bool(row.match_updated),
     )
 
 
@@ -620,6 +623,7 @@ class SqlStorage(Storage):
             share_code=job.share_code, demo_path=job.demo_path, demo_sha256=job.demo_sha256,
             size_bytes=job.size_bytes, attempts=job.attempts, error=job.error, match_id=job.match_id,
             match_created=None if job.match_created is None else int(job.match_created),
+            match_updated=None if job.match_updated is None else int(job.match_updated),
             created_at=job.created_at, updated_at=job.updated_at, started_at=job.started_at,
             finished_at=job.finished_at, kind=job.kind,
         )
@@ -648,7 +652,8 @@ class SqlStorage(Storage):
             if existing is not None:  # finished earlier (e.g. the cursor was rewound): run it again
                 conn.execute(update(upload_jobs).where(upload_jobs.c.id == existing.id).values(
                     status="queued", stage=None, progress=None, attempts=0, error=None, match_id=None,
-                    match_created=None, started_at=None, finished_at=None, created_at=now, updated_at=now))
+                    match_created=None, match_updated=None, started_at=None, finished_at=None, created_at=now,
+                    updated_at=now))
                 job_id = existing.id
             else:
                 conn.execute(insert(upload_jobs).values(
@@ -727,8 +732,9 @@ class SqlStorage(Storage):
         unknown = set(fields) - _JOB_UPDATABLE
         if unknown:
             raise ValueError(f"not updatable: {sorted(unknown)}")
-        if "match_created" in fields and fields["match_created"] is not None:
-            fields["match_created"] = int(fields["match_created"])
+        for key in ("match_created", "match_updated"):
+            if key in fields and fields[key] is not None:
+                fields[key] = int(fields[key])
         with self.engine.begin() as conn:
             conn.execute(update(upload_jobs).where(upload_jobs.c.id == job_id).values(updated_at=now, **fields))
 

@@ -304,6 +304,7 @@ def test_reuploading_a_demo_stored_before_player_tracking_parses_it_once_more(tm
     old_id, _ = ctx.storage.record_uploaded_match(me.id, match=match(sha, recorded=False), now=ctx.clock())
     response, job = upload_and_wait(client, ctx, demo)
     assert response.status_code == 202 and job["status"] == "done" and job["match"]["id"] == old_id
+    assert (job["created"], job["updated"]) == (False, True)  # already in the list; re-parsed
     assert ctx.sync.parser.calls == 1
     assert [r.side for r in ctx.storage.get_player_rounds(old_id, FAKE_PLAYER)] == ["t", "t"]
     # Now recorded: the next upload of the same demo is the instant dedupe again (no parse).
@@ -364,7 +365,7 @@ def test_reupload_of_an_outdated_match_someone_else_imported_adds_it_and_updates
 
     response, job = upload_and_wait(client, ctx, demo)
     assert response.status_code == 202 and job["status"] == "done", job
-    assert job["match"]["id"] == old_id and job["created"] is True
+    assert job["match"]["id"] == old_id and job["created"] is True and job["updated"] is True
     assert ctx.sync.parser.calls == 1
     assert job["match"]["outdated"] is None and job["match"]["rounds_count"] == 2
     listed = client.get("/matches").json()["matches"]
@@ -373,7 +374,8 @@ def test_reupload_of_an_outdated_match_someone_else_imported_adds_it_and_updates
     assert ctx.storage.get_match(other.id, old_id)[0].rounds_count == 2
     # Up to date now: the next upload is the instant dedupe (no parse, not new).
     response, job = upload_and_wait(client, ctx, demo)
-    assert response.status_code == 200 and job["created"] is False and ctx.sync.parser.calls == 1
+    assert response.status_code == 200 and job["created"] is False and job["updated"] is False
+    assert ctx.sync.parser.calls == 1
 
 
 def test_outdated_matches_are_flagged_in_the_api_with_reupload_as_the_fix(tmp_path):

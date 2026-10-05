@@ -34,6 +34,14 @@ Feature definitions match the training data (``data/rounds.parquet`` /
 what the parse extracts changes, it is bumped and matches parsed before are
 flagged so a re-upload of the same demo re-parses and replaces them.
 
+Match date: none is extracted. Checked on 4 real CS2 demos (Valve MM, FACEIT,
+HLTV/ESL, the demoparser2 SourceTV fixture) with demoparser2 0.42: the header has
+map, server name, build (patch_version) and a format GUID but no time; the
+server cvars (``server_cvar``) carry no date (``steamworks_sessionid_server`` is
+an opaque session id); events carry ticks only. So an uploaded match is dated by
+when it was added (labelled "Added"), and Steam sync uses the Game Coordinator's
+match time.
+
 Values are stored as observed. Values the model doesn't know (new maps, other
 knife skins, ...) get an unscored reason when the report is built; they are
 never coerced into a known category.
