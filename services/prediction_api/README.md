@@ -24,6 +24,8 @@ these are also required: `SESSION_SECRET` (32+ chars), `PUBLIC_API_URL`,
 Optional: `SESSION_COOKIE_SAMESITE` (lax), `SESSION_COOKIE_SECURE` (true),
 `SESSION_COOKIE_DOMAIN`, `SYNC_MAX_MATCHES_PER_REQUEST` (3), `SYNC_JOB_MAX_ATTEMPTS` (5),
 `SYNC_IMPORT_START_MATCH` (true),
+`AUTO_SYNC_INTERVAL_SECONDS` (1800; 0 turns automatic sync off), `AUTO_SYNC_TICK_SECONDS` (60),
+`AUTO_SYNC_MAX_USERS_PER_TICK` (5), `AUTO_SYNC_MAX_BACKOFF_SECONDS` (21600),
 `SYNC_MIN_INTERVAL_SECONDS` (30), `DEMO_MAX_DOWNLOAD_BYTES`, `DEMO_MAX_DECOMPRESSED_BYTES`,
 `DEMO_PARSE_ISOLATION` (`subprocess`: each demo is parsed in a short-lived child
 process so its memory goes back to the OS; `inprocess` to debug),
@@ -121,6 +123,44 @@ job worker as uploads (`steamlink/sync.py`, `steamlink/jobs.py`, migration
 - Restarts: sync jobs don't need a surviving file. An interrupted one is
   queued again and re-downloads (at most `SYNC_JOB_MAX_ATTEMPTS` runs, then a
   `parse_failed` stub); queued ones simply wait for the worker.
+
+### Automatic background sync (`steamlink/autosync.py`, migration `0009`)
+
+Leetify-style: linked users get new matches without pressing Sync. A scheduler
+thread starts with the job worker (app lifespan) and stops on shutdown.
+
+- Every `AUTO_SYNC_TICK_SECONDS` (60, ±10% jitter) it picks up to
+  `AUTO_SYNC_MAX_USERS_PER_TICK` (5) users, longest-waiting first: match history
+  linked, automatic sync not turned off, no sync running, not waiting for a
+  re-link (`needs_relink`), and due: the last sync (manual or automatic) is
+  older than `AUTO_SYNC_INTERVAL_SECONDS` (1800), or the scheduled
+  `next_auto_sync_at` passed. Each is synced with **the same code as the Sync
+  button** (`SyncService.sync`: per-user lock, cursor, background jobs).
+- Several API processes / instances: only the holder of the `auto_sync` lease
+  (`scheduler_leases` row, renewed each tick, taken over when it expires) runs a
+  tick, so the per-tick cap is global; each user is also claimed with a
+  compare-and-set on `next_auto_sync_at`, so no user is synced twice. Works the
+  same on SQLite (single process) and PostgreSQL.
+- Scheduling: up to date -> next in one interval (+ up to 10% jitter); more
+  history (`partial`) or a full job queue -> again in about a minute; Valve
+  `429` (`rate_limited`) -> the tick stops for everyone (the limit is per API
+  key) and that user backs off; other errors / crashes -> exponential backoff
+  (interval x 2^failures, at most `AUTO_SYNC_MAX_BACKOFF_SECONDS`, 6 h); a
+  re-link error pauses the user until they enter new codes. A manual sync
+  reschedules the next automatic one from its own finish.
+- Auto sync leaves one job-queue slot free (it queues while fewer than
+  `UPLOAD_QUEUE_MAX - 1` jobs are active) so uploads aren't refused because of
+  it, and does nothing while demo retrieval isn't configured (no demo bot).
+- Opt-out: `PUT /steam/auto-sync {"enabled": false|true}` (CSRF header).
+  `GET /steam/sync` and `/me` (`sync`) include `last_synced_at` (last sync that
+  finished OK) and `auto_sync`: `enabled` (the user's toggle), `active`,
+  `paused_reason` (`turned_off | not_linked | needs_relink | server_disabled |
+  demo_retrieval_not_configured`), `interval_seconds`, `next_at`,
+  `last_run_at`, `last_error` (last automatic run), `failures`.
+  `GET /steam/status` adds `auto_sync` {`enabled`, `available`,
+  `interval_seconds`}.
+- Render free plan: the instance sleeps after ~15 minutes without traffic, so
+  automatic sync only runs while it is awake (it catches up when it wakes).
 
 ### Manual demo upload (`POST /matches/upload`)
 

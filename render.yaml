@@ -74,6 +74,11 @@ services:
       # sync then stops with demo_retrieval_not_configured, uploads still work) ---
       - key: STEAM_BOT_REFRESH_TOKEN
         sync: false
+      # --- Automatic background sync (steamlink/autosync.py): every linked user who
+      # hasn't turned it off is synced when their last sync is older than this.
+      # 0 turns it off. Free plan: only runs while the instance is awake.
+      - key: AUTO_SYNC_INTERVAL_SECONDS
+        value: "1800"
       # --- Limits ---
       - key: SYNC_MAX_MATCHES_PER_REQUEST
         value: "3"
