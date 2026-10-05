@@ -252,13 +252,14 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
   const syncLabel = syncing ? "SYNCING…" : syncJobs ? syncJobsLabel(syncJobs) : hasMore ? "SYNC MORE MATCHES" : "SYNC MATCHES";
 
   const linked = me.match_access.linked;
+  const relink = linked ? me.match_access.needs_relink ?? null : null;
   const lastSync = me.sync.last_finished_at ? new Date(me.sync.last_finished_at).toLocaleString() : null;
 
   return (
     <div className="steam-card">
       <span className="section-kicker">STEP 3 · IMPORT MATCHES</span>
       <div className="sync-row">
-        <button className={`submit-button sync-button ${syncJobs ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || syncBusy || me.sync.status === "running"}>
+        <button className={`submit-button sync-button ${syncJobs ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || !!relink || syncBusy || me.sync.status === "running"}>
           <span>{syncLabel}</span><span className="button-arrow">↻</span>
         </button>
         <label className={`ghost-button upload-button ${uploading ? "busy" : ""}`} aria-disabled={uploading}>
@@ -273,7 +274,9 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
               : "Uploading your demo…"
             : syncJobs
               ? syncJobsHint(syncJobs)
-              : !linked ? "Link your match history above to sync, or upload a CS2 .dem / .dem.bz2 you already have." : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
+              : !linked ? "Link your match history above to sync, or upload a CS2 .dem / .dem.bz2 you already have."
+                : relink ? (relink.field === "auth_code" ? "Sync is paused: paste your current Game Authentication Code above." : "Sync is paused: paste a recent share code above (your authentication code is kept).")
+                : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
         </span>
       </div>
       {upload?.phase === "uploading" && (
@@ -286,7 +289,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
       <MatchesSummaryPanel refreshKey={listVersion} />
 
       {matches.length === 0 ? (
-        <p className="steam-muted">No imported matches yet.</p>
+        <EmptyMatches linked={linked} relink={!!relink} uploading={uploading} onFile={(file) => void uploadFile(file)} />
       ) : (
         <ul className="match-list">
           {matches.map((match) => (
@@ -306,6 +309,39 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** No matches yet: both ways in, side by side (Leetify-style onboarding: sync forward, upload the rest). */
+function EmptyMatches({ linked, relink, uploading, onFile }: { linked: boolean; relink: boolean; uploading: boolean; onFile: (file: File | undefined) => void }) {
+  return (
+    <div className="empty-matches" aria-label="No matches yet">
+      <p className="steam-muted">No imported matches yet.</p>
+      <div className="empty-options">
+        <div className="empty-option">
+          <span className="section-kicker">SYNC FROM STEAM</span>
+          <p>
+            {!linked
+              ? "Link your match history above (step 2), then press Sync matches. We import your Competitive, Premier and Wingman matches newer than the share code you give."
+              : relink
+                ? "Sync is paused until you update your codes above."
+                : "Press Sync matches above. We import your Competitive, Premier and Wingman matches newer than your share code; each one downloads and parses in the background."}
+          </p>
+        </div>
+        <div className="empty-option">
+          <span className="section-kicker">UPLOAD A DEMO</span>
+          <p>
+            Any CS2 <code>.dem</code> or <code>.dem.bz2</code>: matches older than 30 days, FACEIT or pro demos. Replays you
+            download in CS2 (<em>Watch → Your Matches</em>) are saved in the game folder under <code>game/csgo/replays</code>.
+          </p>
+          <label className={`ghost-button empty-upload ${uploading ? "busy" : ""}`} aria-disabled={uploading}>
+            <span>CHOOSE A DEMO FILE</span>
+            <input type="file" accept=".dem,.bz2,application/x-bzip2" disabled={uploading} aria-label="Choose a demo file to upload"
+              onChange={(event) => { onFile(event.target.files?.[0]); event.target.value = ""; }} />
+          </label>
+        </div>
+      </div>
     </div>
   );
 }

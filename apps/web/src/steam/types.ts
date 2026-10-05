@@ -1,8 +1,17 @@
+/** The last sync failed in a way only new codes fix (GET /me). */
+export type NeedsRelink = {
+  reason: "invalid_known_code" | "invalid_auth_code" | "credentials_unreadable" | string;
+  /** Which code to replace: the share code (auth code kept) or the auth code. */
+  field: "share_code" | "auth_code" | string;
+};
+
 export type MatchAccess = {
   linked: boolean;
   auth_code_hint: string | null;
   linked_at: string | null;
   updated_at: string | null;
+  /** Older APIs don't send it. */
+  needs_relink?: NeedsRelink | null;
 };
 
 export type SyncStatus = {
