@@ -84,6 +84,7 @@ function App() {
         </a>
         <nav aria-label="Main navigation">
           <a className="nav-active" href="#predictor">Predictor</a>
+          <a href="#matches">My matches</a>
           <a href="#about">About the model</a>
           <a href="https://public.tableau.com/app/profile/nicholas.hinkel/viz/CS2-Analytics/CS2RoundAnalytics?publish=yes" target="_blank" rel="noreferrer">Analytics ↗</a>
         </nav>

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useMe, useSteamStatus } from "./hooks";
+import { Matches } from "./Matches";
 import { SteamAccount } from "./SteamAccount";
 
 function loginFailureReason(): string | null {
@@ -27,6 +28,7 @@ export function SteamSection() {
       {failure && <div className="steam-error" role="alert">Steam sign-in could not be verified. Please try again.</div>}
       {error && <div className="steam-error" role="alert">{error}</div>}
       <SteamAccount me={me} onChange={refresh} onSignedOut={() => setMe(null)} />
+      {me && <Matches me={me} onMeChange={refresh} />}
     </section>
   );
 }
