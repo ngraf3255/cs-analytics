@@ -7,10 +7,10 @@ Proxmox VM. Site stays on Cloudflare; API is public at `api.csgooner.com`.
 | --- | --- |
 | Frontend | Cloudflare Worker (`csgooner.com`) |
 | API + Postgres | Homelab Proxmox VM: **2 vCPU** (R5 5600X host), **8 GB RAM** |
-| Public API | `https://api.csgooner.com` → home (HTTPS on VM, or Cloudflare Tunnel) |
+| Public API | `https://api.csgooner.com` → home via **Cloudflare Tunnel** (default) or grey-cloud + Caddy/nginx |
 
 In-repo wiring: [`deploy/homelab/`](../deploy/homelab/) (`docker-compose.yml`,
-`Dockerfile`, `Caddyfile`, `.env.example`, optional systemd unit).
+`Dockerfile`, `Caddyfile`, `backup-pg.sh`, `.env.example`, optional systemd units).
 
 ## Why not Render Postgres / remote DB
 
@@ -36,11 +36,18 @@ Proceed as if the VM already exists:
 | OS | Linux with Docker (preferred) or Python 3.11 + local Postgres 17 |
 | Public `5432` | **closed** |
 | LAN IP | **unknown until Homelab reports it** — use placeholder `REPLACE_WITH_VM_LAN_IP` |
-| Public/WAN IP | **unknown** — use placeholder `REPLACE_WITH_HOME_PUBLIC_IP` |
+| Public/WAN IP | **usually dynamic** — prefer Tunnel; grey-cloud needs DDNS |
 
 Replace those placeholders in Cloudflare DNS / port-forward notes when known.
 Nothing in the compose file requires the LAN IP at runtime; only your router /
-Cloudflare config does.
+Cloudflare config does (and only for the non-Tunnel fallback).
+
+### Network isolation (lab note)
+
+This is the first internet-facing service in the lab. Put the VM on its own
+VLAN or a Proxmox firewall group: inbound **80/443 only from WAN** (if not using
+Tunnel), plus **SSH from LAN/VPN**; outbound internet only; **no access** to the
+rest of `192.168.4.0/22` (DNS, VPN, hypervisor). Keep `5432` on loopback.
 
 ## Quick start (Docker Compose)
 
@@ -52,16 +59,22 @@ git pull origin main
 
 cp deploy/homelab/.env.example deploy/homelab/.env
 # Edit deploy/homelab/.env: POSTGRES_PASSWORD, TOKEN_ENCRYPTION_KEYS,
-# SESSION_SECRET, STEAM_WEB_API_KEY, optional STEAM_BOT_REFRESH_TOKEN.
+# SESSION_SECRET, STEAM_WEB_API_KEY, optional STEAM_BOT_REFRESH_TOKEN,
+# and CLOUDFLARE_TUNNEL_TOKEN if using the tunnel profile.
 
 docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d --build
+# Recommended edge (no open 80/443, survives WAN IP changes):
+docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env --profile tunnel up -d
 ```
 
 What that starts:
 
 - **db** — Postgres 17; published only as `127.0.0.1:5432` (admin on the VM).
-- **api** — migrate + uvicorn on `127.0.0.1:8000`.
-- **caddy** — not started unless you add `--profile edge` (see HTTPS below).
+- **api** — migrate + uvicorn on `127.0.0.1:8000` (trusts `X-Forwarded-*` from
+  the compose network / local proxy).
+- **db-backup** — `pg_dump` into volume `csa-pg-backups` on start, then every 24h.
+- **cloudflared** — only with `--profile tunnel`.
+- **caddy** — only with `--profile edge` (fallback; see HTTPS below).
 
 Smoke on the VM:
 
@@ -105,8 +118,10 @@ set; the API then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`,
 | `PUBLIC_API_URL` | `https://api.csgooner.com` (OpenID realm + return URL) |
 | `FRONTEND_URL` | `https://csgooner.com` (redirect after Steam login) |
 | `ALLOWED_ORIGINS` | `https://csgooner.com,https://www.csgooner.com,http://localhost:5173,http://127.0.0.1:5173` |
+| `CLOUDFLARE_TUNNEL_TOKEN` | required for `--profile tunnel` |
+| `BACKUP_KEEP_DAYS` | default `14`; age prune for `csa-pg-backups` |
 | `STEAM_BOT_REFRESH_TOKEN` | optional; without it, sync stops at `demo_retrieval_not_configured` (uploads still work) |
-| `UPLOAD_MAX_BYTES` | default 1 GiB; lower to `100000000` if you Cloudflare-proxy the API |
+| `UPLOAD_MAX_BYTES` | default 1 GiB; lower to `100000000` if you orange-cloud the API |
 | `UPLOAD_JOB_DIR` | durable disk path (compose volume `/var/lib/csa/upload-jobs`) |
 | `AUTO_SYNC_INTERVAL_SECONDS` | `1800` default; `0` disables background sync |
 
@@ -124,12 +139,44 @@ Full optional knobs: [`docs/deploy-render.md`](deploy-render.md) env table
 
 Pick **one** edge path. Postgres never goes through any of them.
 
-### Option A — Caddy on the VM (`--profile edge`)
+**Recommended default: Cloudflare Tunnel** (Option A). Residential WAN IPs
+change; a static grey-cloud `A` record will silently break without DDNS. Tunnel
+also avoids opening 80/443 on the house.
+
+### Option A — Cloudflare Tunnel (recommended default)
+
+1. In Cloudflare Zero Trust → Networks → Tunnels, create a tunnel for this VM.
+2. Public hostname: `api.csgooner.com` → service `http://api:8000`
+   (**compose** network name). If `cloudflared` runs on the **host** instead of
+   compose, use `http://127.0.0.1:8000`.
+3. Put the install token in `deploy/homelab/.env` as `CLOUDFLARE_TUNNEL_TOKEN`.
+4. Start the tunnel profile:
+
+```sh
+docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env --profile tunnel up -d
+```
+
+DNS for `api` becomes a CNAME/Tunnel route managed by Cloudflare (no home IP in
+public DNS). Check tunnel upload/timeout limits; full-length demos that fail on
+the tunnel path can fall back to Option B/C with DNS-only + a higher
+`UPLOAD_MAX_BYTES` path.
+
+### Option B — Caddy on the VM (`--profile edge`) — fallback
+
+Use when Tunnel limits block large `.dem` uploads.
 
 1. Port-forward WAN **80/443** → `REPLACE_WITH_VM_LAN_IP` (or bind the VM to a
-   public IP).
-2. Cloudflare DNS for `api.csgooner.com`: **A** → `REPLACE_WITH_HOME_PUBLIC_IP`,
-   **DNS only (grey cloud)** recommended (see DNS section).
+   public IP). **Only one host on the WAN IP can own 80/443.** If the lab already
+   has a shared edge Caddy for other sites, skip this profile: add an
+   `api.csgooner.com` site block on that proxy → `http://REPLACE_WITH_VM_LAN_IP:8000`,
+   bind/publish the API on the VM LAN interface, and firewall that port to the
+   proxy only.
+2. Cloudflare DNS for `api.csgooner.com`: **A** → current home WAN IP,
+   **DNS only (grey cloud)**. Grey cloud **exposes the home public IP** to anyone
+   who resolves the name — acceptable for 1 GB uploads, but be aware. Because
+   residential IPs are usually **dynamic**, run a DDNS updater (Cloudflare API
+   token that upserts the `api` A record) or the API will go dark after a lease
+   renew.
 3. Start Caddy:
 
 ```sh
@@ -138,10 +185,13 @@ docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.e
 
 [`deploy/homelab/Caddyfile`](../deploy/homelab/Caddyfile) terminates TLS for
 `api.csgooner.com` and reverse-proxies to the `api` service (1 GiB body limit).
+Uvicorn is started with `--proxy-headers --forwarded-allow-ips='*'` so Steam
+OpenID return URLs and client IPs see `https` / the real client behind Caddy.
 
-### Option B — nginx on the host
+### Option C — nginx on the host — fallback
 
-Terminate TLS on the host and proxy to `http://127.0.0.1:8000`. Sketch:
+Terminate TLS on the host and proxy to `http://127.0.0.1:8000`. Same DDNS /
+grey-cloud caveats as Option B. Sketch:
 
 ```nginx
 server {
@@ -159,26 +209,75 @@ server {
 }
 ```
 
-### Option C — Cloudflare Tunnel (no open 80/443)
-
-Run `cloudflared` on the VM targeting `http://127.0.0.1:8000`, and point
-`api.csgooner.com` at the tunnel hostname in Cloudflare. Still prefer checking
-upload size / timeout limits on the tunnel path; large `.dem` uploads may need
-DNS-only + Option A/B instead.
-
 ## Cloudflare DNS for `api.csgooner.com`
 
-| Record | Name | Content | Proxy |
-| --- | --- | --- | --- |
-| A | `api` | `REPLACE_WITH_HOME_PUBLIC_IP` | **DNS only** (grey) preferred |
-| or CNAME | `api` | tunnel hostname | as required by Tunnel |
+| Path | Record | Name | Content | Proxy |
+| --- | --- | --- | --- | --- |
+| **Default (Tunnel)** | CNAME / Tunnel route | `api` | tunnel hostname (Zero Trust) | as required by Tunnel |
+| Fallback (Caddy/nginx) | A | `api` | current home WAN IP (+ **DDNS**) | **DNS only** (grey) |
 
-Why grey cloud: Cloudflare Free/Pro proxy caps uploads around **100 MB** and
-has short response timeouts. Full-length demos exceed that. Keep the Worker for
-`csgooner.com`; only the API hostname should avoid the orange cloud unless you
-intentionally lower `UPLOAD_MAX_BYTES`.
+Why grey cloud on the fallback: Cloudflare Free/Pro proxy caps uploads around
+**100 MB** and has short response timeouts. Full-length demos exceed that. Keep
+the Worker for `csgooner.com`; only the API hostname should avoid the orange
+cloud unless you intentionally lower `UPLOAD_MAX_BYTES`.
+
+Grey cloud also publishes the home WAN IP in public DNS. Prefer Tunnel when that
+exposure or DDNS churn is undesirable.
 
 Remove / replace the old CNAME to `*.onrender.com` when cutting over.
+
+## Postgres backups
+
+Compose service **db-backup** writes compressed plain SQL dumps to the
+**`csa-pg-backups`** volume (separate from `csa-pgdata`):
+
+- Path inside the container: `/backups/csgooners-YYYYMMDDTHHMMSSZ.sql.gz`
+- Cadence: once on container start, then every 24 hours
+- Retention: `BACKUP_KEEP_DAYS` (default 14)
+
+Script: [`deploy/homelab/backup-pg.sh`](../deploy/homelab/backup-pg.sh).
+
+Manual dump:
+
+```sh
+docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env \
+  exec -T db-backup /usr/local/bin/backup-pg.sh
+```
+
+List / copy a dump off the VM:
+
+```sh
+docker compose -f deploy/homelab/docker-compose.yml run --rm --no-deps \
+  -v csa-pg-backups:/backups busybox ls -lah /backups
+```
+
+### Calendar nightly (optional systemd timer)
+
+If you want **03:15 local** instead of “every 24h from start”, scale the sidecar
+down and install the host units:
+
+```sh
+docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env \
+  stop db-backup && docker compose -f deploy/homelab/docker-compose.yml \
+  --env-file deploy/homelab/.env rm -f db-backup
+
+sudo cp deploy/homelab/cs-analytics-pg-backup.service \
+        deploy/homelab/cs-analytics-pg-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now cs-analytics-pg-backup.timer
+```
+
+### Restore
+
+```sh
+# Pick a dump file from the backups volume, then:
+gunzip -c csgooners-YYYYMMDDTHHMMSSZ.sql.gz \
+  | docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env \
+      exec -T db psql -U csgooners -d csgooners
+```
+
+Prefer restoring into a fresh empty database (or drop/recreate the schema) so
+you do not mix old and new rows. Stop the **api** service while restoring.
 
 ## Frontend production API URL
 
@@ -204,13 +303,18 @@ Local dev still uses the Vite `/api` proxy when `VITE_API_BASE_URL` is empty.
 5. `sudo install -d -o csa -g csa /var/lib/csa/upload-jobs`
 6. Install [`deploy/homelab/cs-analytics-api.service`](../deploy/homelab/cs-analytics-api.service)
    and enable it.
-7. Put Caddy/nginx/Tunnel in front of `127.0.0.1:8000`.
+7. Prefer Cloudflare Tunnel in front of `127.0.0.1:8000`; otherwise Caddy/nginx
+   with DDNS. Schedule [`backup-pg.sh`](../deploy/homelab/backup-pg.sh) via the
+   timer units or host cron against local `pg_dump`.
 
 ## Cutover checklist
 
-1. Secrets in `deploy/homelab/.env` (or `/etc/cs-analytics/api.env`).
-2. Compose (or systemd) up; `/health` OK on loopback.
-3. DNS: `api.csgooner.com` → home (`REPLACE_WITH_HOME_PUBLIC_IP` or tunnel).
+1. Secrets in `deploy/homelab/.env` (or `/etc/cs-analytics/api.env`), including
+   `CLOUDFLARE_TUNNEL_TOKEN` if using Tunnel.
+2. Compose (or systemd) up; `/health` OK on loopback; confirm a dump appeared
+   under `csa-pg-backups`.
+3. DNS: Tunnel route for `api.csgooner.com` (default), **or** grey-cloud A + DDNS
+   to `REPLACE_WITH_HOME_PUBLIC_IP`.
 4. HTTPS working: `curl https://api.csgooner.com/health`.
 5. GitHub `VITE_API_BASE_URL` + frontend redeploy.
 6. Browser: csgooner.com → Steam sign-in → upload or sync.

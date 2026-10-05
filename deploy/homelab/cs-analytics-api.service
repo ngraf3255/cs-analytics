@@ -24,7 +24,9 @@ Environment=MODEL_PATH=/opt/cs-analytics/model.pkl
 Environment=UPLOAD_JOB_DIR=/var/lib/csa/upload-jobs
 Environment=PORT=8000
 ExecStartPre=/opt/cs-analytics/.venv/bin/python -m steamlink.migrate --if-configured
-ExecStart=/opt/cs-analytics/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+# proxy-headers: trust X-Forwarded-* from local Caddy/nginx or a shared lab proxy.
+# Tighten --forwarded-allow-ips to the proxy's IP if the API is bound beyond loopback.
+ExecStart=/opt/cs-analytics/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips='*'
 Restart=on-failure
 RestartSec=5
 # Demo parse child can use a lot of file-backed memory; leave headroom on 8 GB VM.
