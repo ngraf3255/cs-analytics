@@ -30,7 +30,8 @@ export type SyncResult = {
 
 export type MatchSummary = {
   id: string;
-  share_code: string;
+  source: "steam_sync" | "upload" | string;
+  share_code: string | null;
   status: "imported" | "unavailable" | "parse_failed" | string;
   status_reason: string | null;
   map_name: string | null;

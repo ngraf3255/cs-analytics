@@ -25,6 +25,37 @@ async function request<T>(path: string, init: RequestInit = {}, mutating = false
   return body as T;
 }
 
+export type UploadResult = { match: MatchSummary; created: boolean };
+export type UploadProgress = { phase: "uploading"; fraction: number } | { phase: "processing" };
+
+/** POST the raw .dem/.dem.bz2 bytes. Uses XHR because fetch() can't report upload progress. */
+export function uploadDemo(file: File, onProgress?: (progress: UploadProgress) => void): Promise<UploadResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${apiBase}/matches/upload`);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("X-Requested-With", "csa");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.responseType = "json";
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.({ phase: "uploading", fraction: event.loaded / event.total });
+    };
+    xhr.upload.onload = () => onProgress?.({ phase: "processing" });
+    xhr.onerror = () => reject(new ApiError(0, "upload_network_error"));
+    xhr.onabort = () => reject(new ApiError(0, "upload_network_error"));
+    xhr.onload = () => {
+      const body = xhr.response ?? {};
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as UploadResult);
+        return;
+      }
+      const detail = typeof body?.detail === "string" ? body.detail : xhr.status === 413 ? "demo_too_large" : "unknown_error";
+      reject(new ApiError(xhr.status, detail));
+    };
+    xhr.send(file);
+  });
+}
+
 export function steamLoginUrl(next = "/#matches"): string {
   const path = next.startsWith("/") ? next : `/${next}`;
   return `${apiBase}/auth/steam/login?next=${encodeURIComponent(path)}`;
@@ -42,12 +73,7 @@ export const steamApi = {
   postSync: () => request<SyncResult>("/steam/sync", { method: "POST" }, true),
   listMatches: (limit = 20, offset = 0) =>
     request<{ matches: MatchSummary[]; limit: number; offset: number }>(`/matches?limit=${limit}&offset=${offset}`),
-  uploadDemo: (file: File) =>
-    request<{ match: MatchSummary; created: boolean }>(
-      "/matches/upload",
-      { method: "POST", body: file, headers: { "Content-Type": "application/octet-stream" } },
-      true,
-    ),
+  uploadDemo,
   getMatch: (id: string) => request<MatchReport>(`/matches/${encodeURIComponent(id)}`),
 };
 

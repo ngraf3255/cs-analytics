@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { steamApi } from "./api";
+import { steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, SyncResult } from "./types";
 
@@ -43,23 +43,38 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
     void loadMatches();
   }, [loadMatches]);
 
-  const [uploading, setUploading] = useState(false);
+  const [upload, setUpload] = useState<UploadProgress | null>(null);
+  const uploading = upload !== null;
 
-  async function upload(file: File | undefined) {
+  async function uploadFile(file: File | undefined) {
     if (!file) return;
-    setUploading(true);
     setNotice(null);
+    if (!/\.dem(\.bz2)?$/i.test(file.name)) {
+      setNotice({ tone: "error", text: messageFor("not_a_demo_file") });
+      return;
+    }
+    setUpload({ phase: "uploading", fraction: 0 });
     try {
-      const result = await steamApi.uploadDemo(file);
-      setNotice({ tone: "ok", text: result.created ? "Demo imported." : "That demo was already imported." });
+      const result = await steamApi.uploadDemo(file, setUpload);
+      const rounds = `${result.match.rounds_count} round${result.match.rounds_count === 1 ? "" : "s"}`;
+      setNotice({
+        tone: "ok",
+        text: result.created ? `Demo imported: ${mapLabel(result.match.map_name)}, ${rounds}.` : "That demo was already imported. Opening its report.",
+      });
       await loadMatches();
       setSelected(result.match.id);
     } catch (reason) {
       setNotice({ tone: "error", text: reason instanceof ApiError ? reason.message : "Upload failed." });
     } finally {
-      setUploading(false);
+      setUpload(null);
     }
   }
+
+  const uploadLabel = !upload
+    ? "UPLOAD .DEM"
+    : upload.phase === "uploading"
+      ? `UPLOADING ${Math.round(upload.fraction * 100)}%`
+      : "PARSING…";
 
   async function sync() {
     setSyncing(true);
@@ -87,16 +102,24 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
         <button className="submit-button sync-button" type="button" onClick={sync} disabled={!linked || syncing || me.sync.status === "running"}>
           <span>{syncing ? "SYNCING…" : hasMore ? "SYNC MORE MATCHES" : "SYNC MATCHES"}</span><span className="button-arrow">↻</span>
         </button>
+        <label className={`ghost-button upload-button ${uploading ? "busy" : ""}`} aria-disabled={uploading}>
+          <span>{uploadLabel}</span>
+          <input type="file" accept=".dem,.bz2,application/x-bzip2" disabled={uploading}
+            onChange={(event) => { void uploadFile(event.target.files?.[0]); event.target.value = ""; }} />
+        </label>
         <span className="steam-muted sync-meta">
-          {!linked ? "Link your match history above to enable sync." : syncing ? "Fetching the next match from Valve, downloading and parsing the demo. This can take a minute." : lastSync ? `Last sync ${lastSync}` : "Not synced yet."}
+          {uploading
+            ? upload?.phase === "processing"
+              ? "Upload complete. Parsing the demo and scoring each round. This can take a minute."
+              : "Uploading your demo…"
+            : !linked ? "Link your match history above to sync, or upload a CS2 .dem / .dem.bz2 you already have." : syncing ? "Fetching the next match from Valve, downloading and parsing the demo. This can take a minute." : lastSync ? `Last sync ${lastSync}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
         </span>
       </div>
-      <label className="upload-row">
-        <span className="ghost-button">{uploading ? "Parsing demo…" : "Upload a .dem file"}</span>
-        <input type="file" accept=".dem,.bz2" disabled={uploading}
-          onChange={(event) => { void upload(event.target.files?.[0]); event.target.value = ""; }} />
-        <span className="steam-muted sync-meta">For older matches or demos you already have (CS2 .dem or .dem.bz2).</span>
-      </label>
+      {upload?.phase === "uploading" && (
+        <div className="upload-progress" role="progressbar" aria-label="Demo upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(upload.fraction * 100)}>
+          <span style={{ width: `${upload.fraction * 100}%` }} />
+        </div>
+      )}
       {notice && <div className={notice.tone === "ok" ? "steam-notice" : "steam-error"} role="status">{notice.text}</div>}
       {listError && <div className="steam-error" role="alert">{listError}</div>}
 
@@ -107,7 +130,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
           {matches.map((match) => (
             <li key={match.id}>
               <button type="button" className={`match-item ${selected === match.id ? "selected" : ""}`} onClick={() => setSelected(selected === match.id ? null : match.id)}>
-                <strong>{mapLabel(match.map_name)}</strong>
+                <strong>{mapLabel(match.map_name)}{match.source === "upload" && <span className="source-tag">UPLOADED</span>}</strong>
                 <span>{match.status === "imported" ? `${match.rounds_count} rounds` : MATCH_STATUS[match.status_reason ?? ""] ?? "Not imported"}</span>
                 <span className="steam-muted">{new Date(match.imported_at).toLocaleDateString()}</span>
               </button>
