@@ -200,11 +200,15 @@ class DemoFetcher:
         decompress_bz2(src, dest, self._max_decompressed)
 
 
-def decompress_bz2(src: str, dest: str, max_bytes: int) -> None:
-    """Stream-decompress ``src`` to ``dest``; raise DemoTooLarge past ``max_bytes``."""
+def decompress_bz2(src: str, dest: str, max_bytes: int, on_progress=None) -> None:
+    """Stream-decompress ``src`` to ``dest``; raise DemoTooLarge past ``max_bytes``.
+
+    ``on_progress(compressed_bytes_read)`` is called after each input chunk.
+    """
 
     decompressor = bz2.BZ2Decompressor()
     written = 0
+    read = 0
     try:
         with open(src, "rb") as inp, open(dest, "wb") as out:
             while not decompressor.eof:
@@ -212,6 +216,9 @@ def decompress_bz2(src: str, dest: str, max_bytes: int) -> None:
                     chunk = inp.read(1 << 20)
                     if not chunk:
                         break
+                    read += len(chunk)
+                    if on_progress is not None:
+                        on_progress(read)
                 else:
                     chunk = b""  # drain buffered output before feeding more input
                 data = decompressor.decompress(chunk, max_length=1 << 20)

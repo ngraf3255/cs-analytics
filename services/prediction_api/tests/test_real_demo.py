@@ -16,7 +16,7 @@ import pytest
 from steamlink.demo_parser import Demoparser2Parser
 from steamlink.valve import decompress_bz2
 
-from test_api_steam import H, login, make_client
+from test_api_steam import login, make_client, upload_and_wait
 
 DEMO = os.environ.get("CSA_TEST_DEMO")
 pytestmark = pytest.mark.skipif(not DEMO or not os.path.isfile(DEMO), reason="set CSA_TEST_DEMO to a CS2 demo")
@@ -39,10 +39,10 @@ def test_real_demo_upload_parse_score_report(tmp_path):
     login(client, ctx)
     ctx.sync.parser = Demoparser2Parser()  # the real parser, not the fake
     with open(DEMO, "rb") as fh:
-        response = client.post("/matches/upload", content=fh.read(),
-                               headers={**H, "Content-Type": "application/octet-stream"})
-    assert response.status_code == 200, response.text
-    match = response.json()["match"]
+        response, job = upload_and_wait(client, ctx, fh.read(), timeout=1200)  # background parse job
+    assert response.status_code == 202, response.text
+    assert job["status"] == "done" and job["created"] is True, job
+    match = job["match"]
     assert match["status"] == "imported" and match["map_name"] and match["rounds_count"] > 0
 
     report = client.get(f"/matches/{match['id']}").json()
@@ -65,8 +65,8 @@ def test_real_demo_upload_parse_score_report(tmp_path):
         assert rounds[9]["unscored_reason"] == "no_opening_kill"
         assert report["summary"]["scored"] == 9
 
-    again = client.post("/matches/upload", content=open(DEMO, "rb").read(),
-                        headers={**H, "Content-Type": "application/octet-stream"}).json()
+    with open(DEMO, "rb") as fh:
+        _, again = upload_and_wait(client, ctx, fh.read(), timeout=1200)
     assert again["created"] is False and again["match"]["id"] == match["id"]
 
 

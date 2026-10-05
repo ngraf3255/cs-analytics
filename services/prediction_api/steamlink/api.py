@@ -8,6 +8,7 @@ CORS preflight) and, if an Origin header is sent, an allowed origin.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
@@ -15,13 +16,13 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from . import openid
 from .config import Settings
 from .crypto import AuthCodeCipher
+from .jobs import UploadJobWorker
 from .scoring import RoundScorer
 from .sessions import LOGIN_STATE_COOKIE, CookieSigner
 from .sharecode import is_valid_share_code
@@ -47,6 +48,7 @@ class SteamContext:
     scorer: RoundScorer
     http: httpx.Client
     clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
+    jobs: "UploadJobWorker | None" = None  # set by register()
 
 
 def _ctx(request: Request) -> SteamContext:
@@ -277,9 +279,30 @@ def list_matches(
     return {"matches": [_match_view(m) for m in matches], "limit": limit, "offset": offset}
 
 
+def _job_view(ctx: SteamContext, job) -> dict:
+    match = None
+    if job.match_id:
+        found = ctx.storage.get_match(job.user_id, job.match_id)
+        match = _match_view(found[0]) if found else None
+    return {
+        "id": job.id,
+        "status": job.status,  # queued | processing | done | failed
+        "stage": job.stage,  # while processing: decompressing | hashing | parsing | storing
+        "progress": job.progress,  # 0..1 within the stage when known (decompressing), else null
+        "queue_position": ctx.storage.upload_jobs_ahead(job) if job.status == "queued" else None,
+        "error": job.error,
+        "size_bytes": job.size_bytes,
+        "created_at": _iso(job.created_at),
+        "started_at": _iso(job.started_at),
+        "finished_at": _iso(job.finished_at),
+        "match": match,
+        "created": job.match_created,  # False: the demo / match was already stored (dedupe)
+    }
+
+
 @router.post("/matches/upload", dependencies=[Depends(_csrf)])
 async def upload_demo(
-    request: Request, share_code: str | None = None,
+    request: Request, response: Response, share_code: str | None = None,
     user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
 ) -> dict:
     """Body: the raw ``.dem`` or ``.dem.bz2`` bytes (Content-Type: application/octet-stream).
@@ -287,46 +310,107 @@ async def upload_demo(
     Optional ``?share_code=CSGO-...``: the match's sharing code. It lets a later
     Steam sync of the same match skip the download (dedupe by Valve match id);
     without it, dedupe relies on the demo's SHA-256.
+
+    Returns ``{"job": ...}`` (see ``GET /matches/upload/{job_id}``): 202 with a
+    queued job that a background worker parses (steamlink.jobs), or 200 with a
+    finished job when the demo / share code is already stored (no parse).
     """
 
-    import shutil
-    import tempfile
+    import hashlib
+    import uuid
 
-    from .upload import UploadRejected, import_uploaded_demo
+    from .sharecode import decode
+    from .storage.base import UNKNOWN_MATCH_ID, UploadJob
+    from .upload import sniff_demo
 
+    settings = ctx.settings
     share_code = (share_code or "").strip() or None
     if share_code and not is_valid_share_code(share_code):
         raise HTTPException(status_code=422, detail="invalid_share_code_format")
     # A plain .dem body is the demo itself, so it is also bound by the decompressed limit.
-    limit = min(ctx.settings.upload_max_bytes, ctx.settings.demo_max_decompressed_bytes)
+    limit = min(settings.upload_max_bytes, settings.demo_max_decompressed_bytes)
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > limit:
         raise HTTPException(status_code=413, detail="demo_too_large")
-    workdir = tempfile.mkdtemp(prefix="csa-upload-")
+    if len(ctx.storage.list_active_upload_jobs()) >= settings.upload_queue_max:
+        raise HTTPException(status_code=429, detail="upload_queue_full")  # before reading the body
+
+    job_id = uuid.uuid4().hex
+    raw_path = ctx.jobs.job_file(job_id)
+    queued = False
     try:
-        raw_path = f"{workdir}/upload.bin"
-        written = 0
+        written, head, hasher = 0, b"", hashlib.sha256()
         with open(raw_path, "wb") as out:
             async for chunk in request.stream():
                 written += len(chunk)
                 if written > limit:
                     raise HTTPException(status_code=413, detail="demo_too_large")
+                if len(head) < 8:
+                    head = (head + chunk)[:8]
+                if hasher is not None:
+                    # Hash a plain .dem while it arrives (saves a re-read on a slow CPU);
+                    # an archive's hash is no dedupe key.
+                    if len(head) >= 3 and sniff_demo(head) == "bz2":
+                        hasher = None
+                    else:
+                        hasher.update(chunk)
                 out.write(chunk)
-        if written == 0:
+        kind = sniff_demo(head)
+        if kind is None:
             raise HTTPException(status_code=422, detail="not_a_cs2_demo")
-        try:
-            result = await run_in_threadpool(
-                import_uploaded_demo, storage=ctx.storage, parser=ctx.sync.parser, user=user, raw_path=raw_path,
-                workdir=workdir, max_compressed_bytes=ctx.settings.demo_max_download_bytes,
-                max_demo_bytes=ctx.settings.demo_max_decompressed_bytes, now=ctx.clock(), share_code=share_code,
-            )
-        except UploadRejected as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.reason) from None
+        if kind == "bz2" and written > settings.demo_max_download_bytes:
+            raise HTTPException(status_code=413, detail="demo_too_large")
+        digest = hasher.hexdigest() if kind == "dem" and hasher is not None else None
+        now = ctx.clock()
+        valve_match_id = str(decode(share_code).match_id) if share_code else UNKNOWN_MATCH_ID
+        existing = None
+        if digest or share_code:
+            existing = ctx.storage.find_match(user.id, share_code=share_code, valve_match_id=valve_match_id,
+                                              demo_sha256=digest)
+        if existing and existing.status == "imported":
+            # Already stored (same .dem, or same match by share code): no parse, finished job.
+            job = UploadJob(id=job_id, user_id=user.id, status="done", demo_path=raw_path, size_bytes=written,
+                            created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest,
+                            match_id=existing.id, match_created=False, finished_at=now)
+            ctx.storage.create_upload_job(job)
+            response.status_code = 200
+            return {"job": _job_view(ctx, job)}
+        job = UploadJob(id=job_id, user_id=user.id, status="queued", demo_path=raw_path, size_bytes=written,
+                        created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest)
+        if not ctx.storage.create_upload_job(job, max_active=settings.upload_queue_max):
+            raise HTTPException(status_code=429, detail="upload_queue_full")
+        queued = True
     finally:
-        shutil.rmtree(workdir, ignore_errors=True)
-    found = ctx.storage.get_match(user.id, result.match_id)
-    assert found is not None
-    return {"match": _match_view(found[0]), "created": result.created}
+        if not queued:
+            try:
+                os.remove(raw_path)
+            except OSError:
+                pass
+    ctx.jobs.start()
+    response.status_code = 202
+    return {"job": _job_view(ctx, ctx.storage.get_upload_job(user.id, job_id) or job)}
+
+
+@router.get("/matches/upload")
+def list_upload_jobs(
+    limit: int = Query(10, ge=1, le=50), user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
+) -> dict:
+    """The user's recent uploads, newest first (lets the UI resume showing a running parse)."""
+
+    jobs = ctx.storage.list_upload_jobs(user.id, limit=limit)
+    if any(job.active for job in jobs):
+        ctx.jobs.start()  # self-heal: e.g. the worker stopped after a database outage
+    return {"jobs": [_job_view(ctx, job) for job in jobs]}
+
+
+@router.get("/matches/upload/{job_id}")
+def get_upload_job(job_id: str, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
+    job = ctx.storage.get_upload_job(user.id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="upload_job_not_found")
+    if job.active:
+        ctx.jobs.start()
+    return {"job": _job_view(ctx, job)}
 
 
 @router.get("/matches/{match_id}")
@@ -409,5 +493,15 @@ def build_steam_context(settings: Settings, scorer: RoundScorer) -> SteamContext
 
 
 def register(app: FastAPI, ctx: SteamContext | None) -> None:
+    if ctx is not None and ctx.jobs is None:
+        ctx.jobs = UploadJobWorker(ctx)
     app.state.steam = ctx
     app.include_router(router)
+
+
+def start_background_work(app: FastAPI) -> None:
+    """At app startup: resume / clean up upload jobs a previous process left behind."""
+
+    ctx = getattr(app.state, "steam", None)
+    if ctx is not None and ctx.jobs is not None:
+        ctx.jobs.start()

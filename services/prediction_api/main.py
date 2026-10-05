@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -12,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from steamlink.api import build_steam_context, register as register_steam
+from steamlink.api import build_steam_context, register as register_steam, start_background_work
 from steamlink.config import load_settings
 from steamlink.scoring import RoundScorer
 
@@ -33,7 +34,15 @@ weapon_options = [str(value) for value in saved_model["weapon_options"]]
 settings = load_settings()
 allowed_origins = settings.allowed_origins
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Resume or fail upload parse jobs left behind by a previous process (steamlink.jobs).
+    start_background_work(app)
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="CS2 Round Prediction API",
     description="Predicts a round winner from the opening kill and map conditions.",
     version="1.0.0",

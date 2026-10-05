@@ -1,8 +1,8 @@
 """Measure peak memory of the upload path (stream-to-disk -> .bz2 -> parse -> store -> score) on a real demo.
 
 Runs in a fresh process that first imports ``main`` (model loaded, like the
-server at idle), then imports the given demo exactly as ``POST /matches/upload``
-does (``import_uploaded_demo`` with the production parser and a throwaway
+server at idle), then imports the given demo exactly as the upload job worker
+does for ``POST /matches/upload`` (``import_uploaded_demo`` with the production parser and a throwaway
 SQLite database) and scores the rounds as ``GET /matches/{id}`` does.
 
 Memory is sampled every few ms over this process plus all of its child
@@ -163,7 +163,7 @@ def measure(demo: str, isolation: str = "subprocess") -> dict:
             rounds, scores = [], []
             try:
                 result = import_uploaded_demo(
-                    storage=storage, parser=parser, user=user, raw_path=raw_path, workdir=upload_dir,
+                    storage=storage, parser=parser, user_id=user.id, raw_path=raw_path, workdir=upload_dir,
                     max_compressed_bytes=1 << 40, max_demo_bytes=1 << 40, now=now,
                 )
             except UploadRejected as exc:  # e.g. demo_parse_failed when the parse child was OOM-killed

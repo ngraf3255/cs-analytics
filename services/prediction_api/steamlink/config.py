@@ -70,6 +70,12 @@ class Settings:
     # Render itself does not cap request bodies; lower this if a proxy does
     # (e.g. Cloudflare-proxied hostnames: 100 MB on Free/Pro plans).
     upload_max_bytes: int = 1024 * 1024 * 1024
+    # Uploads are parsed in the background (steamlink.jobs). Received files wait
+    # in UPLOAD_JOB_DIR (default: <tmp>/csa-upload-jobs; Render's disk is
+    # ephemeral, so a restart fails queued jobs); at most UPLOAD_QUEUE_MAX jobs
+    # (all users) may be queued or processing, further uploads get 429.
+    upload_job_dir: str | None = None
+    upload_queue_max: int = 3
     http_timeout_seconds: float = 20.0
     # Demo parsing (see demo_parser.Demoparser2Parser): "subprocess" (default)
     # parses in a short-lived child so its memory goes back to the OS and an
@@ -147,6 +153,8 @@ class Settings:
             raise ConfigError("DEMO_PARSE_TIMEOUT_SECONDS and DEMO_PARSE_THREADS must be positive")
         if self.upload_max_bytes < 1:
             raise ConfigError("UPLOAD_MAX_BYTES must be positive")
+        if self.upload_queue_max < 1:
+            raise ConfigError("UPLOAD_QUEUE_MAX must be positive")
         if self.sync_max_matches_per_request < 1 or self.sync_max_matches_per_request > 10:
             raise ConfigError("SYNC_MAX_MATCHES_PER_REQUEST must be between 1 and 10")
 
@@ -181,6 +189,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         demo_max_download_bytes=_int(env, "DEMO_MAX_DOWNLOAD_BYTES", 300 * 1024 * 1024),
         demo_max_decompressed_bytes=_int(env, "DEMO_MAX_DECOMPRESSED_BYTES", 1024 * 1024 * 1024),
         upload_max_bytes=_int(env, "UPLOAD_MAX_BYTES", 1024 * 1024 * 1024),
+        upload_job_dir=(env.get("UPLOAD_JOB_DIR") or "").strip() or None,
+        upload_queue_max=_int(env, "UPLOAD_QUEUE_MAX", 3),
         demo_parse_isolation=(env.get("DEMO_PARSE_ISOLATION") or "subprocess").strip().lower(),
         demo_parse_timeout_seconds=float(_int(env, "DEMO_PARSE_TIMEOUT_SECONDS", 600)),
         demo_parse_threads=_int(env, "DEMO_PARSE_THREADS", 2),

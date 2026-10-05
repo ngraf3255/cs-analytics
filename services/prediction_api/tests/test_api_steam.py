@@ -23,7 +23,7 @@ def make_client(tmp_path):
     settings = Settings(
         allowed_origins=["https://csgooner.com"], database_url="sqlite://", token_encryption_keys=[KEY],
         session_secret="s" * 40, public_api_url="https://api.example.com", frontend_url="https://csgooner.com",
-        steam_web_api_key="k", session_cookie_secure=False,
+        steam_web_api_key="k", session_cookie_secure=False, upload_job_dir=str(tmp_path / "upload-jobs"),
     )
     storage, clock, cipher = make_storage(tmp_path), Clock(), AuthCodeCipher([KEY])
     history = FakeHistory([code(i) for i in range(4)], valid_auth=AUTH)
@@ -37,6 +37,22 @@ def make_client(tmp_path):
     app = FastAPI()
     api.register(app, ctx)
     return TestClient(app, base_url="https://api.example.com", follow_redirects=False), ctx
+
+
+OCTET = {**H, "Content-Type": "application/octet-stream"}
+
+
+def upload_and_wait(client, ctx, content, *, headers=OCTET, query="", timeout=120):
+    """POST /matches/upload, then wait for the background job. Returns (POST response, final job or None)."""
+
+    response = client.post("/matches/upload" + query, content=content, headers=headers)
+    if response.status_code not in (200, 202):
+        return response, None
+    job = response.json()["job"]
+    if response.status_code == 202:
+        assert ctx.jobs.wait_idle(timeout), "upload job worker did not finish"
+        job = client.get(f"/matches/upload/{job['id']}").json()["job"]
+    return response, job
 
 
 def login(client, ctx):
@@ -149,18 +165,17 @@ def test_logout_revokes_session(app_client):
 
 def test_upload_demo_plain_and_bz2_dedupe(app_client):
     import bz2
-    client, _ = app_client
+    client, ctx = app_client
     demo = b"PBDEMS2\0" + b"x" * 2000
     assert client.post("/matches/upload", content=demo).status_code == 403  # CSRF header
-    headers = {**H, "Content-Type": "application/octet-stream"}
-    first = client.post("/matches/upload", content=demo, headers=headers)
-    assert first.status_code == 200, first.text
-    body = first.json()
-    assert body["created"] is True and body["match"]["status"] == "imported"
-    assert body["match"]["map_name"] == "de_mirage"
-    again = client.post("/matches/upload", content=bz2.compress(demo), headers=headers).json()
-    assert again["created"] is False and again["match"]["id"] == body["match"]["id"]
-    report = client.get(f"/matches/{body['match']['id']}").json()
+    first, job = upload_and_wait(client, ctx, demo)
+    assert first.status_code == 202, first.text
+    assert job["status"] == "done" and job["created"] is True and job["match"]["status"] == "imported"
+    assert job["match"]["map_name"] == "de_mirage"
+    again_response, again = upload_and_wait(client, ctx, bz2.compress(demo))
+    assert again_response.status_code == 202  # an archive must be decompressed before dedupe
+    assert again["created"] is False and again["match"]["id"] == job["match"]["id"]
+    report = client.get(f"/matches/{job['match']['id']}").json()
     assert len(report["rounds"]) == 2
 
 

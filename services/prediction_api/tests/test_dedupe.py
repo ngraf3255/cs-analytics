@@ -50,7 +50,7 @@ def env(tmp_path):
         shutil.rmtree(work, ignore_errors=True)
         work.mkdir()
         clock.advance(1)
-        return import_uploaded_demo(storage=storage, parser=parser, user=user, raw_path=str(raw),
+        return import_uploaded_demo(storage=storage, parser=parser, user_id=user.id, raw_path=str(raw),
                                     workdir=str(work), max_compressed_bytes=1 << 20, max_demo_bytes=1 << 20,
                                     now=clock(), share_code=share_code)
 
@@ -186,7 +186,7 @@ def test_migration_backfills_uploads_stored_before_dedupe(tmp_path):
                 "INSERT INTO matches (id, user_id, share_code, valve_match_id, status, rounds_count, imported_at) "
                 "VALUES (:id, 'u', :share, :vid, 'imported', 0, '2026-10-04 12:00:00+00')"),
                 {"id": mid, "share": share, "vid": "upload" if share.startswith("upload:") else "1001"})
-    assert apply_migrations(engine) == ["0002_cross_source_dedupe"]
+    assert apply_migrations(engine) == ["0002_cross_source_dedupe", "0003_upload_jobs"]
     storage = SqlStorage(engine)
     up = storage.find_match("u", demo_sha256="abc123")
     assert up is not None and up.id == "m1" and up.source == "upload" and not up.has_share_code
