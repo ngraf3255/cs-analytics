@@ -1,5 +1,5 @@
 import { ApiError } from "./errors";
-import type { MatchAccess, MatchReport, MatchSummary, Me, SyncResult, SyncStatus } from "./types";
+import type { MatchAccess, MatchReport, MatchSummary, Me, SyncResult, SyncStatus, UploadJob } from "./types";
 
 const apiBase = (
   import.meta.env.VITE_API_BASE_URL ||
@@ -25,10 +25,17 @@ async function request<T>(path: string, init: RequestInit = {}, mutating = false
   return body as T;
 }
 
-export type UploadResult = { match: MatchSummary; created: boolean };
-export type UploadProgress = { phase: "uploading"; fraction: number } | { phase: "processing" };
+export type UploadResult = { job: UploadJob };
+export type UploadProgress =
+  | { phase: "uploading"; fraction: number }
+  | { phase: "processing"; job: UploadJob | null };
 
-/** POST the raw .dem/.dem.bz2 bytes. Uses XHR because fetch() can't report upload progress. */
+const JOB_POLL_MS = 2000;
+const JOB_ACTIVE = new Set(["queued", "processing"]);
+export const isJobActive = (job: UploadJob) => JOB_ACTIVE.has(job.status);
+
+/** POST the raw .dem/.dem.bz2 bytes; the server answers with a background parse job
+ * (202, or 200 if the demo is already stored). Uses XHR because fetch() can't report upload progress. */
 export function uploadDemo(file: File, onProgress?: (progress: UploadProgress) => void): Promise<UploadResult> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -40,7 +47,7 @@ export function uploadDemo(file: File, onProgress?: (progress: UploadProgress) =
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.({ phase: "uploading", fraction: event.loaded / event.total });
     };
-    xhr.upload.onload = () => onProgress?.({ phase: "processing" });
+    xhr.upload.onload = () => onProgress?.({ phase: "processing", job: null });
     xhr.onerror = () => reject(new ApiError(0, "upload_network_error"));
     xhr.onabort = () => reject(new ApiError(0, "upload_network_error"));
     xhr.onload = () => {
@@ -54,6 +61,27 @@ export function uploadDemo(file: File, onProgress?: (progress: UploadProgress) =
     };
     xhr.send(file);
   });
+}
+
+/** Poll a parse job every 2 s until it is done or failed (network blips are retried). */
+export async function waitForUploadJob(
+  job: UploadJob, onUpdate?: (job: UploadJob) => void, signal?: { cancelled: boolean },
+): Promise<UploadJob> {
+  let current = job;
+  let failures = 0;
+  while (isJobActive(current)) {
+    await new Promise((resolve) => setTimeout(resolve, JOB_POLL_MS));
+    if (signal?.cancelled) return current;
+    try {
+      current = (await request<{ job: UploadJob }>(`/matches/upload/${encodeURIComponent(current.id)}`)).job;
+      failures = 0;
+      onUpdate?.(current);
+    } catch (reason) {
+      // e.g. a free-plan instance waking up; give up only after ~1 minute of errors or a real 4xx.
+      if ((reason instanceof ApiError && reason.status >= 400 && reason.status < 500) || ++failures > 30) throw reason;
+    }
+  }
+  return current;
 }
 
 export function steamLoginUrl(next = "/#matches"): string {
@@ -74,6 +102,8 @@ export const steamApi = {
   listMatches: (limit = 20, offset = 0) =>
     request<{ matches: MatchSummary[]; limit: number; offset: number }>(`/matches?limit=${limit}&offset=${offset}`),
   uploadDemo,
+  waitForUploadJob,
+  listUploadJobs: (limit = 5) => request<{ jobs: UploadJob[] }>(`/matches/upload?limit=${limit}`),
   getMatch: (id: string) => request<MatchReport>(`/matches/${encodeURIComponent(id)}`),
 };
 

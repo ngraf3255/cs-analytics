@@ -39,6 +39,22 @@ export type MatchSummary = {
   imported_at: string;
 };
 
+/** A manual upload being parsed in the background (POST /matches/upload, GET /matches/upload/{id}). */
+export type UploadJob = {
+  id: string;
+  status: "queued" | "processing" | "done" | "failed" | string;
+  stage: "decompressing" | "hashing" | "parsing" | "storing" | string | null;
+  progress: number | null;
+  queue_position: number | null;
+  error: string | null;
+  size_bytes: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  match: MatchSummary | null;
+  created: boolean | null;
+};
+
 export type RoundReport = {
   round_number: number;
   actual_winner: "ct" | "t" | null;

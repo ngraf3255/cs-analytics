@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { steamApi, type UploadProgress } from "./api";
+import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
-import type { MatchReport, MatchSummary, Me, SyncResult } from "./types";
+import type { MatchReport, MatchSummary, Me, SyncResult, UploadJob } from "./types";
 
 const MATCH_STATUS: Record<string, string> = {
   demo_unavailable: "Demo is no longer available from Valve.",
@@ -20,6 +20,22 @@ function syncMessage(result: SyncResult): { tone: "ok" | "error"; text: string }
     return { tone: "ok", text: `${counts} The next demo isn’t ready on Valve’s servers yet. Try again later.` };
   const code = result.error === "invalid_auth_code" ? "invalid_auth_code_status" : result.error;
   return { tone: "error", text: `${result.imported ? counts + " " : ""}${messageFor(code, "Sync failed.")}` };
+}
+
+function jobLabel(job: UploadJob | null): string {
+  if (!job || job.status === "queued") return "QUEUED…";
+  if (job.stage === "decompressing") return job.progress != null ? `UNPACKING ${Math.round(job.progress * 100)}%` : "UNPACKING…";
+  if (job.stage === "storing") return "SAVING…";
+  if (job.stage === "hashing") return "CHECKING…";
+  return "PARSING…";
+}
+
+function jobHint(job: UploadJob | null): string {
+  if (job?.status === "queued" && job.queue_position)
+    return `Upload complete. Waiting for ${job.queue_position} other demo${job.queue_position === 1 ? "" : "s"} to finish first.`;
+  if (job?.stage === "decompressing")
+    return "Unpacking the .bz2 archive on the server. This is the slow part: it can take several minutes. Plain .dem files skip it.";
+  return "Upload complete. Parsing the demo and scoring each round in the background. A full match can take a minute or two; you can leave and come back.";
 }
 
 export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<unknown> }) {
@@ -46,6 +62,45 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
   const [upload, setUpload] = useState<UploadProgress | null>(null);
   const uploading = upload !== null;
 
+  const finishJob = useCallback(async (job: UploadJob) => {
+    if (job.status === "done" && job.match) {
+      const rounds = `${job.match.rounds_count} round${job.match.rounds_count === 1 ? "" : "s"}`;
+      setNotice({
+        tone: "ok",
+        text: job.created ? `Demo imported: ${mapLabel(job.match.map_name)}, ${rounds}.` : "That demo was already imported. Opening its report.",
+      });
+      await loadMatches();
+      setSelected(job.match.id);
+    } else if (job.status === "failed") {
+      setNotice({ tone: "error", text: messageFor(job.error, "The demo could not be imported.") });
+    }
+  }, [loadMatches]);
+
+  // Parsing runs in the background on the server: after the upload (or after a page reload
+  // while a parse is still running) poll the job until it finishes.
+  const followJob = useCallback(async (job: UploadJob, signal?: { cancelled: boolean }) => {
+    setUpload({ phase: "processing", job });
+    try {
+      const final = await steamApi.waitForUploadJob(job, (next) => { if (!signal?.cancelled) setUpload({ phase: "processing", job: next }); }, signal);
+      if (!signal?.cancelled) await finishJob(final);
+    } catch (reason) {
+      if (!signal?.cancelled) setNotice({ tone: "error", text: reason instanceof ApiError ? reason.message : "Lost track of the upload. Check your matches below." });
+    } finally {
+      if (!signal?.cancelled) setUpload(null);
+    }
+  }, [finishJob]);
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    steamApi.listUploadJobs(5)
+      .then(({ jobs }) => {
+        const active = jobs.find(isJobActive);
+        if (active && !signal.cancelled) void followJob(active, signal);
+      })
+      .catch(() => undefined);  // older API without upload jobs, or not signed in yet
+    return () => { signal.cancelled = true; };
+  }, [followJob]);
+
   async function uploadFile(file: File | undefined) {
     if (!file) return;
     setNotice(null);
@@ -54,27 +109,22 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
       return;
     }
     setUpload({ phase: "uploading", fraction: 0 });
+    let job: UploadJob;
     try {
-      const result = await steamApi.uploadDemo(file, setUpload);
-      const rounds = `${result.match.rounds_count} round${result.match.rounds_count === 1 ? "" : "s"}`;
-      setNotice({
-        tone: "ok",
-        text: result.created ? `Demo imported: ${mapLabel(result.match.map_name)}, ${rounds}.` : "That demo was already imported. Opening its report.",
-      });
-      await loadMatches();
-      setSelected(result.match.id);
+      job = (await steamApi.uploadDemo(file, setUpload)).job;
     } catch (reason) {
       setNotice({ tone: "error", text: reason instanceof ApiError ? reason.message : "Upload failed." });
-    } finally {
       setUpload(null);
+      return;
     }
+    await followJob(job);
   }
 
   const uploadLabel = !upload
     ? "UPLOAD .DEM"
     : upload.phase === "uploading"
       ? `UPLOADING ${Math.round(upload.fraction * 100)}%`
-      : "PARSING…";
+      : jobLabel(upload.job);
 
   async function sync() {
     setSyncing(true);
@@ -110,7 +160,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
         <span className="steam-muted sync-meta">
           {uploading
             ? upload?.phase === "processing"
-              ? "Upload complete. Parsing the demo and scoring each round. This can take a minute."
+              ? jobHint(upload.job)
               : "Uploading your demo…"
             : !linked ? "Link your match history above to sync, or upload a CS2 .dem / .dem.bz2 you already have." : syncing ? "Fetching the next match from Valve, downloading and parsing the demo. This can take a minute." : lastSync ? `Last sync ${lastSync}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
         </span>
