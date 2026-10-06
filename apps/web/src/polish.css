@@ -115,3 +115,11 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
   html{scroll-behavior:auto}
   *,*:before,*:after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
 }
+/* Share card: one-tap PNG (share sheet on phones, download elsewhere). */
+.report-actions{display:flex;justify-content:flex-end}
+.share-wrap{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.share-button{min-height:40px;padding:0 14px;letter-spacing:.04em;cursor:pointer}
+.share-button:disabled{opacity:.6;cursor:progress}
+.share-status{font:10px 'DM Mono',monospace;color:var(--label-dim)}
+.share-status:empty{display:none}
+@media(max-width:640px){.report-actions,.share-wrap{justify-content:stretch}.share-wrap,.share-button{width:100%}.share-button{justify-content:center}}

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { steamApi } from "./api";
 import { ApiError, messageFor } from "./errors";
 import { kdText, resultText } from "./format";
+import { ShareButton } from "./ShareButton";
+import { profileCard } from "./shareCard";
 import { TableauExport } from "./TableauExport";
 import type { MatchesAnalytics, YouAnalytics } from "./types";
 import { weaponName } from "./weapons";
@@ -69,6 +71,7 @@ function YouSection({ you }: { you: YouAnalytics }) {
           <small>Won {duels.won} of {duels.taken} · round won {pct(duels.round_win_rate_after_opening_kill)} after your opening kill, {pct(duels.round_win_rate_after_opening_death)} after dying first</small>
         </div>
       </dl>
+      <div className="report-actions"><ShareButton card={() => profileCard(you)} label="Share my numbers" /></div>
       {youFormLine(you.recent_form) && <p className="summary-form">{youFormLine(you.recent_form)}</p>}
       <table className="round-table summary-maps" aria-label="Your maps">
         <thead><tr><th>Map</th><th>Matches</th><th>Your rounds</th><th>Won</th><th>As CT</th><th>As T</th><th>K/D</th></tr></thead>
