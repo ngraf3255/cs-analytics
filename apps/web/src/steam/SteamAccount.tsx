@@ -254,9 +254,9 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
       </header>
 
       <nav className="profile-nav" aria-label="Account sections">
-        <a href="#match-history">Match history</a>
+        <a href="#match-history">History</a>
         <a href="#session">Session</a>
-        <a href="#your-data">Your data</a>
+        <a href="#your-data">Delete</a>
       </nav>
 
       <section id="match-history" className="steam-card profile-section" aria-labelledby="match-history-title">

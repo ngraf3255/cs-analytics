@@ -138,7 +138,7 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
   .profile-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
   .profile-avatar{width:44px;height:44px;font-size:18px}
   .profile-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
-  .profile-nav a{justify-content:center;white-space:nowrap;padding:9px 6px}
+  .profile-nav a{justify-content:center;text-align:center;padding:9px 6px;overflow-wrap:anywhere}
 }
 /* Share card: one-tap PNG (share sheet on phones, download elsewhere). */
 .report-actions{display:flex;justify-content:flex-end}
