@@ -6,6 +6,13 @@ name: Build demoparser2 wheel
 # the API test suite and a real CS2 demo parse against it. The wheel committed to
 # vendor/wheels must be this artifact's file; its sha256 and run URL go in the README.
 on:
+  # Also rebuild when the recipe changes, so a broken build shows up on the PR. (A workflow
+  # must exist on the default branch or have run once before workflow_dispatch can target
+  # another branch.) The wheel to vendor comes from a workflow_dispatch run.
+  pull_request:
+    paths:
+      - ".github/workflows/build-demoparser2-wheel.yml"
+      - "services/prediction_api/scripts/build_demoparser2_wheel.sh"
   workflow_dispatch:
     inputs:
       demo_url:
@@ -94,7 +101,7 @@ jobs:
           PY
       - name: Real CS2 demos
         env:
-          DEMO_URL: ${{ inputs.demo_url }}
+          DEMO_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.demo_url || 'https://figshare.com/ndownloader/files/52456259' }}
         run: |
           curl -fsSL -o "$RUNNER_TEMP/fixture.dem" https://raw.githubusercontent.com/LaihoE/demoparser/$DEMOPARSER_COMMIT/src/parser/test_demo.dem
           if [ -n "$DEMO_URL" ]; then
