@@ -228,3 +228,25 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .onboarding-tip a{text-decoration:underline;text-underline-offset:2px;color:var(--acid)}
 .tip-dismiss{background:transparent;border:0;color:#9aa4ab;cursor:pointer;min-width:32px;min-height:32px;font-size:13px}
 .tip-dismiss:focus-visible{outline:1px solid var(--acid)}
+/* Design must-fix: signed-in tables at ~500px. The real match report (Model estimate pill) and
+   the "Across your matches" tables (per-map K/D, match-history Rounds won / K / D) were nowrap
+   inside a horizontal scroll, so the right columns sat clipped behind a bright scrollbar. On
+   phones they now wrap like the guest sample (#38): table layout, wrapping cells, tighter
+   padding. Any horizontal scroll that is still needed gets a thin dark scrollbar. */
+@media(max-width:640px){
+  .summary-panel{padding:12px 10px}
+  .match-report .round-table,
+  .summary-panel .round-table{display:table;width:100%;min-width:0;overflow:visible;table-layout:auto}
+  .match-report .round-table td,.match-report .round-table th,
+  .summary-panel .round-table td,.summary-panel .round-table th{white-space:normal;overflow-wrap:break-word;padding:7px 5px;vertical-align:top}
+  .match-report .round-table th,.summary-panel .round-table th{letter-spacing:.04em}
+  .summary-panel .round-table{font-size:10px}
+  .match-report .you-cell{white-space:normal}
+  .match-report .model-estimate{display:inline-block;max-width:100%;white-space:normal;overflow-wrap:break-word;line-height:1.35}
+  .match-report .you-tag{display:inline-block;margin:3px 0 0}
+  .match-report .estimate-part{white-space:nowrap}
+  .match-report .model-estimate{padding:2px 5px}
+}
+.match-report,.summary-panel,.round-table,.teaser-report{scrollbar-width:thin;scrollbar-color:#2d3740 transparent}
+.match-report::-webkit-scrollbar,.summary-panel::-webkit-scrollbar,.round-table::-webkit-scrollbar,.teaser-report::-webkit-scrollbar{height:6px;background:transparent}
+.match-report::-webkit-scrollbar-thumb,.summary-panel::-webkit-scrollbar-thumb,.round-table::-webkit-scrollbar-thumb,.teaser-report::-webkit-scrollbar-thumb{background:#2d3740;border-radius:3px}

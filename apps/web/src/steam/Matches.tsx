@@ -531,8 +531,13 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
               <td>
                 {round.prediction ? (
                   <span className="model-estimate">
-                    {sideName(round.prediction.predicted_winner)} favoured · CT {(round.prediction.probabilities.ct * 100).toFixed(0)}% / T {(round.prediction.probabilities.t * 100).toFixed(0)}%
-                    {round.you?.win_probability != null && ` · your team ${(round.you.win_probability * 100).toFixed(0)}%`}
+                    {/* Segments never break inside, so on phones the pill stacks clause by clause. */}
+                    <span className="estimate-part">{sideName(round.prediction.predicted_winner)} favoured</span>
+                    {" · "}
+                    <span className="estimate-part">CT {(round.prediction.probabilities.ct * 100).toFixed(0)}%</span>
+                    {" / "}
+                    <span className="estimate-part">T {(round.prediction.probabilities.t * 100).toFixed(0)}%</span>
+                    {round.you?.win_probability != null && <>{" · "}<span className="estimate-you">your team {(round.you.win_probability * 100).toFixed(0)}%</span></>}
                   </span>
                 ) : (
                   <span className="unscored-reason">Unscored: {messageFor(round.unscored_reason, "Not scorable.")}</span>
