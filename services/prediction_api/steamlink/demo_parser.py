@@ -127,6 +127,9 @@ class ParsedDemo:
     match_start_tick: int | None = None
     # Equipment value of each player at each freeze end (empty: not read).
     equipment: list[ParsedEquip] = field(default_factory=list)
+    # PacketEntities soft-skips from the patched demoparser2 (EntityNotFound / MalformedMessage).
+    # Non-zero => parse is degraded (some player props / positions may be missing).
+    packet_ents_skips: int = 0
 
 
 class DemoParseError(Exception):
@@ -625,12 +628,30 @@ def _describe_file(path: str) -> str:
 
 def parse_in_process(demo_path: str) -> ParsedDemo:
     header: dict = {}
+    packet_ents_skips = 0
     try:
         from demoparser2 import DemoParser as _Parser
+
+        # Patched wheel (vendor/patches): reset soft-skip counters before parse.
+        try:
+            from demoparser2 import reset_packet_ents_skips, packet_ents_skips as _packet_ents_skips
+            reset_packet_ents_skips()
+        except ImportError:  # unpatched PyPI wheel
+            _packet_ents_skips = None
 
         parser = _Parser(demo_path)
         header = parser.parse_header() or {}
         frames = dict(parser.parse_events(list(_EVENTS), player=["team_num", "team_rounds_total"]))
+        # Read the skip count now: _equipment() below runs a second parse pass over the
+        # same demo and would otherwise double it.
+        if _packet_ents_skips is not None:
+            counts = _packet_ents_skips() or {}
+            packet_ents_skips = int(counts.get("total") or 0)
+            if packet_ents_skips:
+                logger.warning(
+                    "demo parse degraded: PacketEntities soft-skips=%s (entity_not_found=%s malformed_message=%s) path=%s",
+                    packet_ents_skips, counts.get("entity_not_found"), counts.get("malformed_message"), demo_path,
+                )
         round_end = _rows(frames.pop("round_end", None), ("tick", "winner", "reason"))
         freeze_ticks = sorted(int(t) for t in _column(frames.pop("round_freeze_end", None), "tick"))
         deaths = _rows(frames.pop("player_death", None), _DEATH_COLUMNS)
@@ -682,6 +703,7 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
         ],
         match_start_tick=_last_match_start(match_starts, rounds),
         equipment=equipment,
+        packet_ents_skips=packet_ents_skips,
     )
 
 
@@ -723,6 +745,7 @@ def parsed_demo_to_json(demo: ParsedDemo) -> dict:
         "spawns": [[s.tick, s.steamid, s.side] for s in demo.spawns],
         "match_start_tick": demo.match_start_tick,
         "equipment": [[e.tick, e.steamid, e.value] for e in demo.equipment],
+        "packet_ents_skips": demo.packet_ents_skips,
     }
 
 
@@ -739,6 +762,7 @@ def parsed_demo_from_json(data: dict) -> ParsedDemo:
         spawns=[ParsedSpawn(int(t), str(sid), side) for t, sid, side in data.get("spawns", [])],
         match_start_tick=None if data.get("match_start_tick") is None else int(data["match_start_tick"]),
         equipment=[ParsedEquip(int(t), str(sid), int(v)) for t, sid, v in data.get("equipment", [])],
+        packet_ents_skips=int(data.get("packet_ents_skips") or 0),
     )
 
 

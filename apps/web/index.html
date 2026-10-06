@@ -15,6 +15,11 @@
       .boot-bar img{width:28px;height:28px}
       .boot-bar span{font-weight:500;color:#b9c1c8}
     </style>
+    <!-- Fonts: linked here (not @import in CSS) so the browser fetches them in parallel with the app
+         CSS instead of after it; only the weights the CSS uses. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap" />
     <title>CS Gooner - Round Predictor</title>
   </head>
   <body>

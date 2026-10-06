@@ -7,7 +7,7 @@
 set -euo pipefail
 
 COMMIT=45ca85aeac8fb0de9d385124d2c7fe0e7b8ff0c8  # LaihoE/demoparser master, 2026-10-05 (#361, #363, #364)
-VERSION=0.42.1.dev20261005
+VERSION=0.42.1.dev20261006
 WHEEL=demoparser2-$VERSION-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
 PYTHON311=${PYTHON311:-python3.11}
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -21,6 +21,8 @@ git clone -q https://github.com/LaihoE/demoparser.git "$WORK/demoparser"
 cd "$WORK/demoparser"
 git checkout -q "$COMMIT"
 test "$(git rev-parse HEAD)" = "$COMMIT"
+# Soft-skip EntityNotFound / MalformedMessage on PacketEntities (Rush demos); see vendor/patches.
+patch -p1 < "$HERE/vendor/patches/demoparser-packetents-softskip.patch"
 # csgoproto's build.rs clones the *latest* SteamDatabase/GameTracking-CS2 protos and
 # regenerates src/protobuf.rs on every build, so a build is not reproducible and can
 # break whenever Valve renames messages. Use the checked-in generated code instead.

@@ -13,6 +13,7 @@ on:
     paths:
       - ".github/workflows/build-demoparser2-wheel.yml"
       - "services/prediction_api/scripts/build_demoparser2_wheel.sh"
+      - "services/prediction_api/vendor/patches/**"
   workflow_dispatch:
     inputs:
       demo_url:
@@ -26,7 +27,7 @@ permissions:
 
 env:
   DEMOPARSER_COMMIT: 45ca85aeac8fb0de9d385124d2c7fe0e7b8ff0c8
-  WHEEL: demoparser2-0.42.1.dev20261005-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+  WHEEL: demoparser2-0.42.1.dev20261006-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
 
 jobs:
   build:
@@ -96,7 +97,7 @@ jobs:
           print("installed", item["download_info"]["url"], got)
           assert item["download_info"]["url"].endswith("/vendor/wheels/" + os.environ["WHEEL"]), item["download_info"]["url"]
           assert got == want, (got, want)
-          assert version("demoparser2") == "0.42.1.dev20261005", version("demoparser2")
+          assert version("demoparser2") == "0.42.1.dev20261006", version("demoparser2")
           import demoparser2  # noqa: F401  (native module loads)
           PY
       - name: Real CS2 demos

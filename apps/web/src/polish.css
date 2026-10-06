@@ -103,3 +103,86 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .account-loading{display:grid;gap:10px}
 .account-loading span{display:block;height:12px;background:#151c23;border-radius:2px}
 .account-loading span:nth-child(1){width:40%}.account-loading span:nth-child(2){width:75%}.account-loading span:nth-child(3){width:55%;height:40px}
+/* Mobile perf: rows off screen skip layout/paint until scrolled near (long lists); phones skip the
+   large blurred shadows and the masked hero grid (expensive to paint, barely visible at that size). */
+.match-list>li{content-visibility:auto;contain-intrinsic-size:auto 64px}
+@media(max-width:640px){
+  .workspace,.topbar nav.main-nav{box-shadow:none}
+  .hero-grid{display:none}
+  .live-indicator span,.result-status i{box-shadow:none}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*:before,*:after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
+/* /account as a profile page: identity header + facts, section nav, then one card per section
+   (match history, session, your data) with the destructive action set apart. */
+.profile-header{grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:16px}
+.profile-avatar{width:56px;height:56px;display:grid;place-items:center;border:1px solid #6f8646;background:#151f25;
+  font:800 22px 'Barlow Condensed',sans-serif;color:var(--acid);letter-spacing:.04em}
+.profile-id{display:grid;gap:4px;min-width:0}
+.profile-id h3{overflow-wrap:anywhere}
+.profile-id a{text-decoration:underline;text-underline-offset:3px}
+.profile-facts{grid-column:1/-1;margin:6px 0 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#1b232a;border:1px solid #27313a}
+.profile-facts>div{background:#0c1117;padding:10px 12px;display:grid;gap:3px;min-width:0}
+.profile-facts dt{font:9px 'DM Mono',monospace;letter-spacing:.1em;color:var(--label)}
+.profile-facts dd{margin:0;font:700 16px 'Barlow Condensed',sans-serif;text-transform:uppercase;color:#e8ecee;overflow-wrap:anywhere}
+.profile-facts dd.ok{color:#a9d46a}.profile-facts dd.warn{color:#ffb3a1}
+.profile-nav{display:flex;flex-wrap:wrap;gap:8px}
+.profile-nav a{font:11px 'DM Mono',monospace;letter-spacing:.04em;color:#c8d0d6;border:1px solid #2d3740;padding:9px 12px;min-height:36px;display:inline-flex;align-items:center}
+.profile-nav a:hover,.profile-nav a:focus-visible{border-color:var(--acid);color:#f2f3f0;outline:none}
+.profile-section{scroll-margin-top:16px}
+.profile-section-title{font-size:20px!important;margin:-4px 0 0!important}
+.danger-zone{border-color:#4a2d2a}
+.danger-zone .section-kicker{color:#ffb3a1}
+@media(max-width:640px){
+  .profile-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .profile-avatar{width:44px;height:44px;font-size:18px}
+  .profile-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .profile-nav a{justify-content:center;text-align:center;padding:9px 6px;overflow-wrap:anywhere}
+}
+/* Share card: one-tap PNG (share sheet on phones, download elsewhere). */
+.report-actions{display:flex;justify-content:flex-end}
+.share-wrap{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.share-button{min-height:40px;padding:0 14px;letter-spacing:.04em;cursor:pointer}
+.share-button:disabled{opacity:.6;cursor:progress}
+.share-status{font:10px 'DM Mono',monospace;color:var(--label-dim)}
+.share-status:empty{display:none}
+@media(max-width:640px){.report-actions,.share-wrap{justify-content:stretch}.share-wrap,.share-button{width:100%}.share-button{justify-content:center}}
+/* Form over time: two small line charts (round win %, K/D) per match with a rolling average. */
+.form-trend{margin:4px 0;display:grid;gap:10px;border:1px solid #27313a;background:#0b1015;padding:12px 14px}
+.trend-chart{display:grid;gap:4px}
+.trend-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.trend-head strong{font:700 15px 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.03em}
+.trend-head span{font:10px 'DM Mono',monospace}
+.trend-chart svg{width:100%;height:110px;display:block;overflow:visible}
+.trend-ref{stroke:#3a454f;stroke-dasharray:4 4;stroke-width:1;vector-effect:non-scaling-stroke}
+.trend-line{fill:none;stroke:var(--acid);stroke-width:2;vector-effect:non-scaling-stroke}
+.trend-dot{fill:none;stroke:#6d7880;stroke-width:7;stroke-linecap:round;vector-effect:non-scaling-stroke}.trend-dot.won{stroke:#a9d46a}.trend-dot.lost{stroke:#ff9569}
+.trend-plot{position:relative;padding-left:40px}
+.trend-axis{position:absolute;left:0;width:34px;text-align:right;font:10px 'DM Mono',monospace;color:#8f9aa3}
+.trend-axis.top{top:2px}.trend-axis.bottom{bottom:2px}
+.trend-note,.trend-empty{margin:0;font-size:11px}
+.trend-loading{height:120px;border:1px solid #1b232a;background:#0b1015}
+@media(max-width:640px){.trend-chart svg{height:90px}.form-trend{padding:10px}}
+/* Match detail: round timeline + opening duels (data the demo records; no clutch / economy). */
+.round-timeline-wrap,.opening-duels{display:grid;gap:8px;margin:14px 0}
+.round-timeline{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:3px}
+.tl-round{position:relative;width:28px;height:34px;display:grid;place-items:center;border:1px solid #27313a;background:#0c1117;
+  font:10px 'DM Mono',monospace;color:#c8d0d6}
+.tl-round.ct{background:#173045;border-color:#2b5675}
+.tl-round.t{background:#3b2219;border-color:#6b3a2a}
+.tl-round.you-won{box-shadow:inset 0 -3px 0 var(--acid)}
+.tl-round.you-lost{box-shadow:inset 0 -3px 0 #4a2d2a}
+.tl-round.side-swap{margin-left:10px}
+.tl-round.side-swap:before{content:'';position:absolute;left:-8px;top:-3px;bottom:-3px;width:1px;background:#4a5560}
+.tl-ok{position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%}
+.tl-ok.ct{background:var(--ct)}.tl-ok.t{background:var(--t)}
+.tl-you{position:absolute;top:3px;left:3px;width:5px;height:5px;border:1px solid var(--acid)}
+.tl-you.kill{background:var(--acid)}
+.legend.tl-ct{background:#173045;border:1px solid #2b5675}
+.legend.tl-t{background:#3b2219;border:1px solid #6b3a2a}
+.tl-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ct);margin-right:6px;vertical-align:1px}
+.tl-dot.you{border-radius:0;background:var(--acid)}
+.opening-duels .summary-tiles{margin:0}
+.detail-note{margin:0;font-size:11px}
+@media(max-width:640px){.tl-round{width:24px;height:30px;font-size:9px}.tl-round.side-swap{margin-left:8px}}

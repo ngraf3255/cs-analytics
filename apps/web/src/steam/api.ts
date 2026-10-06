@@ -169,7 +169,7 @@ export const steamApi = {
   waitForSyncJobs,
   listUploadJobs: (limit = 5) => request<{ jobs: UploadJob[] }>(`/matches/upload?limit=${limit}`),
   /** Analytics across all the user's matches; registered before /matches/{id} on the server. */
-  getMatchesSummary: () => request<MatchesAnalytics>("/matches/summary"),
+  getMatchesSummary: (recent?: number) => request<MatchesAnalytics>(recent ? `/matches/summary?recent=${recent}` : "/matches/summary"),
   downloadExport,
   getMatch: (id: string) => request<MatchReport>(`/matches/${encodeURIComponent(id)}`),
 };
