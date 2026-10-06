@@ -15,8 +15,14 @@ function routes() {
 }
 
 describe("round predictor form", () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "/predict");
+  });
+  afterEach(() => {
+    window.localStorage.clear();
+    window.history.replaceState(null, "", "/");
+  });
 
   it("a preset predicts in one tap with the preset's side / time / weapon and keeps the map", async () => {
     const api = installFakeApi(routes());

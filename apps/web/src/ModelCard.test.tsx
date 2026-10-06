@@ -25,15 +25,18 @@ describe("model card, confidence and why this call", () => {
   });
 
   it("lists the maps the model covers", async () => {
+    window.history.replaceState(null, "", "/about");
     installFakeApi({ "GET /options": { status: 200, body: OPTIONS }, "GET /steam/status": { status: 200, body: { enabled: false } }, "POST /predict": predict });
     render(<App />);
     await advance();
     const card = screen.getByLabelText("Model card");
     expect(card).toHaveTextContent("MAPS COVERED · 2");
     expect(card).toHaveTextContent("mirage, nuke");
+    window.history.replaceState(null, "", "/");
   });
 
   it("why this call: asks the model about one change at a time, only when opened", async () => {
+    window.history.replaceState(null, "", "/predict");
     const api = installFakeApi({ "GET /options": { status: 200, body: OPTIONS }, "GET /steam/status": { status: 200, body: { enabled: false } }, "POST /predict": predict });
     render(<App />);
     await advance();
@@ -50,5 +53,6 @@ describe("model card, confidence and why this call", () => {
     expect(list).toHaveTextContent("If T had got it instead: CT 30% (−40 pts for CT).");
     expect(list).toHaveTextContent("If it had come at 45s: CT 65% (−5 pts for CT).");
     expect(list).toHaveTextContent("With AK-47 instead of M4A1-S: CT 68% (−2 pts for CT).");
+    window.history.replaceState(null, "", "/");
   });
 });

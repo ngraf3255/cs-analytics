@@ -11,6 +11,7 @@ import summaryPersonal from "../test/fixtures/summary_personal.json";
 import uploadQueued from "../test/fixtures/upload_queued.json";
 import uploadUpdated from "../test/fixtures/upload_updated.json";
 import { Matches } from "./Matches";
+import { MatchesSummaryPanel } from "./MatchesSummary";
 import type { Me, UploadJob } from "./types";
 
 // Fixtures: real responses of the local API (SQLite, 2026-10-05) for SteamID 76561198157151718.
@@ -69,8 +70,8 @@ describe("matches parsed by an older version: re-upload to update", () => {
   });
 
   it("the summary counts outdated matches in one line", async () => {
-    installFakeApi(routes());
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    installFakeApi({ "GET /matches/summary": { status: 200, body: summaryOutdated } });
+    render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     const panel = screen.getByRole("region", { name: "Across your matches" });
     expect(within(panel).getByLabelText("Previous matches summary")).toHaveTextContent("MATCHES3");

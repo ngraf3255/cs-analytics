@@ -368,7 +368,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
         </div>
       )}
       {notice && <div className={notice.tone === "ok" ? "steam-notice" : "steam-error"} role="status">{notice.text}</div>}
-      <MatchesSummaryPanel refreshKey={listVersion} onPersonalMatches={onPersonalMatches} />
+      <MatchesSummaryPanel variant="home" refreshKey={listVersion} onPersonalMatches={onPersonalMatches} />
 
       {!listReady ? (
         <MatchListLoading />

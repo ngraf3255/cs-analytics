@@ -10,11 +10,9 @@ import summaryFixture from "../test/fixtures/summary.json";
 import summaryRecent2 from "../test/fixtures/summary_recent2.json";
 import uploadDone from "../test/fixtures/upload_done.json";
 import { Matches } from "./Matches";
+import { MatchesSummaryPanel } from "./MatchesSummary";
 import type { Me } from "./types";
 
-// Fixtures: real GET /matches/summary responses of the local API (SQLite, 2026-10-05): 4 imported
-// matches (Valve MM de_ancient 8r via fake-Valve sync, HLTV de_nuke 18r, demoparser2 de_mirage 10r,
-// FACEIT de_mirage 25r uploads), the same with ?recent=2, one match (de_mirage 10r), and a new user.
 const me = meFixture as Me;
 const EMPTY_LIST = { matches: [], limit: 50, offset: 0 };
 
@@ -34,11 +32,20 @@ const cells = (row: HTMLElement) => within(row).getAllByRole("cell").map((c) => 
 describe("summary across previous matches (GET /matches/summary)", () => {
   beforeEach(() => { vi.useFakeTimers(); });
 
-  it("shows totals, model accuracy, sides, opening kills and per-map rows above the match list", async () => {
+  it("home: no Across panel (stats live on /stats); still loads summary for list chips", async () => {
     const api = installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    expect(api.count("GET /matches/summary?recent=50")).toBe(1);  // once per list load, not before it
+    expect(api.count("GET /matches/summary?recent=50")).toBe(1);
+    expect(screen.queryByRole("region", { name: "Across your matches" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Previous matches summary")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(4);
+  });
+
+  it("/stats: shows totals, model accuracy, sides, opening kills and per-map rows", async () => {
+    installFakeApi({ "GET /matches/summary": { status: 200, body: summaryFixture } });
+    render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
+    await advance();
 
     const tiles = within(panel()).getByLabelText("Previous matches summary");
     expect(tiles).toHaveTextContent("MATCHES4");
@@ -55,23 +62,17 @@ describe("summary across previous matches (GET /matches/summary)", () => {
       ["ancient", "1", "8", "75%", "100% (7/7)", "0.088"],
     ]);
     const calibration = within(within(panel()).getByRole("table", { name: "Model calibration" })).getAllByRole("row").slice(1);
-    expect(calibration.map(cells)).toEqual([  // empty confidence bins are left out
+    expect(calibration.map(cells)).toEqual([
       ["50–60%", "1", "51%", "100%"], ["60–70%", "7", "65%", "100%"], ["70–80%", "47", "73%", "85%"], ["80–90%", "4", "84%", "100%"],
     ]);
     const weapons = within(within(panel()).getByRole("table", { name: "Opening weapons" })).getAllByRole("row").slice(1);
     expect(weapons.map((row) => cells(row)[0])).toEqual(["AK-47", "M4A1-S", "AWP", "MAC-10", "USP-S"]);
     expect(panel()).not.toHaveTextContent("Unscored rounds:");
-    expect(panel()).not.toHaveTextContent("your own team isn’t tracked yet");
-
-    // Above the list of matches.
-    const firstMatch = screen.getAllByRole("button", { name: /mirage/i })[0];
-    expect(panel().compareDocumentPosition(firstMatch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getAllByRole("listitem")).toHaveLength(4);
   });
 
   it("recent form essay is gone (numbers live in tiles / FormTrend)", async () => {
-    installFakeApi(routes({ "GET /matches/summary": { status: 200, body: summaryRecent2 } }));
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    installFakeApi({ "GET /matches/summary": { status: 200, body: summaryRecent2 } });
+    render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     expect(panel()).not.toHaveTextContent("favourite won");
     expect(panel()).toHaveTextContent("MODEL HIT RATE");
@@ -88,13 +89,19 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     expect(screen.queryByRole("region", { name: "Across your matches" })).not.toBeInTheDocument();
   });
 
-  it("only stub matches (demo unavailable): says nothing could be analysed yet", async () => {
+  it("only stub matches (demo unavailable): home stays quiet; /stats explains", async () => {
     const stubs = { ...summaryEmpty, totals: { ...summaryEmpty.totals, matches: 2, not_imported_matches: 2 } };
     installFakeApi(routes({ "GET /matches/summary": { status: 200, body: stubs } }));
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    const { unmount } = render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+    expect(screen.queryByText(/None of your matches could be analysed yet/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Across your matches" })).not.toBeInTheDocument();
+    unmount();
+
+    installFakeApi({ "GET /matches/summary": { status: 200, body: stubs } });
+    render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     expect(screen.getByText(/None of your matches could be analysed yet/)).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Across your matches" })).not.toBeInTheDocument();
   });
 
   it("no scored rounds: dashes instead of rates", async () => {
@@ -103,8 +110,8 @@ describe("summary across previous matches (GET /matches/summary)", () => {
       prediction: { ...summaryEmpty.prediction },
       maps: summaryOne.maps.map((m) => ({ ...m, scored_rounds: 0, correct: 0, hit_rate: null, brier_score: null })),
     };
-    installFakeApi(routes({ "GET /matches/summary": { status: 200, body: unscored } }));
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    installFakeApi({ "GET /matches/summary": { status: 200, body: unscored } });
+    render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     const tiles = within(panel()).getByLabelText("Previous matches summary");
     expect(tiles).toHaveTextContent("MODEL HIT RATE—");
@@ -123,8 +130,8 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(4);
     unmount();
 
-    installFakeApi(routes({ "GET /matches/summary": { status: 0 } }));
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    installFakeApi({ "GET /matches/summary": { status: 0 } });
+    render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     expect(screen.getByText(/Analytics across your matches couldn’t be loaded. Can’t reach the cs-analytics server/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -143,12 +150,10 @@ describe("summary across previous matches (GET /matches/summary)", () => {
 
     const input = document.querySelector("label.upload-button input[type=file]") as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["demo"], "match.dem")] } });
-    await rtlAct(async () => FakeXHR.last().respond(200, uploadDone));  // already stored: finished at once
+    await rtlAct(async () => FakeXHR.last().respond(200, uploadDone));
     await advance();
     expect(api.count("GET /matches/summary?recent=50")).toBe(2);
-    const tiles = within(panel()).getByLabelText("Previous matches summary");
-    expect(tiles).toHaveTextContent("MATCHES1");
-    expect(tiles).toHaveTextContent("MODEL HIT RATE89%");
-    expect(tiles).toHaveTextContent("CT / T ROUNDS20% / 80%");
+    // home only shows personal tiles when `you` is present; summaryOne may lack you — Across stays off home
+    expect(screen.queryByRole("region", { name: "Across your matches" })).not.toBeInTheDocument();
   });
 });

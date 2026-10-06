@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useHashScroll, useMe, useSteamStatus } from "./hooks";
 import { Matches } from "./Matches";
 import { MatchesTeaser } from "./MatchesTeaser";
+import { PREDICT_PATH } from "./routes";
 import { SteamAccount } from "./SteamAccount";
 
 function loginFailureReason(): string | null {
@@ -9,7 +10,12 @@ function loginFailureReason(): string | null {
   return params.get("steam_login") === "failed" ? params.get("reason") || "unknown" : null;
 }
 
-export function SteamSection() {
+type Props = {
+  /** Guest landing: short hero above sign-in (signed-in home skips it). */
+  showGuestHero?: boolean;
+};
+
+export function SteamSection({ showGuestHero = false }: Props) {
   const { steam, upload, guest, reachable, enabled, loading } = useSteamStatus();
   const { me, setMe, error, refresh } = useMe(enabled);
   const failure = loginFailureReason();
@@ -30,35 +36,44 @@ export function SteamSection() {
   if (loading) return null;
 
   const isGuest = me?.account === "guest";
+  const signedInSteam = Boolean(me && !isGuest);
   return (
-    <section id="matches" className="steam-section" aria-label="Your CS2 matches">
-      <div className="info-intro">
-        <h2>Your rounds</h2>
-      </div>
-      {!enabled ? (
-        <ComingSoon reachable={reachable} />
-      ) : (
-        <>
-          {failure && <div className="steam-error" role="alert">Steam sign-in could not be verified. Please try again.</div>}
-          {error && <div className="steam-error" role="alert">{error}</div>}
-          <SteamAccount me={me} steam={steam} guest={guest && upload} onChange={refresh}
-            onSignedOut={() => { setPendingFile(null); setMe(null); }} onGuest={onGuest} />
-          {/* keyed by account: a different user signed in (e.g. in another tab) gets a fresh list */}
-          {me && (
-            <Matches key={me.steam_id ?? `guest-${me.created_at}`} me={me} onMeChange={refresh}
-              canSync={steam && !isGuest} steamAvailable={steam}
-              initialFile={pendingFile} onInitialFile={() => setPendingFile(null)} />
-          )}
-          {/* signed out: show what a report looks like, not just a sign-in card */}
-          {!me && <MatchesTeaser />}
-        </>
+    <>
+      {showGuestHero && !me && (
+        <section className="hero">
+          <div className="hero-copy">
+            <h1>Every round<br />has a <em>turning point.</em></h1>
+          </div>
+          <div className="hero-grid" aria-hidden="true" />
+        </section>
       )}
-    </section>
+      <section id="matches" className="steam-section" aria-label="Your CS2 matches">
+        <div className="info-intro">
+          <h2>{signedInSteam ? "Matches" : "Your rounds"}</h2>
+        </div>
+        {!enabled ? (
+          <ComingSoon reachable={reachable} />
+        ) : (
+          <>
+            {failure && <div className="steam-error" role="alert">Steam sign-in could not be verified. Please try again.</div>}
+            {error && <div className="steam-error" role="alert">{error}</div>}
+            {/* Signed-in Steam users: account lives in the header avatar → /account (no SteamID card here). */}
+            <SteamAccount me={me} steam={steam} guest={guest && upload} onChange={refresh}
+              onSignedOut={() => { setPendingFile(null); setMe(null); }} onGuest={onGuest}
+              homeChrome />
+            {me && (
+              <Matches key={me.steam_id ?? `guest-${me.created_at}`} me={me} onMeChange={refresh}
+                canSync={steam && !isGuest} steamAvailable={steam}
+                initialFile={pendingFile} onInitialFile={() => setPendingFile(null)} />
+            )}
+            {!me && <MatchesTeaser />}
+          </>
+        )}
+      </section>
+    </>
   );
 }
 
-/** Match features aren't switched on for this deployment (or the API can't be reached):
- * say so instead of hiding the section, and point back at what works now. */
 function ComingSoon({ reachable }: { reachable: boolean }) {
   return (
     <div className="steam-card empty-state" role="status">
@@ -66,10 +81,10 @@ function ComingSoon({ reachable }: { reachable: boolean }) {
       <h3>{reachable ? "Match reports are on the way" : "Can’t reach the match service"}</h3>
       <p>
         {reachable
-          ? "Soon you’ll be able to connect Steam or upload a CS2 demo and see how the model rated every round of your matches. Until then, the round predictor above works right now."
+          ? "Soon you’ll be able to connect Steam or upload a CS2 demo and see how the model rated every round of your matches."
           : "The match-report server didn’t answer. It may be waking up or restarting; refresh in a minute."}
       </p>
-      <a className="ghost-button empty-state-cta" href="#predictor">TRY THE ROUND PREDICTOR ↑</a>
+      <a className="ghost-button empty-state-cta" href={PREDICT_PATH}>TRY THE ROUND PREDICTOR →</a>
     </div>
   );
 }

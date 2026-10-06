@@ -52,7 +52,8 @@ describe("session changes and #matches", () => {
     await advance();
     await advance();
     expect(api.count("GET /me")).toBe(2);
-    expect(screen.getByText(OTHER.steam_id, { exact: false })).toBeInTheDocument();
+    // SteamID card is off home (header avatar → /account); the match list shows the new user.
+    expect(screen.queryByText(OTHER.steam_id, { exact: false })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /nuke/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /mirage/i })).not.toBeInTheDocument();
     expect(scrolled).toContain("matches");
