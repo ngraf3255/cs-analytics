@@ -3,6 +3,7 @@ import { COMMON_WEAPONS, PRESETS, TIME_CHIPS, type Preset, type RoundInputs, ini
 import "./roundForm.css";
 import { AccountPage } from "./steam/AccountPage";
 import { ACCOUNT_PATH, isAccountPath } from "./steam/routes";
+import { ModelCard, WhyThisRound, confidenceLabel } from "./ModelCard";
 import { SteamSection } from "./steam/SteamSection";
 import { weaponName } from "./steam/weapons";
 
@@ -49,6 +50,8 @@ function Home() {
   const [activePreset, setActivePreset] = useState<string | null>(null);
   // Set once the user has predicted: from then on every edit updates the readout by itself.
   const [live, setLive] = useState(false);
+  // Inputs behind the prediction on screen ("Why this call?" varies them one at a time).
+  const [lastInputs, setLastInputs] = useState<RoundInputs>({ mapName: "", side: "ct", seconds: "15.0", weapon: "" });
 
   useEffect(() => {
     fetch(`${apiBase}/options`)
@@ -103,7 +106,7 @@ function Home() {
       if (!response.ok) {
         throw new Error(typeof body.detail === "string" ? body.detail : "Prediction failed. Check the inputs and try again.");
       }
-      if (id === requestId.current) setPrediction(body as Prediction);
+      if (id === requestId.current) { setPrediction(body as Prediction); setLastInputs(inputs); }
     } catch (reason) {
       if (id === requestId.current) {
         setPrediction(null);
@@ -241,7 +244,10 @@ function Home() {
                 <div className="result-main">
                   <span className="result-label">Winner</span>
                   <div className={`winner-name ${prediction.predicted_winner}`}>{winnerLabel}<span className="winner-arrow">↗</span></div>
-                  <div className="probability-summary"><strong>{`${Math.round(Math.max(ctPercent, tPercent))}%`}</strong></div>
+                  <div className="probability-summary">
+                    <strong>{`${Math.round(Math.max(ctPercent, tPercent))}%`}</strong>
+                    <span className={`confidence-chip ${confidenceLabel(prediction.probabilities).tone}`}>{confidenceLabel(prediction.probabilities).label}</span>
+                  </div>
                 </div>
                 <div className="probability-card">
                   <div className="probability-heading"><span>By side</span></div>
@@ -261,6 +267,7 @@ function Home() {
                 <strong>{loading ? "Predicting…" : "Predict to see the odds"}</strong>
               </div>
             )}
+            {prediction && <WhyThisRound inputs={lastInputs} ct={prediction.probabilities.ct} weapons={options?.weapons ?? []} />}
             <div className="result-foot"><span>Logistic regression</span></div>
             {error && <div className="error-message" role="alert">{error}</div>}
           </div>
@@ -272,6 +279,7 @@ function Home() {
           <div className="info-intro"><span className="section-kicker">THE MODEL</span><h2>One opening duel.<br /><em>A lot of signal.</em></h2></div>
           <p>Trained on pro CS2 rounds. Historical estimate — not a guarantee.</p>
           <div className="accuracy"><span>HELD-OUT ACCURACY</span><strong>71.8<small>%</small></strong></div>
+          <ModelCard maps={options?.maps ?? []} />
         </section>
       </main>
 
