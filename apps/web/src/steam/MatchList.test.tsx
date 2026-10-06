@@ -5,6 +5,7 @@ import meFixture from "../test/fixtures/me.json";
 import matchesFixture from "../test/fixtures/matches.json";
 import matchesPersonal from "../test/fixtures/matches_personal.json";
 import reportFixture from "../test/fixtures/report.json";
+import summaryPersonal from "../test/fixtures/summary_personal.json";
 import { Matches } from "./Matches";
 import { scoreLine } from "./format";
 import type { Me } from "./types";
@@ -18,6 +19,7 @@ function routes(extra: Parameters<typeof installFakeApi>[0] = {}) {
     "GET /steam/sync": { status: 200, body: { ...me.sync, jobs: [] } },
     [`GET /matches/${matchesFixture.matches[0].id}`]: { status: 200, body: reportFixture },
     "GET /matches/summary": { status: 404, body: { detail: { error: "match_not_found" } } },
+    "GET /matches/summary?recent=50": { status: 404, body: { detail: { error: "match_not_found" } } },
     ...extra,
   };
 }
@@ -71,36 +73,50 @@ describe("match list UX", () => {
     expect(screen.getByText("1 MATCH")).toBeInTheDocument();
   });
 
-  it("renders score-first rows and opens the report on click", async () => {
+  it("renders [W/L] MAP score · metric rows and opens timeline+Share on click (no restating tiles)", async () => {
     const faceitId = matchesPersonal.matches[0].id;
     installFakeApi(routes({
       "GET /matches?limit=50&offset=0": { status: 200, body: matchesPersonal },
+      "GET /matches/summary?recent=50": { status: 200, body: summaryPersonal },
       [`GET /matches/${faceitId}`]: {
         status: 200,
-        body: { ...reportFixture, match: { ...reportFixture.match, ...matchesPersonal.matches[0] } },
+        body: { ...reportFixture, match: { ...reportFixture.match, ...matchesPersonal.matches[0] }, you: {
+          status: "in_match", steam_id: "1", first_side: "t", last_side: "ct", rounds: 24, won: 13,
+          win_rate: 0.54, kills: 29, deaths: 17, kd: 1.71, opening_kills: 4, opening_deaths: 0, survived: 7,
+          score: { you: 13, them: 11 }, result: "won",
+        } },
       },
     }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
 
     expect(screen.getByText("3 MATCHES")).toBeInTheDocument();
-    const first = screen.getAllByRole("button", { name: /mirage/i })[0];
-    expect(within(first).getByText("13–11")).toBeInTheDocument();
-    expect(within(first).getByText("CT–T")).toBeInTheDocument();
-    expect(screen.queryByText(/Tap a match/i)).not.toBeInTheDocument();
-    const ancient = screen.getByRole("button", { name: /ancient/i });
-    expect(within(ancient).getByText("6–2")).toBeInTheDocument();
-    const second = screen.getAllByRole("button", { name: /mirage/i })[1];
-    expect(within(second).getByText("2–8")).toBeInTheDocument();
-    expect(within(first).getByText("24 rounds")).toBeInTheDocument();
+    // Personal match: W chip + your-side score + K-D metric
+    const won = screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i });
+    expect(within(won).getByText("W")).toBeInTheDocument();
+    expect(within(won).getByText("13–11")).toBeInTheDocument();
+    expect(within(won).getByText("· 29–17")).toBeInTheDocument();
+    expect(within(won).queryByText("CT–T")).not.toBeInTheDocument();
+    expect(within(won).getByLabelText("Uploaded")).toHaveTextContent("↑");
 
-    fireEvent.click(first);
+    // Matches without personal bits: CT–T score fallback + rounds metric, no W/L chip
+    const ancient = screen.getByRole("button", { name: /ancient · 6–2 · 8r/i });
+    expect(within(ancient).queryByText("W")).not.toBeInTheDocument();
+    expect(within(ancient).getByText("6–2")).toBeInTheDocument();
+    expect(within(ancient).getByText("· 8r")).toBeInTheDocument();
+
+    const synced = screen.getByRole("button", { name: /mirage · 2–8 · 10r/i });
+    expect(within(synced).getByText("2–8")).toBeInTheDocument();
+
+    fireEvent.click(won);
     await advance();
-    expect(first).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByLabelText("Match summary")).toBeInTheDocument();
+    expect(won).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Match summary")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^MAP$/)).not.toBeInTheDocument();
   });
 
-  it("shows a stub note for matches that did not import", async () => {
+  it("shows a stub glyph for matches that did not import", async () => {
     const stub = {
       matches: [{
         id: "stub1",
@@ -125,7 +141,8 @@ describe("match list UX", () => {
     await advance();
 
     const row = screen.getByRole("button", { name: /dust2/i });
-    expect(within(row).getByText("NOT IMPORTED")).toBeInTheDocument();
+    expect(within(row).getByLabelText("Not imported")).toHaveTextContent("⊘");
+    expect(within(row).queryByText("NOT IMPORTED")).not.toBeInTheDocument();
     expect(within(row).getByText("—")).toBeInTheDocument();
     expect(row).not.toHaveTextContent(/Valve/i);
     fireEvent.click(row);
@@ -134,7 +151,7 @@ describe("match list UX", () => {
     expect(note.querySelectorAll("p")).toHaveLength(1);
   });
 
-  it("renders a DEGRADED tag with thin-stats tooltip when the API marks the parse degraded", async () => {
+  it("renders a degraded glyph with thin-stats tooltip when the API marks the parse degraded", async () => {
     const body = {
       matches: [{
         ...matchesFixture.matches[0],
@@ -157,13 +174,14 @@ describe("match list UX", () => {
     await advance();
 
     const row = screen.getByRole("button", { name: /rush/i });
-    const tag = within(row).getByText("DEGRADED");
-    expect(tag).toBeInTheDocument();
+    const tag = within(row).getByLabelText("Degraded");
+    expect(tag).toHaveTextContent("⚠");
     expect(tag).toHaveAttribute(
       "title",
       "PacketEntities skips — positions thin; Rush may omit round_end (recovered from officially-ended).",
     );
-    expect(within(row).queryByText("NOT IMPORTED")).not.toBeInTheDocument();
+    expect(within(row).queryByText("DEGRADED")).not.toBeInTheDocument();
+    expect(within(row).queryByLabelText("Not imported")).not.toBeInTheDocument();
   });
 
   it("re-opening a report uses the copy loaded this list load (no refetch)", async () => {
@@ -174,10 +192,10 @@ describe("match list UX", () => {
     const row = screen.getAllByRole("button", { expanded: false })[0];
     fireEvent.click(row);
     await advance();
-    expect(screen.getByLabelText("Match summary")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
     fireEvent.click(row);
     fireEvent.click(row);
-    expect(screen.getByLabelText("Match summary")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
     expect(api.count(`GET /matches/${id}`)).toBe(1);
   });
 });

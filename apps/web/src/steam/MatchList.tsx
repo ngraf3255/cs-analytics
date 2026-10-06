@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import type { MatchSummary } from "./types";
+import type { MatchResult, MatchSummary } from "./types";
 import { matchDate, outdatedText, scoreLine } from "./format";
 
-/** One-line stub note per status_reason (the row itself only says NOT IMPORTED). */
+/** One-line stub note per status_reason (the row itself only says a glyph). */
 const STUB_NOTE: Record<string, string> = {
   demo_unavailable: "Demo gone from Valve — upload the .dem above if you have it.",
   demo_too_large: "Demo too large for the server — try uploading the .dem above.",
@@ -12,60 +12,126 @@ const STUB_NOTE: Record<string, string> = {
 const STUB_DEFAULT = "Not imported — upload the .dem above if you have it.";
 
 const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : word.endsWith("ch") ? "es" : "s"}`;
+
+/** Personal bits for a collapsed row (from summary you.recent_form). */
+export type YouMatchBits = MatchResult & { kills: number; deaths: number };
+
+const DAY_MS = 86_400_000;
+
+function calendarDay(iso: string): { key: string; label: string; start: number } {
+  const d = new Date(iso);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const diff = todayStart - start;
+  const label =
+    diff === 0 ? "Today"
+    : diff === DAY_MS ? "Yesterday"
+    : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined });
+  return { key, label, start };
+}
+
+function groupMatches(matches: MatchSummary[]): { key: string; label: string; matches: MatchSummary[] }[] {
+  // Date groups only when the list is long enough to benefit (or spans multiple days).
+  if (matches.length < 3) return [{ key: "all", label: "", matches }];
+  const groups: { key: string; label: string; matches: MatchSummary[]; start: number }[] = [];
+  for (const match of matches) {
+    const date = matchDate(match);
+    const iso = (date.played ? match.date : undefined) ?? match.imported_at;
+    const { key, label, start } = calendarDay(iso);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.matches.push(match);
+    else groups.push({ key, label, matches: [match], start });
+  }
+  if (groups.length < 2) return [{ key: "all", label: "", matches }];
+  return groups.map(({ key, label, matches: ms }) => ({ key, label, matches: ms }));
+}
 
 function MatchRow({
   match,
+  you,
   selected,
   onToggle,
 }: {
   match: MatchSummary;
+  you?: YouMatchBits | null;
   selected: boolean;
   onToggle: () => void;
 }) {
-  const date = matchDate(match);
   const score = scoreLine(match.score);
   const imported = match.status === "imported";
+  const result = you?.result ?? null;
+  const yourScore = you?.score;
+  const primary = yourScore
+    ? `${yourScore.you}–${yourScore.them}`
+    : imported && score
+      ? score.primary
+      : null;
+  // One primary metric: K-D when personal bits exist, else rounds count.
+  const metric = you
+    ? `${you.kills}–${you.deaths}`
+    : imported
+      ? `${match.rounds_count}r`
+      : null;
+  const chip =
+    result === "won" ? "W"
+    : result === "lost" ? "L"
+    : result === "tied" ? "T"
+    : null;
+  const map = mapLabel(match.map_name);
+  const aria = [
+    chip ? (result === "won" ? "Won" : result === "lost" ? "Lost" : "Tied") : null,
+    map,
+    primary,
+    metric,
+  ].filter(Boolean).join(" · ");
 
   return (
     <button
       type="button"
-      className={`match-item ${selected ? "selected" : ""} ${imported ? "" : "match-item-stub"}`.trim()}
+      className={`match-item ${selected ? "selected" : ""} ${imported ? "" : "match-item-stub"} ${chip ? `result-${result}` : ""}`.trim()}
       aria-expanded={selected}
+      aria-label={aria}
       onClick={onToggle}
     >
+      {chip ? (
+        <span className={`wl-chip ${result}`} aria-hidden="true">{chip}</span>
+      ) : (
+        <span className="wl-chip empty" aria-hidden="true" />
+      )}
       <span className="match-map">
-        <strong>{mapLabel(match.map_name)}</strong>
-        {match.source === "upload" && <span className="source-tag">UPLOADED</span>}
+        <strong>{map}</strong>
+        {match.source === "upload" && (
+          <span className="match-glyph" title="Uploaded" aria-label="Uploaded">↑</span>
+        )}
         {match.outdated && (
-          <span className="source-tag outdated-tag" title={outdatedText(match) ?? undefined}>
-            OUTDATED
-          </span>
+          <span className="match-glyph warn" title={outdatedText(match) ?? "Outdated"} aria-label="Outdated">↻</span>
         )}
         {match.degraded && (
-          <span className="source-tag outdated-tag" title={match.degraded.detail ?? "PacketEntities skips — positions thin; Rush may omit round_end (recovered from officially-ended)."}>
-            DEGRADED
+          <span
+            className="match-glyph warn"
+            title={match.degraded.detail ?? "PacketEntities skips — positions thin; Rush may omit round_end (recovered from officially-ended)."}
+            aria-label="Degraded"
+          >
+            ⚠
           </span>
         )}
-        {!imported && <span className="source-tag stub-tag">NOT IMPORTED</span>}
+        {!imported && (
+          <span className="match-glyph stub" title={STUB_NOTE[match.status_reason ?? ""] ?? STUB_DEFAULT} aria-label="Not imported">⊘</span>
+        )}
       </span>
-      <span className="match-score" title={imported ? score?.detail : undefined}>
-        {imported && score ? (
+      <span className="match-score" title={imported && !yourScore ? score?.detail : undefined}>
+        {primary ? (
           <>
-            <strong>{score.primary}</strong>
-            <small>CT–T</small>
+            <strong>{primary}</strong>
+            {metric && <small>· {metric}</small>}
           </>
-        ) : imported ? (
-          <span className="steam-muted">No score</span>
         ) : (
           <span className="steam-muted" aria-label="No score">—</span>
         )}
       </span>
-      <span className="match-meta steam-muted" title={date.label}>
-        {imported && <span className="match-rounds">{plural(match.rounds_count, "round")}</span>}
-        <span className="match-date">{date.day}</span>
-        <span className="match-chevron" aria-hidden="true">{selected ? "▾" : "▸"}</span>
-      </span>
+      <span className="match-chevron" aria-hidden="true">{selected ? "▾" : "▸"}</span>
     </button>
   );
 }
@@ -95,33 +161,42 @@ type MatchListProps = {
   matches: MatchSummary[];
   selected: string | null;
   onSelect: (id: string | null) => void;
+  /** Personal W/L · you–them · K-D keyed by match id (from summary you.recent_form). */
+  youById?: Record<string, YouMatchBits>;
   /** Expanded report (or stub note) for the selected match. */
   children?: (match: MatchSummary) => ReactNode;
 };
 
-/** Scannable match rows: map · score · rounds/date. */
-export function MatchList({ matches, selected, onSelect, children }: MatchListProps) {
+/** Scannable match rows: [W/L] MAP score · metric ▸ */
+export function MatchList({ matches, selected, onSelect, youById, children }: MatchListProps) {
+  const groups = groupMatches(matches);
   return (
     <div className="match-list-wrap">
       <div className="match-list-heading">
         <span className="section-kicker">{matches.length === 1 ? "1 MATCH" : `${matches.length} MATCHES`}</span>
       </div>
-      <ul className="match-list">
-        {matches.map((match) => (
-          <li key={match.id}>
-            <MatchRow
-              match={match}
-              selected={selected === match.id}
-              onToggle={() => onSelect(selected === match.id ? null : match.id)}
-            />
-            {selected === match.id && (
-              match.status === "imported"
-                ? children?.(match)
-                : <MatchStubNote match={match} />
-            )}
-          </li>
-        ))}
-      </ul>
+      {groups.map((group) => (
+        <div key={group.key} className="match-day-group">
+          {group.label ? <span className="match-day-label">{group.label}</span> : null}
+          <ul className="match-list">
+            {group.matches.map((match) => (
+              <li key={match.id}>
+                <MatchRow
+                  match={match}
+                  you={youById?.[match.id]}
+                  selected={selected === match.id}
+                  onToggle={() => onSelect(selected === match.id ? null : match.id)}
+                />
+                {selected === match.id && (
+                  match.status === "imported"
+                    ? children?.(match)
+                    : <MatchStubNote match={match} />
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
@@ -135,4 +210,3 @@ export function MatchListError({ message, onRetry }: { message: string; onRetry:
     </div>
   );
 }
-

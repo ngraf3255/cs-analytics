@@ -79,39 +79,47 @@
 .replace-codes[open] summary{color:var(--acid)}
 .account-summary .relink-alert{grid-column:1/-1}.account-summary .relink-alert a{text-decoration:underline;text-underline-offset:2px}
 
-/* Match list UX: score-first rows, loading skeleton, error retry, mobile labels */
-.match-list-wrap{display:grid;gap:8px}
+/* Match list UX: [W/L] MAP score · metric ▸ — scan line, glyphs, date groups */
+.match-list-wrap{display:grid;gap:10px}
 .match-list-heading{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
-.match-item{grid-template-columns:minmax(0,1.4fr) minmax(0,.9fr) minmax(0,1.1fr);gap:10px 14px}
+.match-day-group{display:grid;gap:6px}
+.match-day-label{font:9px 'DM Mono',monospace;letter-spacing:.1em;color:#7f8b93;text-transform:uppercase}
+.match-item{grid-template-columns:28px minmax(0,1.4fr) minmax(0,1.2fr) auto;gap:8px 12px;align-items:center}
 .match-map{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
 .match-map strong{font:700 16px 'Barlow Condensed',sans-serif;text-transform:uppercase}
-.match-item strong{font:inherit;text-transform:none} /* map title lives in .match-map strong */
-.match-score{display:grid;gap:2px;min-width:0}
+.match-item strong{font:inherit;text-transform:none}
+.wl-chip{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 5px;font:700 11px 'DM Mono',monospace;letter-spacing:.04em;border:1px solid #2d3740;color:#9aa4ab}
+.wl-chip.won{color:#11160a;background:var(--acid);border-color:var(--acid)}
+.wl-chip.lost{color:#ffd3c8;background:#6b3a32;border-color:#6b3a32}
+.wl-chip.tied{color:#e8ecee;background:#2d3740;border-color:#3a454f}
+.wl-chip.empty{visibility:hidden}
+.match-glyph{font:700 11px 'DM Mono',monospace;color:#9aa4ab;border:1px solid #3a454f;padding:0 4px;line-height:1.4}
+.match-glyph.warn{color:#e8c46a;border-color:#6b5a2a}
+.match-glyph.stub{color:#ffb3a1;border-color:#744239}
+.match-score{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0}
 .match-score strong{font:700 18px 'Barlow Condensed',sans-serif;letter-spacing:.02em;color:#e8ecee}
-.match-score small{font:10px 'DM Mono',monospace;color:#9aa4ab}
-.match-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:flex-end;font-size:11px}
-.match-rounds{color:#c0c8cd}
-.match-chevron{color:var(--acid);font-size:12px;margin-left:4px}
+.match-score small{font:11px 'DM Mono',monospace;color:#9aa4ab}
+.match-chevron{color:var(--acid);font-size:12px;justify-self:end}
 .match-item-stub{opacity:.92}
-.stub-tag{color:#ffb3a1;border-color:#744239}
 .match-stub-note{border:1px solid #27313a;border-top:0;background:#0a0f14;padding:12px 14px;display:grid;gap:6px;font-size:12px}
 .match-stub-note p{margin:0;line-height:1.6;color:#c0c8cd}
 .match-list-error{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .match-list-error .steam-error{flex:1 1 220px}
 .match-list-loading{pointer-events:none}
-.match-skeleton{display:grid;grid-template-columns:1.4fr .9fr 1.1fr;gap:12px;padding:14px;background:#0c1117;border:1px solid #1b232a}
+.match-skeleton{display:grid;grid-template-columns:28px 1.4fr 1.2fr auto;gap:12px;padding:14px;background:#0c1117;border:1px solid #1b232a}
 .match-skeleton span{display:block;height:12px;background:linear-gradient(90deg,#151b22,#1c2430,#151b22);background-size:200% 100%;animation:match-shimmer 1.2s ease-in-out infinite;border-radius:2px}
 .match-skeleton span:nth-child(2){animation-delay:.15s}
-.match-skeleton span:nth-child(3){animation-delay:.3s;max-width:70%;justify-self:end}
+.match-skeleton span:nth-child(3){animation-delay:.3s;max-width:70%}
 @keyframes match-shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
 @media(max-width:640px){
-  .match-item{grid-template-columns:1fr 1fr;grid-template-areas:"map map" "score meta"}
+  .match-item{grid-template-columns:28px minmax(0,1fr) auto;grid-template-areas:"chip map chev" "chip score chev"}
+  .wl-chip,.wl-chip.empty{grid-area:chip;align-self:center}
   .match-map{grid-area:map}
   .match-score{grid-area:score}
-  .match-meta{grid-area:meta;justify-content:flex-end}
+  .match-chevron{grid-area:chev;align-self:center}
   .match-list-heading{flex-direction:column;align-items:flex-start;gap:2px}
-  .match-skeleton{grid-template-columns:1fr 1fr}
-  .match-skeleton span:first-child{grid-column:1 / -1}
+  .match-skeleton{grid-template-columns:28px 1fr auto}
+  .match-skeleton span:nth-child(2){grid-column:2}
 }
 /* Sync matches can't run yet (no codes / no share code / paused): read as off, not as a dimmed
    primary button. A running sync keeps the acid fill (class busy) so progress still stands out. */
