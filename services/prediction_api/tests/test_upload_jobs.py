@@ -130,6 +130,8 @@ def test_restart_recovery(env):
     waiting = _job(ctx, user.id, "waiting", status="queued", path=demo_file("waiting", DEMO + b"w"))
     old = _job(ctx, user.id, "old", status="done", path=os.path.join(job_dir, "old.upload"), age=timedelta(days=8))
     stray = demo_file("stray")
+    aged = time.time() - 3600  # older than the sweep's grace window for unowned .upload files
+    os.utime(stray, (aged, aged))
     os.makedirs(os.path.join(job_dir, "interrupted.work"))  # partial work of the interrupted job
     del old, stray
 
@@ -190,10 +192,111 @@ def test_storage_claims_each_job_once_and_deletes_with_user(env):
 def test_queue_settings_from_env():
     from steamlink.config import ConfigError, load_settings
 
-    assert load_settings({}).upload_queue_max == 3 and load_settings({}).upload_job_dir is None
-    loaded = load_settings({"UPLOAD_QUEUE_MAX": "5", "UPLOAD_JOB_DIR": "/var/tmp/jobs"})
+    defaults = load_settings({})
+    assert defaults.upload_queue_max == 3 and defaults.upload_job_dir is None
+    assert defaults.upload_job_retention_seconds == 7 * 24 * 3600
+    assert defaults.upload_job_cleanup_interval_seconds == 300
+    loaded = load_settings({"UPLOAD_QUEUE_MAX": "5", "UPLOAD_JOB_DIR": "/var/tmp/jobs",
+                            "UPLOAD_JOB_RETENTION_SECONDS": "3600",
+                            "UPLOAD_JOB_CLEANUP_INTERVAL_SECONDS": "0"})
     assert loaded.upload_queue_max == 5 and loaded.upload_job_dir == "/var/tmp/jobs"
+    assert loaded.upload_job_retention_seconds == 3600
+    assert loaded.upload_job_cleanup_interval_seconds == 0
     base = dict(DATABASE_URL="sqlite://", TOKEN_ENCRYPTION_KEYS="k", SESSION_SECRET="s" * 40,
                 PUBLIC_API_URL="https://api.example.com", FRONTEND_URL="https://example.com", STEAM_WEB_API_KEY="x")
     with pytest.raises(ConfigError):
         load_settings({**base, "UPLOAD_QUEUE_MAX": "0"})
+    with pytest.raises(ConfigError):
+        load_settings({**base, "UPLOAD_JOB_RETENTION_SECONDS": "30"})
+
+
+def test_failed_parse_deletes_demo_and_workdir(env):
+    """Parse failures (MalformedMessage → demo_parse_failed) must not leave files on disk."""
+
+    from steamlink.demo_parser import DemoParseError
+
+    client, ctx = env
+
+    class BoomParser:
+        calls = 0
+
+        def parse(self, path):
+            self.calls += 1
+            raise DemoParseError("demo could not be parsed")
+
+    ctx.sync.parser = BoomParser()
+    response, job = upload_and_wait(client, ctx, DEMO)
+    assert response.status_code == 202
+    assert job["status"] == "failed" and job["error"] == "demo_parse_failed"
+    assert os.listdir(ctx.jobs.job_dir) == []
+
+
+def test_cleanup_orphans_removes_stray_files_and_expired_rows(env):
+    client, ctx = env
+    me = client.get("/me").json()
+    user = ctx.storage.get_or_create_user(me["steam_id"], ctx.clock())
+    job_dir = ctx.jobs.job_dir
+    stray = os.path.join(job_dir, "stray.upload")
+    with open(stray, "wb") as fh:
+        fh.write(DEMO)
+    os.makedirs(os.path.join(job_dir, "stray.work"))
+    stale_partial = os.path.join(job_dir, "dead.upload.partial")
+    with open(stale_partial, "wb") as fh:
+        fh.write(DEMO)
+    old = time.time() - 3600  # past both the .upload grace and the .partial staleness
+    os.utime(stray, (old, old))
+    os.utime(stale_partial, (old, old))
+    _job(ctx, user.id, "oldfail", status="failed", path=os.path.join(job_dir, "oldfail.upload"),
+         age=timedelta(days=8))
+    # Short retention + no throttle so one cleanup call does both jobs.
+    ctx.jobs = UploadJobWorker(ctx, retention=timedelta(days=7))
+    ctx.jobs._last_cleanup_at = 0.0
+    ctx.settings = replace(ctx.settings, upload_job_cleanup_interval_seconds=0)
+    ctx.jobs.cleanup_orphans(force=True)
+    assert ctx.storage.get_upload_job(user.id, "oldfail") is None
+    assert os.listdir(job_dir) == []
+
+
+def test_cleanup_orphans_spares_in_flight_uploads(env):
+    """An upload still streaming (.partial) or just renamed to .upload before its job row
+    exists must survive a sweep (the sweep runs on every queue drain)."""
+
+    client, ctx = env
+    job_dir = ctx.jobs.job_dir
+    streaming = os.path.join(job_dir, "live.upload.partial")
+    renamed = os.path.join(job_dir, "fresh.upload")
+    for path in (streaming, renamed):
+        with open(path, "wb") as fh:
+            fh.write(DEMO)
+    ctx.jobs.cleanup_orphans(force=True)
+    assert sorted(os.listdir(job_dir)) == ["fresh.upload", "live.upload.partial"]
+
+
+def test_cleanup_interval_zero_runs_every_drain(env, monkeypatch):
+    client, ctx = env
+    ctx.settings = replace(ctx.settings, upload_job_cleanup_interval_seconds=0)
+    calls = []
+    monkeypatch.setattr(ctx.storage, "delete_finished_upload_jobs", lambda cutoff: calls.append(cutoff) or 0)
+    ctx.jobs.cleanup_orphans()
+    ctx.jobs.cleanup_orphans()
+    assert len(calls) == 2
+
+
+def test_upload_streams_to_partial_then_queues_upload_file(env):
+    client, ctx = env
+    seen = []
+    real_create = ctx.storage.create_upload_job
+
+    def spy(job, **kwargs):
+        seen.append(sorted(os.listdir(ctx.jobs.job_dir)))
+        return real_create(job, **kwargs)
+
+    ctx.storage.create_upload_job = spy
+    try:
+        response, job = upload_and_wait(client, ctx, DEMO)
+    finally:
+        ctx.storage.create_upload_job = real_create
+    assert response.status_code == 202
+    # At job-row creation the .partial has already become the job's .upload.
+    assert seen and seen[0] == [job["id"] + ".upload"]
+    assert not any(name.endswith(".partial") for name in os.listdir(ctx.jobs.job_dir))
