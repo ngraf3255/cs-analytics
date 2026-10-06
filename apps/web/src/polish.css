@@ -231,24 +231,3 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .onboarding-tip a{text-decoration:underline;text-underline-offset:2px;color:var(--acid)}
 .tip-dismiss{background:transparent;border:0;color:#9aa4ab;cursor:pointer;min-width:32px;min-height:32px;font-size:13px}
 .tip-dismiss:focus-visible{outline:1px solid var(--acid)}
-
-/* Model card (About the model), confidence chip and "Why this call?" in the readout. */
-.model-card{grid-column:1/-1;display:grid;gap:10px}
-.model-card-grid{margin:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#1b232a;border:1px solid #27313a}
-.model-card-grid>div{background:#0c1117;padding:12px 14px;display:grid;gap:4px;min-width:0}
-.model-card-grid dt{font:9px 'DM Mono',monospace;letter-spacing:.1em;color:var(--label)}
-.model-card-grid dd{margin:0;font-size:12px;line-height:1.5;color:#d6dce0;text-transform:capitalize;overflow-wrap:anywhere}
-.model-card-grid div:nth-child(-n+3) dd{text-transform:none}
-.model-card-note{margin:0;font-size:11px;line-height:1.6}
-.confidence-chip{font:10px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;border:1px solid #3a454f;color:#c8d0d6}
-.confidence-chip.strong{border-color:#6f8646;color:var(--acid)}
-.confidence-chip.toss{border-style:dashed}
-.why-round{border-top:1px solid #27313a;padding-top:10px;margin-top:6px}
-.why-round summary{cursor:pointer;font:11px 'DM Mono',monospace;color:var(--acid);letter-spacing:.04em;min-height:32px;display:flex;align-items:center}
-.why-list{list-style:none;margin:6px 0;padding:0;display:grid;gap:8px}
-.why-list li{display:grid;gap:2px}
-.why-list strong{font:700 14px 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.03em}
-.why-list span{font-size:12px;color:#b9c1c8}
-.why-note{margin:0;font-size:11px}
-@media(max-width:900px){.model-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:640px){.model-card-grid{grid-template-columns:1fr}}

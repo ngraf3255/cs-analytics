@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiBase } from "./steam/api";
 import { weaponName } from "./steam/weapons";
 import type { RoundInputs } from "./roundForm";
+import "./modelCard.css";
 
 type Probs = { ct: number; t: number };
 
