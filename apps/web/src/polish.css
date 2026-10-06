@@ -103,7 +103,6 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .account-loading{display:grid;gap:10px}
 .account-loading span{display:block;height:12px;background:#151c23;border-radius:2px}
 .account-loading span:nth-child(1){width:40%}.account-loading span:nth-child(2){width:75%}.account-loading span:nth-child(3){width:55%;height:40px}
-<<<<<<< HEAD
 /* Mobile perf: rows off screen skip layout/paint until scrolled near (long lists); phones skip the
    large blurred shadows and the masked hero grid (expensive to paint, barely visible at that size). */
 .match-list>li{content-visibility:auto;contain-intrinsic-size:auto 64px}
@@ -229,16 +228,3 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .onboarding-tip a{text-decoration:underline;text-underline-offset:2px;color:var(--acid)}
 .tip-dismiss{background:transparent;border:0;color:#9aa4ab;cursor:pointer;min-width:32px;min-height:32px;font-size:13px}
 .tip-dismiss:focus-visible{outline:1px solid var(--acid)}
-
-/* What to fix: up to three rule-based notes from this demo. */
-.coach-tips{display:grid;gap:8px}
-.coach-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.coach-tip{border:1px solid #27313a;border-left:3px solid #ff9569;background:#0b1015;padding:10px 14px;display:grid;gap:4px}
-.coach-tip.keep{border-left-color:var(--acid)}
-.coach-tip strong{font:700 16px 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.03em;color:#e8ecee}
-.coach-tip p{margin:0;font-size:12px;line-height:1.55;color:#b9c1c8}
-.coach-tip .coach-advice{color:#e1e6e9}
-.coach-rounds{font:10px 'DM Mono',monospace;color:var(--label-dim);overflow-wrap:anywhere}
-.coach-note{margin:0;font-size:11px}
-=======
->>>>>>> 96e6c49 (Web: move this PR's styles into coachTips.css (no shared polish.css edits))
