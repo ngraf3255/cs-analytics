@@ -154,3 +154,49 @@ def test_rush_shaped_demo_yields_three_rounds_and_player_kd():
     assert len(by_me) == 3
     assert sum(p.kills for p in by_me) >= 3  # rounds 1–3 kills; not the thin 2-from-1-round case
     assert sum(p.deaths for p in by_me) == 1  # died once in round 3
+
+
+def test_degraded_pre_v4_match_is_outdated_for_reupload_banner():
+    """Live rush_001 stayed at parse_version 2 after #42; STATS stays 2 so competitive
+    v2/v3 are not bannered, but parse_degraded below PARSE_VERSION must still show
+    OUTDATED so Noah knows to re-upload."""
+
+    from datetime import datetime, timezone
+
+    from steamlink.storage.base import PARSE_VERSION, MatchRecord
+
+    rush = MatchRecord(
+        id="deb3",
+        share_code="upload:49b4",
+        valve_match_id="upload",
+        status="imported",
+        status_reason="parse_degraded",
+        map_name="rush_001",
+        rounds_count=1,
+        imported_at=datetime.now(timezone.utc),
+        source="upload",
+        score_ct=2,
+        score_t=0,
+        players_recorded=True,
+        parse_version=2,
+    )
+    healthy_v2 = MatchRecord(
+        id="mirage",
+        share_code="CSGO-x",
+        valve_match_id="1",
+        status="imported",
+        status_reason=None,
+        map_name="de_mirage",
+        rounds_count=24,
+        imported_at=datetime.now(timezone.utc),
+        source="steam_sync",
+        score_ct=11,
+        score_t=13,
+        players_recorded=True,
+        parse_version=2,
+    )
+    assert rush.outdated_reason == "parser_updated"
+    assert rush.reparse_on_upload is True
+    assert healthy_v2.outdated_reason is None
+    # reparse_on_upload still true for detail refresh below PARSE_VERSION
+    assert healthy_v2.reparse_on_upload is (2 < PARSE_VERSION)
