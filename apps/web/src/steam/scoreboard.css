@@ -3,5 +3,5 @@
 .scoreboard-table td a{text-decoration:underline;text-underline-offset:2px;font-family:'DM Mono',monospace;font-size:11px}
 .scoreboard-table tr.scoreboard-you td{background:#121a12}
 .scoreboard-table tr.scoreboard-you td:first-child a{color:var(--acid)}
-.scoreboard-regulars{margin:0;font-size:12px;color:#c9d1c2}
+.steam-card .scoreboard-regulars{margin:0;font-size:12px;color:#c9d1c2}
 .scoreboard-note{margin:0;font-size:11px}
