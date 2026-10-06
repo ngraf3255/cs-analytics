@@ -33,6 +33,10 @@ const blobText = (blob: Blob) => new Promise<string>((resolve) => {
   reader.readAsText(blob);
 });
 const group = () => screen.getByRole("group", { name: "Export for Tableau" });
+const openMenu = () => {
+  fireEvent.click(within(group()).getByRole("button", { name: "Export menu" }));
+  return within(group()).getByRole("menu", { name: "Export for Tableau" });
+};
 
 let saved: { href: string; download: string }[];
 let blobs: Blob[];
@@ -53,15 +57,18 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe("Export for Tableau (GET /matches/export/*.csv)", () => {
-  it("sits in the summary panel and downloads the rounds CSV with the session cookie", async () => {
+  it("is a ⋮ in the summary heading; downloads rounds CSV with the session cookie", async () => {
     const api = installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const panel = screen.getByRole("region", { name: "Across your matches" });
     expect(within(panel).getByRole("group", { name: "Export for Tableau" })).toBeInTheDocument();
-    expect(group()).not.toHaveTextContent("Warmup and knife rounds");
+    expect(group()).not.toHaveTextContent("EXPORT FOR TABLEAU");
+    expect(group()).not.toHaveTextContent(/ROUNDS ·|MATCHES ·/);
+    expect(within(group()).queryByRole("button", { name: "Rounds CSV" })).toBeNull();
 
-    fireEvent.click(within(group()).getByRole("button", { name: "Rounds CSV" }));
+    const menu = openMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Rounds CSV" }));
     await advance();
     expect(api.count("GET /matches/export/rounds.csv")).toBe(1);
     const init = api.fetchMock.mock.calls.find(([url]) => String(url).endsWith("/matches/export/rounds.csv"))?.[1];
@@ -82,29 +89,29 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test/1");
   });
 
-  it("downloads the matches CSV too, and disables both buttons while preparing", async () => {
+  it("downloads the matches CSV too, and disables the trigger while preparing", async () => {
     let release: () => void = () => undefined;
     const api = installFakeApi(routes({
       "GET /matches/export/matches.csv": () => new Promise((resolve) => { release = () => resolve({ status: 200, body: MATCHES_CSV }); }),
     }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(within(group()).getByRole("button", { name: "Matches CSV" }));
+    fireEvent.click(within(openMenu()).getByRole("menuitem", { name: "Matches CSV" }));
     await advance();
-    expect(within(group()).getByRole("button", { name: "Preparing…" })).toBeDisabled();
-    expect(within(group()).getByRole("button", { name: "Rounds CSV" })).toBeDisabled();
+    expect(within(group()).getByRole("button", { name: "Export menu" })).toBeDisabled();
+    expect(within(group()).queryByRole("menu")).toBeNull();
     release();
     await advance();
     expect(api.count("GET /matches/export/matches.csv")).toBe(1);
     expect(saved.map((s) => s.download)).toEqual([expect.stringMatching(/^cs2-matches-\d{8}\.csv$/)]);
-    expect(within(group()).getByRole("button", { name: "Matches CSV" })).toBeEnabled();
+    expect(within(group()).getByRole("button", { name: "Export menu" })).toBeEnabled();
   });
 
   it("shows the API's error (e.g. signed out) and saves nothing", async () => {
     installFakeApi(routes({ "GET /matches/export/rounds.csv": { status: 401, body: { detail: "not_authenticated" } } }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(within(group()).getByRole("button", { name: "Rounds CSV" }));
+    fireEvent.click(within(openMenu()).getByRole("menuitem", { name: "Rounds CSV" }));
     await advance();
     expect(saved).toEqual([]);
     expect(within(group()).getByRole("status")).toHaveTextContent("Export failed. Sign in to continue.");
@@ -127,21 +134,33 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     expect(screen.queryByRole("group", { name: "Export for Tableau" })).toBeNull();
   });
 
-  it("says what each file holds (row counts, your columns) and downloads both in one tap", async () => {
+  it("menu lists CSV actions + quiet Tableau help; Download both fetches both files", async () => {
     const api = installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    const totals = summaryPersonal.totals;
-    expect(group()).toHaveTextContent(`Rounds · ${totals.rounds.toLocaleString()} rows`);
-    expect(group()).toHaveTextContent(`Matches · ${totals.imported_matches.toLocaleString()} row`);
-    expect(group()).not.toHaveTextContent(/you_ columns/);
-    expect(within(group()).getByRole("link", { name: /How to open them in Tableau/ })).toHaveAttribute("href", expect.stringContaining("tableau/README.md"));
-    fireEvent.click(within(group()).getByRole("button", { name: "Download both" }));
+    expect(group()).not.toHaveTextContent(/row/);
+    const menu = openMenu();
+    expect(within(menu).getByRole("menuitem", { name: "Rounds CSV" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Matches CSV" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Download both" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: /Tableau help/ })).toHaveAttribute("href", expect.stringContaining("tableau/README.md"));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Download both" }));
     await advance();
     await advance();
     expect(api.count("GET /matches/export/rounds.csv")).toBe(1);
     expect(api.count("GET /matches/export/matches.csv")).toBe(1);
     expect(saved.map((f) => f.download)).toEqual([expect.stringMatching(/^cs2-rounds-/), expect.stringMatching(/^cs2-matches-/)]);
     expect(within(group()).getByRole("status")).toHaveTextContent(/Downloaded cs2-rounds-\d{8}\.csv and cs2-matches-\d{8}\.csv\./);
+  });
+
+  it("closes the menu on Escape", async () => {
+    installFakeApi(routes());
+    render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+    openMenu();
+    expect(within(group()).getByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(within(group()).queryByRole("menu")).toBeNull();
+    expect(within(group()).getByRole("button", { name: "Export menu" })).toHaveAttribute("aria-expanded", "false");
   });
 });

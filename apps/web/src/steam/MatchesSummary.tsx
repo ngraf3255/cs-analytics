@@ -116,7 +116,10 @@ export function MatchesSummaryPanel({ refreshKey, onPersonalMatches }: MatchesSu
   const calibration = prediction.calibration.filter((bin) => bin.rounds > 0);
   return (
     <section className="summary-panel" aria-label="Across your matches">
-      <span className="section-kicker">ACROSS YOUR MATCHES</span>
+      <div className="summary-heading">
+        <span className="section-kicker">ACROSS YOUR MATCHES</span>
+        <TableauExport matches={totals.imported_matches} rounds={totals.rounds} personalMatches={summary.you?.matches} />
+      </div>
       {summary.you && <YouSection you={summary.you} refreshKey={refreshKey} />}
       {summary.you && <span className="section-kicker all-players-kicker">ALL PLAYERS IN THESE DEMOS · MAP SIDES</span>}
       <dl className="report-header summary-tiles" aria-label="Previous matches summary">
@@ -184,7 +187,6 @@ export function MatchesSummaryPanel({ refreshKey, onPersonalMatches }: MatchesSu
           </table>
         )}
       </details>
-      <TableauExport matches={totals.imported_matches} rounds={totals.rounds} personalMatches={summary.you?.matches} />
     </section>
   );
 }
