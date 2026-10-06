@@ -130,6 +130,8 @@ def test_restart_recovery(env):
     waiting = _job(ctx, user.id, "waiting", status="queued", path=demo_file("waiting", DEMO + b"w"))
     old = _job(ctx, user.id, "old", status="done", path=os.path.join(job_dir, "old.upload"), age=timedelta(days=8))
     stray = demo_file("stray")
+    aged = time.time() - 3600  # older than the sweep's grace window for unowned .upload files
+    os.utime(stray, (aged, aged))
     os.makedirs(os.path.join(job_dir, "interrupted.work"))  # partial work of the interrupted job
     del old, stray
 
@@ -238,6 +240,12 @@ def test_cleanup_orphans_removes_stray_files_and_expired_rows(env):
     with open(stray, "wb") as fh:
         fh.write(DEMO)
     os.makedirs(os.path.join(job_dir, "stray.work"))
+    stale_partial = os.path.join(job_dir, "dead.upload.partial")
+    with open(stale_partial, "wb") as fh:
+        fh.write(DEMO)
+    old = time.time() - 3600  # past both the .upload grace and the .partial staleness
+    os.utime(stray, (old, old))
+    os.utime(stale_partial, (old, old))
     _job(ctx, user.id, "oldfail", status="failed", path=os.path.join(job_dir, "oldfail.upload"),
          age=timedelta(days=8))
     # Short retention + no throttle so one cleanup call does both jobs.
@@ -247,3 +255,48 @@ def test_cleanup_orphans_removes_stray_files_and_expired_rows(env):
     ctx.jobs.cleanup_orphans(force=True)
     assert ctx.storage.get_upload_job(user.id, "oldfail") is None
     assert os.listdir(job_dir) == []
+
+
+def test_cleanup_orphans_spares_in_flight_uploads(env):
+    """An upload still streaming (.partial) or just renamed to .upload before its job row
+    exists must survive a sweep (the sweep runs on every queue drain)."""
+
+    client, ctx = env
+    job_dir = ctx.jobs.job_dir
+    streaming = os.path.join(job_dir, "live.upload.partial")
+    renamed = os.path.join(job_dir, "fresh.upload")
+    for path in (streaming, renamed):
+        with open(path, "wb") as fh:
+            fh.write(DEMO)
+    ctx.jobs.cleanup_orphans(force=True)
+    assert sorted(os.listdir(job_dir)) == ["fresh.upload", "live.upload.partial"]
+
+
+def test_cleanup_interval_zero_runs_every_drain(env, monkeypatch):
+    client, ctx = env
+    ctx.settings = replace(ctx.settings, upload_job_cleanup_interval_seconds=0)
+    calls = []
+    monkeypatch.setattr(ctx.storage, "delete_finished_upload_jobs", lambda cutoff: calls.append(cutoff) or 0)
+    ctx.jobs.cleanup_orphans()
+    ctx.jobs.cleanup_orphans()
+    assert len(calls) == 2
+
+
+def test_upload_streams_to_partial_then_queues_upload_file(env):
+    client, ctx = env
+    seen = []
+    real_create = ctx.storage.create_upload_job
+
+    def spy(job, **kwargs):
+        seen.append(sorted(os.listdir(ctx.jobs.job_dir)))
+        return real_create(job, **kwargs)
+
+    ctx.storage.create_upload_job = spy
+    try:
+        response, job = upload_and_wait(client, ctx, DEMO)
+    finally:
+        ctx.storage.create_upload_job = real_create
+    assert response.status_code == 202
+    # At job-row creation the .partial has already become the job's .upload.
+    assert seen and seen[0] == [job["id"] + ".upload"]
+    assert not any(name.endswith(".partial") for name in os.listdir(ctx.jobs.job_dir))

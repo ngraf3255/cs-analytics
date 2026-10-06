@@ -34,7 +34,8 @@ jobs a previous process left behind:
   stub match is stored; queued ones simply stay queued;
 * finished jobs older than ``UPLOAD_JOB_RETENTION_SECONDS`` (default one week)
   are deleted, and stray files in the job directory that no active job owns
-  are removed (also after each queue drain, so a long-lived process still
+  are removed (skipping ``.upload`` files modified in the last
+  ``ORPHAN_UPLOAD_GRACE_SECONDS`` and ``.partial`` uploads still being written) (also after each queue drain, so a long-lived process still
   frees disk without a restart). Demo files and workdirs are removed as soon
   as a job finishes — success or failure (e.g. ``demo_parse_failed``).
 
@@ -61,6 +62,15 @@ logger = logging.getLogger(__name__)
 
 JOB_FILE_SUFFIX = ".upload"
 JOB_WORKDIR_SUFFIX = ".work"
+# ``POST /matches/upload`` streams the body to ``<id>.upload.partial`` and renames it
+# to ``<id>.upload`` only right before the job row is created, so the cleanup sweep
+# never sees an in-flight upload as an orphan ``.upload``.
+JOB_PARTIAL_SUFFIX = ".partial"
+# Cleanup leaves recently modified files alone: an ``.upload`` renamed into place but
+# whose job row is not committed yet, or a ``.partial`` still being written. A
+# ``.partial`` untouched this long belongs to a dead request (client gone, crash).
+ORPHAN_UPLOAD_GRACE_SECONDS = 120
+ORPHAN_PARTIAL_STALE_SECONDS = 15 * 60
 
 
 def default_job_dir() -> str:
@@ -96,6 +106,11 @@ class UploadJobWorker:
 
     def job_file(self, job_id: str) -> str:
         return os.path.join(self.job_dir, job_id + JOB_FILE_SUFFIX)
+
+    def partial_file(self, job_id: str) -> str:
+        """Where an upload is streamed before its job row exists (see JOB_PARTIAL_SUFFIX)."""
+
+        return self.job_file(job_id) + JOB_PARTIAL_SUFFIX
 
     # Thread lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -259,7 +274,9 @@ class UploadJobWorker:
         """
 
         settings = getattr(self._ctx, "settings", None)
-        interval = float(getattr(settings, "upload_job_cleanup_interval_seconds", 300) or 300)
+        # 0 means "every drain" (documented), so only fall back when the setting is missing.
+        interval = getattr(settings, "upload_job_cleanup_interval_seconds", None)
+        interval = 300.0 if interval is None else float(interval)
         now_mono = time.monotonic()
         if not force and (now_mono - self._last_cleanup_at) < interval:
             return
@@ -278,9 +295,24 @@ class UploadJobWorker:
             names = os.listdir(job_dir)
         except OSError:
             return
+        wall_now = time.time()
+
+        def _age(path: str) -> float:
+            try:
+                return wall_now - os.path.getmtime(path)
+            except OSError:
+                return 0.0
+
         for name in names:
             path = os.path.join(job_dir, name)
-            if name.endswith(JOB_WORKDIR_SUFFIX):
+            if name.endswith(JOB_PARTIAL_SUFFIX):
+                # An upload still streaming (or about to be renamed): only drop dead ones.
+                if _age(path) >= ORPHAN_PARTIAL_STALE_SECONDS:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+            elif name.endswith(JOB_WORKDIR_SUFFIX):
                 # Workdirs are only live inside process(). On force (startup recovery) every
                 # ``.work`` is stale — even if the job was requeued and still owns its
                 # ``.upload``. Otherwise keep a workdir only when its ``.upload`` is owned
@@ -291,6 +323,10 @@ class UploadJobWorker:
                         continue
                 shutil.rmtree(path, ignore_errors=True)
             elif name.endswith(JOB_FILE_SUFFIX) and name not in owned:
+                # Grace window: upload_demo renames .partial -> .upload just before it
+                # creates the job row, so a fresh unowned .upload may be about to be owned.
+                if _age(path) < ORPHAN_UPLOAD_GRACE_SECONDS:
+                    continue
                 try:
                     os.remove(path)
                 except OSError:

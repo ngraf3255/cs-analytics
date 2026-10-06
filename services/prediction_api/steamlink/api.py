@@ -480,10 +480,13 @@ async def upload_demo(
 
     job_id = uuid.uuid4().hex
     raw_path = ctx.jobs.job_file(job_id)
+    # Stream to .partial; it becomes the job's .upload only right before the job row is
+    # created, so the worker's orphan sweep cannot delete an in-flight upload.
+    partial_path = ctx.jobs.partial_file(job_id)
     queued = False
     try:
         written, head, hasher = 0, b"", hashlib.sha256()
-        with open(raw_path, "wb") as out:
+        with open(partial_path, "wb") as out:
             async for chunk in request.stream():
                 written += len(chunk)
                 if written > limit:
@@ -527,15 +530,17 @@ async def upload_demo(
         job = UploadJob(id=job_id, user_id=user.id, status="queued", demo_path=raw_path, size_bytes=written,
                         created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest,
                         match_created=True if known is not None and known[1] else None)
+        os.replace(partial_path, raw_path)
         if not ctx.storage.create_upload_job(job, max_active=settings.upload_queue_max):
             raise HTTPException(status_code=429, detail="upload_queue_full")
         queued = True
     finally:
         if not queued:
-            try:
-                os.remove(raw_path)
-            except OSError:
-                pass
+            for path in (partial_path, raw_path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
     ctx.jobs.start()
     response.status_code = 202
     return {"job": _job_view(ctx, ctx.storage.get_upload_job(user.id, job_id) or job)}

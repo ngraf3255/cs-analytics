@@ -202,7 +202,7 @@ this manual restart.
 | `UPLOAD_MAX_BYTES` | **`100000000` (~100 MB) for Tunnel (Option A default)**; raise to `1073741824` only on Caddy/nginx grey-cloud fallback |
 | `UPLOAD_JOB_DIR` | durable disk path (compose volume `/var/lib/csa/upload-jobs`) |
 | `UPLOAD_JOB_RETENTION_SECONDS` | `604800` (7d) default; how long finished upload/sync *job rows* are kept. Demo `.upload` / `.work` files are deleted as soon as a job finishes (success **or** failure, including `demo_parse_failed` / MalformedMessage). |
-| `UPLOAD_JOB_CLEANUP_INTERVAL_SECONDS` | `300` default; orphan/retention sweep after each queue drain (throttled). Startup recovery always sweeps. |
+| `UPLOAD_JOB_CLEANUP_INTERVAL_SECONDS` | `300` default; orphan/retention sweep after each queue drain (throttled; `0` = every drain). Startup recovery always sweeps. |
 | `AUTO_SYNC_INTERVAL_SECONDS` | `1800` default; `0` disables background sync |
 
 Full optional knobs: [`docs/deploy-render.md`](deploy-render.md) env table
@@ -389,7 +389,7 @@ The API keeps received demos only while a job is queued or processing under
 | --- | --- |
 | Job finishes (imported **or** failed parse) | that job's `<id>.upload` and `<id>.work` |
 | HTTP reject before queue (`not_a_cs2_demo`, `demo_too_large`, `upload_queue_full`) | the partial body file |
-| Startup recovery / each queue drain | finished job rows older than `UPLOAD_JOB_RETENTION_SECONDS`; stray `.upload` / `.work` no active job owns |
+| Startup recovery / each queue drain | finished job rows older than `UPLOAD_JOB_RETENTION_SECONDS`; stray `.upload` / `.work` no active job owns (unowned `.upload` younger than 2 min and in-flight `<id>.upload.partial` are skipped; `.partial` untouched for 15 min is removed) |
 
 Caps that bound peak disk for demos:
 
