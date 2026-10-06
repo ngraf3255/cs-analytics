@@ -21,6 +21,16 @@ export function resultText(result: MatchResult): string | null {
 
 export const kdText = (kd: number | null | undefined) => (kd == null ? "—" : kd.toFixed(2));
 
+/** Final score from list/report: "13–11" (higher first) with "CT 13 · T 11" detail; null if unknown. */
+export function scoreLine(score: { ct: number; t: number } | null | undefined): { primary: string; detail: string } | null {
+  if (!score) return null;
+  return {
+    primary: `${Math.max(score.ct, score.t)}–${Math.min(score.ct, score.t)}`,
+    detail: `CT ${score.ct} · T ${score.t}`,
+  };
+}
+
+
 /** Why a match should be uploaded again (it was parsed by an older version), or null. */
 export function outdatedText(match: Pick<MatchSummary, "outdated">): string | null {
   if (!match.outdated) return null;
