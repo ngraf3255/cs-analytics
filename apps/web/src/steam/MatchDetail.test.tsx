@@ -33,6 +33,6 @@ describe("opening duels", () => {
     const you = personal.you as { opening_kills: number; opening_deaths: number };
     expect(tiles).toHaveTextContent(`${you.opening_kills} W · ${you.opening_deaths} L`);
     expect(tiles).toHaveTextContent("FIRST KILL → ROUND");
-    expect(screen.getByText(/Clutches and economy .* aren’t recorded/)).toBeInTheDocument();
+    expect(screen.getByText("Clutches and economy aren’t recorded yet.")).toBeInTheDocument();
   });
 });

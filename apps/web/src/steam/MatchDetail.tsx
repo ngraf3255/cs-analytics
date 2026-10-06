@@ -88,7 +88,7 @@ export function OpeningDuels({ report }: { report: MatchReport }) {
         {mine && (
           <div>
             <dt>YOUR TEAM FIRST</dt><dd>{team.rounds} of {team.rounds + opp.rounds}</dd>
-            <small>Won {pct(team.converted, team.rounds)} of those rounds · {pct(opp.converted, opp.rounds)} after the other team struck first</small>
+            <small>Won {pct(team.converted, team.rounds)} · {pct(opp.converted, opp.rounds)} when they struck first</small>
           </div>
         )}
         {mine && (
@@ -96,7 +96,7 @@ export function OpeningDuels({ report }: { report: MatchReport }) {
             <dt>YOUR DUELS</dt><dd>{myKills.length} W · {myDeaths.length} L</dd>
             <small>
               {myKills.length + myDeaths.length
-                ? `Round won ${pct(myKills.filter((r) => r.you?.won).length, myKills.length)} after your opening kill · ${pct(myDeaths.filter((r) => r.you?.won).length, myDeaths.length)} after dying first`
+                ? `Won ${pct(myKills.filter((r) => r.you?.won).length, myKills.length)} after OK · ${pct(myDeaths.filter((r) => r.you?.won).length, myDeaths.length)} after OD`
                 : "You didn’t take an opening duel"}
             </small>
           </div>
@@ -110,7 +110,7 @@ export function OpeningDuels({ report }: { report: MatchReport }) {
           <small>{top.length ? `Median first kill · ${top.map(([w, n]) => `${weaponName(w)} ×${n}`).join(", ")}` : "Median first kill"}</small>
         </div>
       </dl>
-      <p className="steam-muted detail-note">Clutches and economy (buys, money) aren’t recorded from demos yet, so they aren’t shown.</p>
+      <p className="steam-muted detail-note">Clutches and economy aren’t recorded yet.</p>
     </div>
   );
 }
