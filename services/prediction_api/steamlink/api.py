@@ -221,7 +221,12 @@ def _match_view(match) -> dict:
         "outdated": None if match.outdated_reason is None else {"reason": match.outdated_reason, "fix": "reupload"},
         # Soft-skipped PacketEntities during parse (Rush etc.): some props may be incomplete.
         "degraded": (
-            {"reason": "packet_ents_skipped", "detail": "Some player positions/teams may be incomplete."}
+            {
+                "reason": "packet_ents_skipped",
+                # Rush / soft-skip demos can skip thousands of PacketEntities (e.g. ~9.7k on
+                # Valve Rush rush_001): team and position columns are then thin or missing.
+                "detail": "Many PacketEntities skips — team/position stats may be thin.",
+            }
             if match.status == "imported" and match.status_reason == "parse_degraded"
             else None
         ),

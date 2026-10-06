@@ -133,4 +133,35 @@ describe("match list UX", () => {
     expect(note).toHaveTextContent("Demo gone from Valve — upload the .dem above if you have it.");
     expect(note.querySelectorAll("p")).toHaveLength(1);
   });
+  it("renders a DEGRADED tag with thin-stats tooltip when the API marks the parse degraded", async () => {
+    const body = {
+      matches: [{
+        ...matchesFixture.matches[0],
+        id: "degraded1",
+        map_name: "cs_rush",
+        status: "imported",
+        status_reason: "parse_degraded",
+        degraded: {
+          reason: "packet_ents_skipped",
+          detail: "Many PacketEntities skips — team/position stats may be thin.",
+        },
+      }],
+      limit: 50,
+      offset: 0,
+    };
+    installFakeApi(routes({
+      "GET /matches?limit=50&offset=0": { status: 200, body },
+    }));
+    render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+
+    const row = screen.getByRole("button", { name: /rush/i });
+    const tag = within(row).getByText("DEGRADED");
+    expect(tag).toBeInTheDocument();
+    expect(tag).toHaveAttribute(
+      "title",
+      "Many PacketEntities skips — team/position stats may be thin.",
+    );
+    expect(within(row).queryByText("NOT IMPORTED")).not.toBeInTheDocument();
+  });
 });
