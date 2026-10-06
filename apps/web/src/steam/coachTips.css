@@ -4,7 +4,7 @@
 .coach-tip{border:1px solid #27313a;border-left:3px solid #ff9569;background:#0b1015;padding:10px 14px;display:grid;gap:4px}
 .coach-tip.keep{border-left-color:var(--acid)}
 .coach-tip strong{font:700 16px 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.03em;color:#e8ecee}
-.coach-tip p{margin:0;font-size:12px;line-height:1.55;color:#b9c1c8}
-.coach-tip .coach-advice{color:#e1e6e9}
+.steam-card .coach-tip p{margin:0;font-size:12px;line-height:1.55;color:#b9c1c8}
+.steam-card .coach-tip .coach-advice{color:#e1e6e9}
 .coach-rounds{font:10px 'DM Mono',monospace;color:var(--label-dim);overflow-wrap:anywhere}
 .coach-note{margin:0;font-size:11px}
