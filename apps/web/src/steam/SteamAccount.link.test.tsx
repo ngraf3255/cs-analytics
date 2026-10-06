@@ -240,7 +240,7 @@ describe("match list empty state and paused sync", () => {
     const empty = screen.getByLabelText("No matches yet");
     expect(empty).toHaveTextContent("SYNC FROM STEAM");
     expect(empty).toHaveTextContent("Optional: link match history in Account settings");
-    expect(within(empty).getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/account");
+    for (const link of within(empty).getAllByRole("link", { name: "Account settings" })) expect(link).toHaveAttribute("href", "/account");
     expect(empty).toHaveTextContent("UPLOAD A DEMO");
     expect(empty).toHaveTextContent("Any .dem / .dem.bz2 (older matches, FACEIT, pro).");
     expect(empty).not.toHaveTextContent(/game\/csgo\/replays|Watch → Your Matches/);
