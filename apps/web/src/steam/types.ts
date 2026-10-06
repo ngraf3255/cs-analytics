@@ -228,6 +228,12 @@ export type PlayerTally = {
   survived: number;
   survival_rate: number | null;
 };
+/** Opening duels on a tally (missing from older APIs). attempt rate: duels per round (5v5 average 0.2). */
+export type DuelRates = { opening_kills?: number; opening_deaths?: number; opening_attempt_rate?: number | null; opening_win_rate?: number | null };
+/** One side's role from opening-duel involvement (null role: too few rounds). */
+export type SideRole = DuelRates & { rounds: number; role: "entry" | "balanced" | "support" | null | string; kd: number | null;
+  kills_per_round: number | null; survival_rate: number | null };
+
 export type PlayerWindow = { matches: number; rounds: number; won: number; win_rate: number | null; kd: number | null; results: Results };
 
 /** GET /matches/summary ``you``: the signed-in player's own rounds (their side each round). */
@@ -242,7 +248,9 @@ export type YouAnalytics = PlayerTally & {
     taken: number; won: number; lost: number; win_rate: number | null;
     round_win_rate_after_opening_kill: number | null; round_win_rate_after_opening_death: number | null;
   };
-  maps: (PlayerTally & { map_name: string | null; sides: { ct: SideRate; t: SideRate } })[];
+  maps: (PlayerTally & DuelRates & { map_name: string | null; sides: { ct: SideRate; t: SideRate } })[];
+  /** Missing from older APIs. */
+  roles?: { baseline_opening_attempt_rate: number; min_rounds: number; ct: SideRole; t: SideRole };
   recent_form: {
     window: number;
     recent: PlayerWindow;
