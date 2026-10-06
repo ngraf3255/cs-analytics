@@ -362,7 +362,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
       <span className="section-kicker">{canSync ? "IMPORT MATCHES" : "YOUR UPLOADS"}</span>
       <div className="sync-row">
         {canSync && (
-          <button className={`submit-button sync-button ${syncJobs ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || !!relink || awaitingShare || syncBusy || me.sync.status === "running"}>
+          <button className={`submit-button sync-button ${syncBusy || me.sync.status === "running" ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || !!relink || awaitingShare || syncBusy || me.sync.status === "running"}>
             <span>{syncLabel}</span><span className="button-arrow">↻</span>
           </button>
         )}
@@ -587,7 +587,7 @@ function YouTile({ you }: { you: YouInMatch }) {
     <div className="you-tile">
       <dt>YOU</dt>
       <dd>{resultText(you) ?? `${you.won} of ${you.rounds} rounds won`}</dd>
-      <small>{side} · {you.kills} K / {you.deaths} D (K/D {kdText(you.kd)}) · won {you.won} of {plural(you.rounds, "round")}</small>
+      <small title={`K/D ${kdText(you.kd)} · won ${you.won} of ${plural(you.rounds, "round")}`}>{side} · {you.kills} K / {you.deaths} D</small>
     </div>
   );
 }

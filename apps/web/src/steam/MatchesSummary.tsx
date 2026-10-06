@@ -60,7 +60,9 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
       <dl className="report-header summary-tiles you-tiles" aria-label="Your stats">
         <div>
           <dt>ROUNDS WON</dt><dd>{pct(you.win_rate)}</dd>
-          <small>{you.won} of {you.rounds_with_winner} · {plural(you.matches, "match")}: {r.won} W · {r.lost} L{r.tied ? ` · ${r.tied} T` : ""}</small>
+          <small title={`${you.won} of ${you.rounds_with_winner} rounds won over ${plural(you.matches, "match")}: ${r.won} won, ${r.lost} lost${r.tied ? `, ${r.tied} tied` : ""}`}>
+            {you.won}/{you.rounds_with_winner} rounds · {r.won}W {r.lost}L{r.tied ? ` ${r.tied}T` : ""}
+          </small>
         </div>
         <div>
           <dt>AS CT / AS T</dt><dd>{pct(you.sides.ct.win_rate)} / {pct(you.sides.t.win_rate)}</dd>
@@ -68,11 +70,13 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
         </div>
         <div>
           <dt>K/D</dt><dd>{kdText(you.kd)}</dd>
-          <small>{you.kills} K / {you.deaths} D · {you.kills_per_round ?? "—"} per round · survived {pct(you.survival_rate)}</small>
+          <small title={`${you.kills_per_round ?? "—"} kills per round`}>{you.kills} K / {you.deaths} D · survived {pct(you.survival_rate)}</small>
         </div>
         <div>
           <dt>OPENING DUELS</dt><dd>{pct(duels.win_rate)}</dd>
-          <small>Won {duels.won} of {duels.taken} · round won {pct(duels.round_win_rate_after_opening_kill)} after your opening kill, {pct(duels.round_win_rate_after_opening_death)} after dying first</small>
+          <small title={`Round won ${pct(duels.round_win_rate_after_opening_kill)} after your opening kill (OK), ${pct(duels.round_win_rate_after_opening_death)} after dying first (OD)`}>
+            Won {duels.won}/{duels.taken} · rounds {pct(duels.round_win_rate_after_opening_kill)} after OK · {pct(duels.round_win_rate_after_opening_death)} after OD
+          </small>
         </div>
       </dl>
       <div className="report-actions"><ShareButton card={() => profileCard(you)} label="Share my numbers" /></div>
@@ -184,7 +188,7 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
         </div>
         <div>
           <dt>OPENING KILL WINS</dt><dd>{pct(opening.conversion_rate)}</dd>
-          <small>Round won by the side with the first kill · CT {pct(opening.by_side.ct.conversion_rate)} · T {pct(opening.by_side.t.conversion_rate)}</small>
+          <small title="Round won by the side with the first kill">CT {pct(opening.by_side.ct.conversion_rate)} · T {pct(opening.by_side.t.conversion_rate)}</small>
         </div>
       </dl>
       {totals.outdated_matches ? (

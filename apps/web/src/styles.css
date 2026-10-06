@@ -113,3 +113,7 @@
   .match-skeleton{grid-template-columns:1fr 1fr}
   .match-skeleton span:first-child{grid-column:1 / -1}
 }
+/* Sync matches can't run yet (no codes / no share code / paused): read as off, not as a dimmed
+   primary button. A running sync keeps the acid fill (class busy) so progress still stands out. */
+.sync-button:disabled:not(.busy){background:#151c23;color:#7f8b93;box-shadow:inset 0 0 0 1px #2d3740;opacity:1}
+.sync-button.busy:disabled{cursor:progress}
