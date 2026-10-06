@@ -1,12 +1,11 @@
-import { kdText } from "./format";
 import type { SideRole, YouAnalytics } from "./types";
 
 const pct = (rate: number | null | undefined) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
 
-const ROLE_TEXT: Record<string, { name: string; hint: string }> = {
-  entry: { name: "Entry", hint: "You take the first duel far more often than the 5v5 average." },
-  support: { name: "Support", hint: "You rarely take the first duel; you play behind the opening." },
-  balanced: { name: "Balanced", hint: "Your opening-duel share is close to the 5v5 average." },
+const ROLE_NAME: Record<string, string> = {
+  entry: "Entry",
+  support: "Support",
+  balanced: "Balanced",
 };
 
 /** Per-side role from opening-duel involvement (GET /matches/summary ``you.roles``). */
@@ -24,14 +23,14 @@ export function RoleBreakdown({ roles }: { roles: NonNullable<YouAnalytics["role
 }
 
 function RoleTile({ side, role, baseline, min }: { side: string; role: SideRole; baseline: number; min: number }) {
-  const text = role.role ? ROLE_TEXT[role.role] : null;
+  const name = role.role ? ROLE_NAME[role.role] : null;
   return (
     <div>
       <dt>AS {side}</dt>
-      <dd>{text?.name ?? (role.role ? role.role : "—")}</dd>
+      <dd>{name ?? (role.role ? role.role : "—")}</dd>
       <small>
         {role.role
-          ? `${text?.hint ?? ""} In ${pct(role.opening_attempt_rate)} of rounds (avg ${pct(baseline)}), won ${pct(role.opening_win_rate)} · K/D ${kdText(role.kd)} · survived ${pct(role.survival_rate)}`
+          ? `In ${pct(role.opening_attempt_rate)} of rounds (avg ${pct(baseline)})`
           : `Needs ${min}+ rounds on ${side} (${role.rounds} so far).`}
       </small>
     </div>
