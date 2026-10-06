@@ -29,6 +29,23 @@ describe("/account", () => {
     expect(screen.getByLabelText("Loading your account")).toBeInTheDocument();
   });
 
+  it("signed in: profile header, section nav and one section each for history, session and data", async () => {
+    installFakeApi({
+      "GET /steam/status": { status: 200, body: { steam: true, upload: true } },
+      "GET /me": { status: 200, body: LINKED },
+      "GET /steam/sync": { status: 200, body: { ...LINKED.sync, jobs: [] } },
+    });
+    render(<AccountPage />);
+    const header = await screen.findByLabelText("Profile");
+    expect(header).toHaveTextContent("MEMBER SINCE");
+    expect(header).toHaveTextContent("Waiting for a share code");
+    const nav = screen.getByRole("navigation", { name: "Account sections" });
+    expect([...nav.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(["#match-history", "#session", "#your-data"]);
+    for (const name of ["Steam match history", "Signed in on this browser", "Delete account"]) {
+      expect(screen.getByRole("region", { name })).toBeInTheDocument();
+    }
+  });
+
   it("signed out: offers Steam sign-in that comes back to /account", async () => {
     installFakeApi({
       "GET /steam/status": { status: 200, body: { steam: true, upload: true } },

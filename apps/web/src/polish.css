@@ -114,6 +114,31 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 @media(prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*:before,*:after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
+/* /account as a profile page: identity header + facts, section nav, then one card per section
+   (match history, session, your data) with the destructive action set apart. */
+.profile-header{grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:16px}
+.profile-avatar{width:56px;height:56px;display:grid;place-items:center;border:1px solid #6f8646;background:#151f25;
+  font:800 22px 'Barlow Condensed',sans-serif;color:var(--acid);letter-spacing:.04em}
+.profile-id{display:grid;gap:4px;min-width:0}
+.profile-id h3{overflow-wrap:anywhere}
+.profile-id a{text-decoration:underline;text-underline-offset:3px}
+.profile-facts{grid-column:1/-1;margin:6px 0 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#1b232a;border:1px solid #27313a}
+.profile-facts>div{background:#0c1117;padding:10px 12px;display:grid;gap:3px;min-width:0}
+.profile-facts dt{font:9px 'DM Mono',monospace;letter-spacing:.1em;color:var(--label)}
+.profile-facts dd{margin:0;font:700 16px 'Barlow Condensed',sans-serif;text-transform:uppercase;color:#e8ecee;overflow-wrap:anywhere}
+.profile-facts dd.ok{color:#a9d46a}.profile-facts dd.warn{color:#ffb3a1}
+.profile-nav{display:flex;flex-wrap:wrap;gap:8px}
+.profile-nav a{font:11px 'DM Mono',monospace;letter-spacing:.04em;color:#c8d0d6;border:1px solid #2d3740;padding:9px 12px;min-height:36px;display:inline-flex;align-items:center}
+.profile-nav a:hover,.profile-nav a:focus-visible{border-color:var(--acid);color:#f2f3f0;outline:none}
+.profile-section{scroll-margin-top:16px}
+.profile-section-title{font-size:20px!important;margin:-4px 0 0!important}
+.danger-zone{border-color:#4a2d2a}
+.danger-zone .section-kicker{color:#ffb3a1}
+@media(max-width:640px){
+  .profile-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .profile-avatar{width:44px;height:44px;font-size:18px}
+  .profile-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .profile-nav a{justify-content:center;white-space:nowrap;padding:9px 6px}
 }
 /* Share card: one-tap PNG (share sheet on phones, download elsewhere). */
 .report-actions{display:flex;justify-content:flex-end}

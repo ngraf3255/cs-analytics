@@ -227,20 +227,41 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
     await onChange();
   };
 
-  return (
-    <div className="account-settings">
-      <div className="steam-card">
-        <span className="section-kicker">STEAM ACCOUNT</span>
-        <h3>
-          SteamID{" "}
-          <a href={`https://steamcommunity.com/profiles/${me.steam_id}`} target="_blank" rel="noreferrer">
-            {me.steam_id} ↗
-          </a>
-        </h3>
-      </div>
+  const auto = me.sync.auto_sync;
+  const lastSync = me.sync.last_synced_at ?? me.sync.last_finished_at;
+  const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  const historyState = !access.linked ? "Not linked" : relink ? "Re-link needed" : awaitingShare ? "Waiting for a share code" : "Linked";
 
-      <div className="steam-card">
+  return (
+    <div className="account-settings profile-layout">
+      <header className="steam-card profile-header" aria-label="Profile">
+        <span className="profile-avatar" aria-hidden="true">{(me.steam_id ?? "").slice(-2) || "CS"}</span>
+        <div className="profile-id">
+          <span className="section-kicker">STEAM ACCOUNT</span>
+          <h3>
+            SteamID{" "}
+            <a href={`https://steamcommunity.com/profiles/${me.steam_id}`} target="_blank" rel="noreferrer">
+              {me.steam_id} ↗
+            </a>
+          </h3>
+        </div>
+        <dl className="profile-facts">
+          <div><dt>MEMBER SINCE</dt><dd>{day(me.created_at)}</dd></div>
+          <div><dt>MATCH HISTORY</dt><dd className={access.linked && !relink ? "ok" : relink ? "warn" : ""}>{historyState}</dd></div>
+          <div><dt>AUTO-SYNC</dt><dd>{auto ? (auto.active ? "On" : AUTO_SYNC_PAUSED_TEXT[auto.paused_reason ?? ""] ? "Paused" : "Off") : "—"}</dd></div>
+          <div><dt>LAST SYNC</dt><dd>{lastSync ? day(lastSync) : "Never"}</dd></div>
+        </dl>
+      </header>
+
+      <nav className="profile-nav" aria-label="Account sections">
+        <a href="#match-history">Match history</a>
+        <a href="#session">Session</a>
+        <a href="#your-data">Your data</a>
+      </nav>
+
+      <section id="match-history" className="steam-card profile-section" aria-labelledby="match-history-title">
         <span className="section-kicker">MATCH HISTORY</span>
+        <h3 id="match-history-title" className="profile-section-title">Steam match history</h3>
         {notice && <div className="steam-notice" role="status">{notice}</div>}
         {access.linked ? (
           <div className="steam-linked">
@@ -271,16 +292,25 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
         ) : (
           <LinkForm onLinked={linked} mode="link" />
         )}
-      </div>
+      </section>
 
-      <div className="steam-card">
-        <span className="section-kicker">SESSION &amp; DATA</span>
+      <section id="session" className="steam-card profile-section" aria-labelledby="session-title">
+        <span className="section-kicker">SESSION</span>
+        <h3 id="session-title" className="profile-section-title">Signed in on this browser</h3>
         <div className="steam-actions">
           <button type="button" className="ghost-button" onClick={logout} disabled={busy}>Sign out</button>
+        </div>
+      </section>
+
+      <section id="your-data" className="steam-card profile-section danger-zone" aria-labelledby="your-data-title">
+        <span className="section-kicker">YOUR DATA</span>
+        <h3 id="your-data-title" className="profile-section-title">Delete account</h3>
+        <p className="steam-muted">Removes your account, stored codes and every imported match. This can’t be undone.</p>
+        <div className="steam-actions">
           <button type="button" className="danger-button" onClick={deleteAll} disabled={busy}>Delete my data</button>
         </div>
-        {error && <div className="steam-error" role="alert">{error}</div>}
-      </div>
+      </section>
+      {error && <div className="steam-error" role="alert">{error}</div>}
     </div>
   );
 }

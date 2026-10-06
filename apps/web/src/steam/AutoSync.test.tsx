@@ -97,7 +97,7 @@ describe("automatic sync in the linked-account area", () => {
     const { auto_sync: _drop, last_synced_at: _drop2, ...oldSync } = me.sync;
     renderAccount({ ...me, sync: oldSync });
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.getByText(/^Linked/)).toBeInTheDocument();
+    expect(screen.getByText(/^Linked/, { selector: "p" })).toBeInTheDocument();
   });
 });
 
