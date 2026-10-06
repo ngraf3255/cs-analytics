@@ -242,7 +242,8 @@ describe("match list empty state and paused sync", () => {
     expect(empty).toHaveTextContent("Optional: link match history in Account settings");
     expect(within(empty).getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/account");
     expect(empty).toHaveTextContent("UPLOAD A DEMO");
-    expect(empty).toHaveTextContent("game/csgo/replays");
+    expect(empty).toHaveTextContent("Any .dem / .dem.bz2 (older matches, FACEIT, pro).");
+    expect(empty).not.toHaveTextContent(/game\/csgo\/replays|Watch → Your Matches/);
     fireEvent.change(screen.getByLabelText("Choose a demo file to upload"), { target: { files: [new File(["demo"], "match.dem")] } });
     const xhr = FakeXHR.last();
     expect(xhr.url).toMatch(/\/matches\/upload$/);
@@ -277,7 +278,10 @@ describe("match list empty state and paused sync", () => {
     render(<Matches me={linked} onMeChange={async () => undefined} />);
     await advance();
     expect(screen.getByRole("button", { name: /SYNC MATCHES/ })).toBeEnabled();
-    expect(screen.getByLabelText("No matches yet")).toHaveTextContent("Press Sync matches above.");
+    const empty = screen.getByLabelText("No matches yet");
+    expect(empty).toHaveTextContent("Press Sync matches above.");
+    expect(empty).not.toHaveTextContent(/We import the match/);
+    expect(document.querySelector(".sync-meta")?.textContent).toBe("Not synced yet.");
   });
 });
 

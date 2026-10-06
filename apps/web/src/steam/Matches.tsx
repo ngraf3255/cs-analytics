@@ -337,7 +337,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
               : !linked ? <>Link match history in <a href={ACCOUNT_PATH}>Account settings</a> to sync, or upload a demo.</>
                 : awaitingShare ? <>Add a share code in <a href={ACCOUNT_PATH}>Account settings</a>.</>
                 : relink ? <>Sync is paused: {relink.field === "auth_code" ? "update your authentication code" : "add a recent share code"} in <a href={ACCOUNT_PATH}>Account settings</a>.</>
-                : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}${me.sync.auto_sync?.active ? " · auto-sync on" : ""}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
+                : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}${me.sync.auto_sync?.active ? " · auto-sync on" : ""}` : "Not synced yet."}
         </span>
       </div>
       {upload?.phase === "uploading" && (
@@ -399,14 +399,13 @@ function EmptyMatches({ linked, relink, awaitingShare, uploading, canSync, steam
                 ? <>Sync is paused until you update your codes in <a href={ACCOUNT_PATH}>Account settings</a>.</>
                 : awaitingShare
                   ? <>Add a share code in <a href={ACCOUNT_PATH}>Account settings</a> after your next match.</>
-                : "Press Sync matches above. We import the match you linked with and your newer Competitive, Premier and Wingman matches; each one downloads and parses in the background."}
+                : "Press Sync matches above."}
           </p>
         </div>
         <div className="empty-option">
           <span className="section-kicker">UPLOAD A DEMO</span>
           <p>
-            Any CS2 <code>.dem</code> or <code>.dem.bz2</code>: matches older than 30 days, FACEIT or pro demos. Replays you
-            download in CS2 (<em>Watch → Your Matches</em>) are saved in the game folder under <code>game/csgo/replays</code>.
+            Any <code>.dem</code> / <code>.dem.bz2</code> (older matches, FACEIT, pro).
           </p>
           <label className={`ghost-button empty-upload ${uploading ? "busy" : ""}`} aria-disabled={uploading}>
             <span>CHOOSE A DEMO FILE</span>
