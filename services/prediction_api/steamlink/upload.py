@@ -152,8 +152,10 @@ def import_uploaded_demo(
         raise UploadRejected("demo_has_no_rounds")
     on_stage("storing", None)
     score = final_score(parsed)
+    # Soft-skipped PacketEntities (Rush etc.): still imported, but mark degraded for the UI.
+    status_reason = "parse_degraded" if parsed.packet_ents_skips else None
     match = NewMatch(share_code=share_code or UPLOAD_KEY_PREFIX + demo_sha256, valve_match_id=valve_match_id,
-                     status="imported", status_reason=None, map_name=parsed.map_name,
+                     status="imported", status_reason=status_reason, map_name=parsed.map_name,
                      rounds=tuple(extract_rounds(parsed)), demo_sha256=demo_sha256, source=source,
                      share_code_verified=share_code_verified, score_ct=score[0] if score else None,
                      score_t=score[1] if score else None, player_rounds=tuple(extract_player_rounds(parsed)),

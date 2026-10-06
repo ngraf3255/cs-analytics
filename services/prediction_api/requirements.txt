@@ -9,15 +9,13 @@ SQLAlchemy>=2.0,<3
 psycopg[binary]>=3.2,<4
 # steamio 1.1.3 requires cryptography>=41,<43 (Fernet is all we use).
 cryptography>=42,<43
-# demoparser2 0.42.0 (newest on PyPI, checked 2026-10-06) fails on current CS2 demos with
-# "MalformedMessage": prost rejects a whole CSVCMsg_GameEvent when one string value has
-# invalid UTF-8 (LaihoE/demoparser#364), and 11-bit entity-handle masking nulls players with
-# pawn index > 2047 (#362/#363). Those fixes are only on upstream master, so Linux x86_64
-# CPython 3.11 (homelab image, Render, CI) installs a vendored wheel built from pinned
-# upstream commit 45ca85ae with the checked-in protobuf code (see vendor/wheels/README.md).
-# Other platforms keep 0.42.0 from PyPI. Drop both lines for demoparser2>=0.42.1 once it ships.
+# demoparser2 0.42.0 (PyPI) fails on current CS2 demos (MalformedMessage / #364 UTF-8 game
+# events, #362/#363 11-bit entity handles). Linux x86_64 CPython 3.11 installs a vendored
+# wheel from upstream 45ca85ae + a local PacketEntities soft-skip so Rush (rush_001) demos
+# still yield events (see vendor/wheels/README.md). Other platforms keep 0.42.0 from PyPI.
+# Drop both lines for demoparser2>=0.42.1 once it ships with these fixes.
 --find-links vendor/wheels
-demoparser2==0.42.1.dev20261005 ; sys_platform == "linux" and platform_machine == "x86_64" and python_version == "3.11"
+demoparser2==0.42.1.dev20261006 ; sys_platform == "linux" and platform_machine == "x86_64" and python_version == "3.11"
 demoparser2==0.42.0 ; sys_platform != "linux" or platform_machine != "x86_64" or python_version != "3.11"
 # demoparser2 pulls plain `polars`, whose default wheel needs AVX/AVX2. The counterstrike
 # Proxmox VM is QEMU Virtual CPU 2.5+ (SSE4.2 only): default polars dies with SIGILL (-4)

@@ -1,0 +1,106 @@
+diff --git a/src/parser/src/second_pass/entities.rs b/src/parser/src/second_pass/entities.rs
+index abf89a1..24a2cd9 100644
+--- a/src/parser/src/second_pass/entities.rs
++++ b/src/parser/src/second_pass/entities.rs
+@@ -16,6 +16,25 @@ use ahash::AHashMap;
+ use csgoproto::CsvcMsgPacketEntities;
+ use prost::Message;
+ 
++use std::sync::atomic::{AtomicU32, Ordering};
++
++/// Soft-skipped PacketEntities failures (EntityNotFound / MalformedMessage).
++/// Python reads these via ``demoparser2.packet_ents_skips()`` after a parse.
++pub static PACKET_ENTS_ENTITY_NOT_FOUND_SKIPS: AtomicU32 = AtomicU32::new(0);
++pub static PACKET_ENTS_MALFORMED_SKIPS: AtomicU32 = AtomicU32::new(0);
++
++pub fn reset_packet_ents_skips() {
++    PACKET_ENTS_ENTITY_NOT_FOUND_SKIPS.store(0, Ordering::Relaxed);
++    PACKET_ENTS_MALFORMED_SKIPS.store(0, Ordering::Relaxed);
++}
++
++pub fn packet_ents_skip_counts() -> (u32, u32) {
++    (
++        PACKET_ENTS_ENTITY_NOT_FOUND_SKIPS.load(Ordering::Relaxed),
++        PACKET_ENTS_MALFORMED_SKIPS.load(Ordering::Relaxed),
++    )
++}
++
+ const NSERIALBITS: u32 = 17;
+ const STOP_READING_SYMBOL: u8 = 39;
+ const HUFFMAN_CODE_MAXLEN: u32 = 17;
+@@ -53,6 +72,32 @@ enum EntityCmd {
+ 
+ impl<'a> SecondPassParser<'a> {
+     pub fn parse_packet_ents(&mut self, bytes: &[u8], is_fullpacket: bool) -> Result<(), DemoParserError> {
++        // Rush / some CS2 demos emit PacketEntities updates demoparser cannot decode.
++        // Soft-skip ONLY EntityNotFound and MalformedMessage for this message (not every
++        // Err): other failures still abort. EntityNotFound is raised before field inserts;
++        // MalformedMessage is the first failure mode on Valve Rush (rush_001). Skipping the
++        // whole message avoids bitstream desync from continuing mid-entity. Counts are
++        // exposed to Python so the API can mark the parse as degraded.
++        match self.parse_packet_ents_inner(bytes, is_fullpacket) {
++            Err(DemoParserError::EntityNotFound) => {
++                let n = PACKET_ENTS_ENTITY_NOT_FOUND_SKIPS.fetch_add(1, Ordering::Relaxed) + 1;
++                if n == 1 || n % 1000 == 0 {
++                    eprintln!("[demoparser] PacketEntities EntityNotFound skipped (total={n})");
++                }
++                Ok(())
++            }
++            Err(DemoParserError::MalformedMessage) => {
++                let n = PACKET_ENTS_MALFORMED_SKIPS.fetch_add(1, Ordering::Relaxed) + 1;
++                if n == 1 || n % 1000 == 0 {
++                    eprintln!("[demoparser] PacketEntities MalformedMessage skipped (total={n})");
++                }
++                Ok(())
++            }
++            other => other,
++        }
++    }
++
++    fn parse_packet_ents_inner(&mut self, bytes: &[u8], is_fullpacket: bool) -> Result<(), DemoParserError> {
+         if !self.parse_entities {
+             return Ok(());
+         }
+diff --git a/src/python/src/lib.rs b/src/python/src/lib.rs
+index ad93341..b3855ce 100644
+--- a/src/python/src/lib.rs
++++ b/src/python/src/lib.rs
+@@ -11,6 +11,9 @@ use parser::parse_demo::Parser;
+ use parser::second_pass::game_events::EventField;
+ use parser::second_pass::game_events::GameEvent;
+ use parser::second_pass::parser_settings::create_huffman_lookup_table;
++use parser::second_pass::entities::{
++    packet_ents_skip_counts, reset_packet_ents_skips as reset_packet_ents_skips_rust,
++};
+ use parser::second_pass::variants::VarVec;
+ use parser::second_pass::variants::Variant;
+ use polars::prelude::ArrayRef;
+@@ -1289,9 +1292,28 @@ fn find_type_of_vals(pairs: &Vec<&EventField>) -> Result<Option<Variant>, DemoPa
+     Ok(None)
+ }
+ 
++/// Soft-skipped PacketEntities counts since the last ``reset_packet_ents_skips`` call:
++/// ``{"entity_not_found": N, "malformed_message": M, "total": N+M}``.
++#[pyfunction]
++fn packet_ents_skips() -> HashMap<String, u32> {
++    let (entity_not_found, malformed_message) = packet_ents_skip_counts();
++    HashMap::from([
++        ("entity_not_found".to_string(), entity_not_found),
++        ("malformed_message".to_string(), malformed_message),
++        ("total".to_string(), entity_not_found.saturating_add(malformed_message)),
++    ])
++}
++
++#[pyfunction]
++fn reset_packet_ents_skips() {
++    reset_packet_ents_skips_rust();
++}
++
+ #[pymodule]
+ fn demoparser2(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+     m.add_class::<DemoParser>()?;
+     m.add_class::<WantedPropState>()?;
++    m.add_function(wrap_pyfunction!(packet_ents_skips, m)?)?;
++    m.add_function(wrap_pyfunction!(reset_packet_ents_skips, m)?)?;
+     Ok(())
+ }

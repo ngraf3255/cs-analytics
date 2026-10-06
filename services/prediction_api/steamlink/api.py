@@ -219,6 +219,12 @@ def _match_view(match) -> dict:
         # Parsed by an older parser (null: up to date). The demo is not kept on the server,
         # so the way to refresh it is to upload the same demo again (fix: "reupload").
         "outdated": None if match.outdated_reason is None else {"reason": match.outdated_reason, "fix": "reupload"},
+        # Soft-skipped PacketEntities during parse (Rush etc.): some props may be incomplete.
+        "degraded": (
+            {"reason": "packet_ents_skipped", "detail": "Some player positions/teams may be incomplete."}
+            if match.status == "imported" and match.status_reason == "parse_degraded"
+            else None
+        ),
     }
 
 
