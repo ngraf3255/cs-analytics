@@ -63,7 +63,7 @@ function MatchRow({
       </span>
       <span className="match-meta steam-muted" title={date.label}>
         {imported && <span className="match-rounds">{plural(match.rounds_count, "round")}</span>}
-        <span className="match-date">{date.played ? date.day : `Added ${date.day}`}</span>
+        <span className="match-date">{date.day}</span>
         <span className="match-chevron" aria-hidden="true">{selected ? "▾" : "▸"}</span>
       </span>
     </button>

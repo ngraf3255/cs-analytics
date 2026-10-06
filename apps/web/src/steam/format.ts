@@ -9,7 +9,7 @@ export function matchDate(match: Pick<MatchSummary, "imported_at" | "date" | "da
 } {
   const played = match.date_source === "played";
   const day = new Date((played ? match.date : undefined) ?? match.imported_at).toLocaleDateString(undefined, DAY);
-  return { day, played, label: played ? "Played (from Valve)" : "Added (no match date in the demo)" };
+  return { day, played, label: played ? "Played (from Valve)" : "" };
 }
 
 /** "Won 13–11" / "Lost 1–2" / "Tied 12–12"; null when the final score is unknown. */

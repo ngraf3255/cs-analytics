@@ -58,9 +58,9 @@ describe("match list and per-round report (real API response shapes)", () => {
     expect(cells(rows[4])[0]).toBe("5");
     expect(cells(rows[4])[2]).toBe("CT");
     expect(cells(rows[4])[3]).toMatch(/^T favoured/);
-    // round 10: no opening kill -> unscored, reason in plain language
+    // round 10: no opening kill -> unscored (— in Model estimate; no table-top essay)
     expect(cells(rows[9])).toEqual(["10", "—", "T", "—"]);
-    expect(screen.getByText(/Some rounds unscored/)).toBeInTheDocument();
+    expect(screen.queryByText(/Some rounds unscored/)).toBeNull();
     expect(rows[9]).toHaveClass("unscored-row");
 
     fireEvent.click(item);  // collapses

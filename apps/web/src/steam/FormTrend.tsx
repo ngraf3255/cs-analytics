@@ -28,7 +28,7 @@ export function FormTrend({ refreshKey, matchCount }: { refreshKey: number; matc
     return () => { cancelled = true; };
   }, [enough, refreshKey]);
 
-  if (!enough) return <p className="steam-muted trend-empty">Your form over time shows up after 3 matches you’re in.</p>;
+  if (!enough) return null;  // hide until 3 matches — no empty-state essay
   if (failed) return null;
   if (!matches) return <div className="trend-loading" aria-label="Loading your form over time" />;
   const kds = matches.map((m) => (m.deaths ? m.kills / m.deaths : m.kills));

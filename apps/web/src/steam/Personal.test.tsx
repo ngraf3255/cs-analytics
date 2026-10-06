@@ -52,7 +52,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     expect(panel()).not.toHaveTextContent("Your last 1 match");
     expect(rows("Your maps").map(cells)).toEqual([["mirage", "1 (1–0)", "24", "54%", "75% (9/12)", "33% (4/12)", "1.71"]]);
     expect(rows("Your recent matches").map(cells)).toEqual([
-      [`Added ${day(FACEIT.imported_at, { month: "short", day: "numeric" })}`, "mirage", "Won 13–11", "T", "13 of 24", "29 / 17"],
+      [`${day(FACEIT.imported_at, { month: "short", day: "numeric" })}`, "mirage", "Won 13–11", "T", "13 of 24", "29 / 17"],
     ]);
     expect(panel()).not.toHaveTextContent("Not in your stats");
     // The all-player numbers stay, labelled, below the personal ones.
@@ -84,12 +84,12 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     expect(panel()).not.toHaveTextContent("your own team isn’t tracked yet");
   });
 
-  it("match list: played date when Valve gave one, else 'Added' + the import date", async () => {
+  it("match list: played date when Valve gave one, else the import date", async () => {
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const items = screen.getAllByRole("listitem");
-    expect(items[0]).toHaveTextContent(`Added ${day(FACEIT.imported_at)}`);
+    expect(items[0]).toHaveTextContent(day(FACEIT.imported_at));
     expect(items[1]).toHaveTextContent(day(SYNCED_MIRAGE.played_at!));
     expect(items[1]).not.toHaveTextContent("Added");
     expect(within(items[1]).getByTitle("Played (from Valve)")).toBeInTheDocument();
@@ -103,7 +103,8 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     await advance();
     const header = screen.getByLabelText("Match summary");
     expect(header).toHaveTextContent("YOUWon 13–1129 K / 17 D");
-    expect(header).toHaveTextContent(`DATE${day(FACEIT.imported_at)}Added (no match date in the demo)`);
+    expect(header).toHaveTextContent(`DATE${day(FACEIT.imported_at)}`);
+    expect(header).not.toHaveTextContent("Added (no match date in the demo)");
     const table = screen.getByRole("table", { name: "Rounds" });
     expect(within(table).getAllByRole("columnheader").map((c) => c.textContent)).toEqual(
       ["Round", "You", "Opening kill", "Actual winner", "Model estimate"]);
@@ -111,9 +112,9 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     expect(body).toHaveLength(24);  // the knife round before the match restart is not a round of the match
     expect(body.map((r) => cells(r)[1])).not.toContain("Not tracked");
     expect(cells(body[0])[0]).toBe("1");
-    expect(cells(body[0])[1]).toBe("TLOST0 kills");
+    expect(cells(body[0])[1]).toBe("T LOST0 kills");
     expect(cells(body[0])[4]).toContain("your team 38%");
-    expect(cells(body[13])[1]).toBe("CTWON2 kills · survived");
+    expect(cells(body[13])[1]).toBe("CT WON2 kills · survived");
     expect(body.filter((r) => r.classList.contains("your-win"))).toHaveLength(13);
     expect(body.filter((r) => r.classList.contains("your-loss"))).toHaveLength(11);
     expect(within(table).getAllByText("YOUR KILL")).toHaveLength(4);
@@ -148,7 +149,8 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     await advance();
     const header = screen.getByLabelText("Match summary");
     expect(header).not.toHaveTextContent("YOU");
-    expect(header).toHaveTextContent(`DATE${day(FACEIT.imported_at)}Added`);
+    expect(header).toHaveTextContent(`DATE${day(FACEIT.imported_at)}`);
+    expect(header).not.toHaveTextContent("Added");
     expect(within(screen.getByRole("table", { name: "Rounds" })).getAllByRole("columnheader")).toHaveLength(4);
   });
 });

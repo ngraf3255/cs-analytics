@@ -441,7 +441,7 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
           <dt>SCORE</dt>
           <dd>{score ? `${Math.max(score.ct, score.t)} – ${Math.min(score.ct, score.t)}` : "—"}</dd>
         </div>
-        <div><dt>DATE</dt><dd>{date.day}</dd><small>{date.label}</small></div>
+        <div><dt>DATE</dt><dd>{date.day}</dd>{date.label ? <small>{date.label}</small> : null}</div>
         <div><dt>SOURCE</dt><dd>{match.source === "upload" ? "Upload" : "Steam sync"}</dd></div>
         {you && <YouTile you={you} />}
       </dl>
@@ -451,9 +451,6 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
       <RoundTimeline rounds={report.rounds} />
       <OpeningDuels report={report} />
       <Scoreboard report={report} />
-      {report.rounds.some((r) => !r.prediction) && (
-        <p className="steam-muted unscored-top-note" role="note">Some rounds unscored (no opening kill or map not in model).</p>
-      )}
       <table className="round-table" aria-label="Rounds">
         <thead>
           <tr><th>Round</th>{inMatch && <th>You</th>}<th>Opening kill</th><th>Actual winner</th><th>Model estimate</th></tr>
@@ -506,6 +503,7 @@ function yourRound(round: RoundReport) {
   return (
     <>
       <span className={`side-chip ${you.side}`}>{sideName(you.side)}</span>
+      {" "}
       {you.won != null && <strong className={you.won ? "you-won" : "you-lost"}>{you.won ? "WON" : "LOST"}</strong>}
       <small>{stats}</small>
     </>

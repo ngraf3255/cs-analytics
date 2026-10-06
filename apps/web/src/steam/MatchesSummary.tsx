@@ -70,8 +70,8 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
           <tbody>
             {you.recent_form.matches.map((m) => (
               <tr key={m.id}>
-                <td title={m.date_source === "played" ? "Played (from Valve)" : "Added (no match date in the demo)"}>
-                  {m.date_source === "played" ? "" : "Added "}{new Date(m.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                <td title={m.date_source === "played" ? "Played (from Valve)" : undefined}>
+                  {new Date(m.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                 </td>
                 <td>{mapLabel(m.map_name)}</td>
                 <td className={m.result === "won" ? "you-won" : m.result === "lost" ? "you-lost" : ""}>{resultText(m) ?? "—"}</td>
