@@ -1,0 +1,11 @@
+[Unit]
+Description=Check origin/main for cs-analytics deploys every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+RandomizedDelaySec=20s
+Unit=cs-analytics-autodeploy.service
+
+[Install]
+WantedBy=timers.target

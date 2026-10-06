@@ -76,6 +76,9 @@ chmod 600 deploy/homelab/.env
 docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d --build
 ```
 
+After the first bring-up, later deploys are automatic from `main`; see
+[Auto-deploy from `main`](#auto-deploy-from-main).
+
 What that starts:
 
 - **db**: Postgres 17, published only as `127.0.0.1:5432` (admin on the VM).
@@ -136,10 +139,13 @@ aren't eligible even though you've spent $5, make the profile public and try aga
    ```sh
    cd /opt/cs-analytics            # repo root on the VM
    nano deploy/homelab/.env        # set: STEAM_WEB_API_KEY=<your key>
+                                   # and set/uncomment TOKEN_ENCRYPTION_KEYS=<fernet key>
    chmod 600 deploy/homelab/.env
    docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d
    curl -sS http://127.0.0.1:8000/steam/status   # "enabled": true
    ```
+
+   Set both in the same edit; see [Turning Steam on](#turning-steam-on) for why.
 
    The variable name is exactly **`STEAM_WEB_API_KEY`**. That's what
    `services/prediction_api/steamlink/config.py` reads, and it matches
@@ -155,6 +161,30 @@ Copy [`deploy/homelab/.env.example`](../deploy/homelab/.env.example). Steam
 features turn on when **both** `DATABASE_URL` and `TOKEN_ENCRYPTION_KEYS` are
 set; the API then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`,
 `FRONTEND_URL`, or `STEAM_WEB_API_KEY` is missing.
+
+### Turning Steam on
+
+On `counterstrike` Steam is currently **off on purpose**: `STEAM_WEB_API_KEY`
+and `TOKEN_ENCRYPTION_KEYS` are both empty in `deploy/homelab/.env`.
+`steamlink/config.py` enables Steam as soon as `DATABASE_URL` +
+`TOKEN_ENCRYPTION_KEYS` are set, and then refuses to start without
+`STEAM_WEB_API_KEY`. So setting the Fernet key alone (without the Steam key)
+crash-loops the API; leave both empty until you have the Steam key. With both
+empty the API runs normally (health, uploads) and `/steam/status` reports
+disabled.
+
+To enable:
+
+1. Set `STEAM_WEB_API_KEY=<key>` ([guide](#steam-web-api-key)).
+2. Set `TOKEN_ENCRYPTION_KEYS` to a Fernet key (uncomment the prepared line in
+   `.env`, or generate one with the command in the table below).
+3. Restart:
+   `docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d`
+   (or `/opt/cs-analytics/deploy/deploy.sh`), then check
+   `curl -sS http://127.0.0.1:8000/steam/status` shows `"enabled": true`.
+
+Auto-deploy only redeploys when `main` moves, so `.env` changes always need
+this manual restart.
 
 | Variable | Example / notes |
 | --- | --- |
@@ -305,6 +335,47 @@ exposure or DDNS churn is undesirable.
 
 The old `api.csgooner.com` CNAME to `*.onrender.com` belongs to the legacy Render
 path. The homelab doesn't use it, so delete it once Render is retired.
+
+## Auto-deploy from `main`
+
+`counterstrike` pulls and redeploys the API on its own; merging to `main` is
+the deploy. No GitHub token or inbound access is needed (anonymous HTTPS fetch
+of the public repo).
+
+| Piece | What it does |
+| --- | --- |
+| [`cs-analytics-autodeploy.timer`](../deploy/systemd/cs-analytics-autodeploy.timer) | Fires every ~2 min (2 min after boot, then 2 min after each run, ±20 s jitter) |
+| [`cs-analytics-autodeploy.service`](../deploy/systemd/cs-analytics-autodeploy.service) | Oneshot; runs `/usr/local/libexec/cs-analytics-autodeploy` as `agent` (in group `docker`) with `REPO_DIR=/opt/cs-analytics`, `BRANCH=main` |
+| [`deploy/autodeploy.sh`](../deploy/autodeploy.sh) | `git fetch origin main`; if it differs from the last deployed sha (`/var/lib/cs-analytics-autodeploy/deployed-sha`), `git reset --hard` to it, keeping untracked/ignored files such as `deploy/homelab/.env` (never `git clean`), then runs `deploy/deploy.sh`. If that script is missing it falls back to `compose up -d --build` + a `/health` wait. The sha is recorded only on success, so a failed deploy retries next tick. `flock` prevents overlapping runs |
+| [`deploy/deploy.sh`](../deploy/deploy.sh) | `compose up -d --build --remove-orphans` (no profiles), waits up to 180 s for `http://127.0.0.1:8000/health`, dumps `ps` + api logs on failure, then prunes dangling images. Safe to run by hand |
+| [`cs-analytics-image-prune.timer`](../deploy/systemd/cs-analytics-image-prune.timer) / [`.service`](../deploy/systemd/cs-analytics-image-prune.service) | Weekly (Sun 04:30 ± 30 min, persistent): `docker image prune -af` + `docker builder prune -f` for anything unused for 7+ days; images used by running containers are kept |
+
+`autodeploy.sh` is installed **outside** the checkout so `git reset` can't
+rewrite it mid-run. Install / update:
+
+```sh
+cd /opt/cs-analytics
+sudo install -m 0755 deploy/autodeploy.sh /usr/local/libexec/cs-analytics-autodeploy
+sudo cp deploy/systemd/cs-analytics-*.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now cs-analytics-autodeploy.timer cs-analytics-image-prune.timer
+```
+
+Changes to `deploy/autodeploy.sh` or the units in `main` aren't picked up
+automatically; re-run the install step above. `deploy/deploy.sh` and everything
+else is picked up on the next deploy.
+
+Operate:
+
+```sh
+systemctl list-timers 'cs-analytics-*'
+journalctl -u cs-analytics-autodeploy -f          # deploy logs
+sudo systemctl start cs-analytics-autodeploy      # deploy now instead of waiting
+cat /var/lib/cs-analytics-autodeploy/deployed-sha # last good deploy
+```
+
+Don't hand-edit tracked files on the VM: the next deploy resets them. Keep
+local config in `deploy/homelab/.env` (ignored).
 
 ## Postgres backups
 
