@@ -41,12 +41,9 @@ export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onG
       <div className={`account-options ${guest ? "two" : ""}`}>
         {steam ? (
           <div className="steam-card">
-            <span className="section-kicker">STEP 1 · VERIFY YOUR STEAM ACCOUNT</span>
+            <span className="section-kicker">STEAM</span>
             <h3>Connect Steam</h3>
-            <p>
-              You sign in on Steam’s own site. We only learn your public SteamID. We never see or ask for your
-              Steam password or Steam Guard codes.
-            </p>
+            <p>Sign in to score your matches.</p>
             <a className="steam-button" href={steamLoginUrl("/#matches")}>
               Sign in through Steam ↗
             </a>

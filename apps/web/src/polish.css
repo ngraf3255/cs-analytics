@@ -1,0 +1,87 @@
+/* Design-review polish (loaded after styles.css, so these win at equal specificity).
+   Same dark grid + lime accent; see the PR "Design review polish" for the why of each block. */
+
+:root{--label:#a3adb5;--label-dim:#8f9aa3}
+
+/* 3 · Tiny monospace labels: at 7–8px with #59656e–#74808a they were ~3–4.8:1 on the panels.
+   Floor them at 9px and >=6.3:1 (--label-dim) / ~8:1 (--label). */
+.result-foot,.result-foot i,.form-note,.unit,.number-unit,.result-status,.probability-heading,
+.probability-summary span,.accuracy>span,.accuracy-caption,.hero-stamp i,footer,footer>span:last-child{font-size:9px!important}
+.result-foot,.probability-heading span:last-child,.result-status,.form-note,.unit,.number-unit,
+.step-count,.eyebrow-index,.accuracy-caption,footer,.footer-brand~span:last-child i{color:var(--label-dim)!important}
+.probability-heading,.probability-summary span,.result-label,.accuracy>span,.hero-stamp span,.hero-stamp i,
+.round-table th,.report-header dt,.field-hint,.topbar nav{color:var(--label)}
+.steam-muted{color:var(--label-dim)!important}
+.topbar nav a:hover,.topbar nav .nav-active{color:#f2f3f0}
+
+/* 1 · Model readout before any prediction: a real empty state, not 50/50 bars and dashes. */
+.readout-empty{flex:1;display:grid;align-content:center;justify-items:start;gap:10px;margin:28px 0 6px;padding:28px 24px;
+  border:1px dashed #2d3740;background:repeating-linear-gradient(0deg,transparent 0 41px,#ffffff05 41px 42px),
+  repeating-linear-gradient(90deg,transparent 0 41px,#ffffff05 41px 42px),#0a0f14}
+.readout-empty strong{font:700 clamp(24px,2.6vw,32px)/1.02 'Barlow Condensed',sans-serif;text-transform:uppercase;color:#e8ecee}
+/* crosshair mark, drawn with borders so it inherits the accent */
+.readout-empty-mark{position:relative;width:34px;height:34px;border:1px solid #3a454f;border-radius:50%;margin-bottom:4px}
+.readout-empty-mark:before,.readout-empty-mark:after{content:'';position:absolute;background:var(--acid)}
+.readout-empty-mark:before{left:50%;top:-6px;bottom:-6px;width:1px;transform:translateX(-50%)}
+.readout-empty-mark:after{top:50%;left:-6px;right:-6px;height:1px;transform:translateY(-50%)}
+
+/* 5 · CT tile: "Counter-Terrorists" wrapped to two lines whenever the form column was narrow
+   (e.g. ~1000px). Never wrap the label: each tile is at least as wide as its content and the
+   pair stacks only when the column can't fit both side by side. */
+.side-options{display:flex;flex-wrap:wrap}
+.side-option{flex:1 1 0;min-width:max-content;white-space:nowrap}
+
+/* …and the same at mid-width for the readout: "COUNTER-TERRORISTS" broke onto two lines.
+   Size the winner to the readout column so it always fits on one. */
+.result-main{container-type:inline-size}
+.winner-name{white-space:nowrap;font-size:clamp(24px,10.8cqi,47px)}
+
+/* 7 · Predict is the primary action; Steam sign-in links are secondary (outlined, not filled). */
+a.steam-button{background:transparent;color:var(--acid);border:1px solid #6f8646;font-weight:500;padding:12px 16px;transition:border-color .2s,background .2s}
+a.steam-button:hover{background:#151f25;border-color:var(--acid)}
+a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
+
+/* 2 · Signed-out matches: a labelled sample report under the sign-in card. */
+.matches-teaser{margin:0;display:grid;gap:10px;min-width:0;position:relative}
+.teaser-caption{display:grid;gap:4px;font-size:12px;line-height:1.6;color:#9aa4ab}
+.teaser-report{border-top:1px solid #27313a;position:relative;pointer-events:none;user-select:none;max-height:330px;overflow:hidden}
+.teaser-report:after{content:'';position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(transparent,#0a0f14)}
+.teaser-report .round-table{min-width:520px}
+
+/* 4 · Narrow screens: the nav no longer drops "My matches"; it folds into a menu instead. */
+.nav-toggle{display:none}
+@media(max-width:640px){
+  .nav-toggle{display:inline-grid;align-content:center;gap:4px;width:40px;height:40px;padding:0 10px;margin-left:12px;
+    background:transparent;border:1px solid #2d3740;cursor:pointer}
+  .nav-toggle span{display:block;height:1px;background:#e8ecee;transition:transform .2s,opacity .2s}
+  .nav-toggle:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
+  .menu-open .nav-toggle{border-color:#6f8646}
+  .menu-open .nav-toggle span:nth-child(1){transform:translateY(5px) rotate(45deg)}
+  .menu-open .nav-toggle span:nth-child(2){opacity:0}
+  .menu-open .nav-toggle span:nth-child(3){transform:translateY(-5px) rotate(-45deg)}
+  .live-indicator{margin-left:auto}
+  .topbar nav.main-nav{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;
+    background:#0c1117;border-bottom:1px solid #202830;box-shadow:0 18px 40px #0008;font-size:13px}
+  .topbar.menu-open nav.main-nav{display:flex}
+  .topbar nav.main-nav a:nth-child(n){display:block;padding:15px 20px;border-top:1px solid #1b232a;white-space:nowrap}
+  .topbar nav.main-nav .nav-active{box-shadow:inset 2px 0 0 var(--acid)}
+  .topbar nav.main-nav .nav-active:after{display:none}
+
+  /* 6 · ROUND 01 stamp: tucked into the top-right corner, above the headline, instead of
+     sitting beside "EVERY ROUND" and crowding it. */
+  .hero{display:block;padding-top:64px}
+  .hero-stamp{position:absolute;top:14px;right:20px;width:58px;height:64px;margin:0}
+  .hero-stamp strong{font-size:30px;margin:3px 0}
+  .hero-stamp span{font-size:7px}
+  .hero-stamp i{display:none}
+  .hero .eyebrow{padding-right:76px;white-space:nowrap}
+  .hero h1{font-size:clamp(46px,14.5vw,61px)}
+
+  .readout-empty{margin-top:22px;padding:22px 18px}
+}
+@media(max-width:380px){.hero .eyebrow-index{display:none}}
+
+/* wordiness pass: hero is headline-only (no ROUND INTELLIGENCE / ROUND 01 stamp). */
+.hero{min-height:0;padding-top:48px;padding-bottom:36px}
+.hero h1{margin-top:0}
+@media(max-width:640px){.hero{padding-top:36px}}
