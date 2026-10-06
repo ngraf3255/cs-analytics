@@ -188,27 +188,24 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .detail-note{margin:0;font-size:11px}
 @media(max-width:640px){.tl-round{width:24px;height:30px;font-size:9px}.tl-round.side-swap{margin-left:8px}}
 
-/* Design must-fix: sample report Model estimate clipped at ~500px. teaser-report used
-   overflow:hidden (for the bottom fade) with a 520px-min table and nowrap cells, so the
-   "CT favoured · CT 66% / T 34%" pill ran past the card. On phones: drop the forced
-   min-width, let the estimate pill wrap inside the card, and allow horizontal scroll as
-   a fallback (overflow-y stays hidden for the fade). pointer-events:auto so touch can
-   scroll if needed (still aria-hidden + user-select:none — decorative sample). */
-.teaser-report{
-  overflow-x:auto;
-  overflow-y:hidden;
-  -webkit-overflow-scrolling:touch;
-  pointer-events:auto;
-}
+/* Design must-fix: sample report rounds table at ~500px. (#37's version of this block never
+   applied: the reduced-motion @media above was missing its closing brace, so every rule after
+   it only matched for reduced-motion users.) On phones: drop the teaser's 330px clip + bottom
+   fade so all five sample rounds show, drop the 520px table floor, and let cells and the
+   Model estimate pill wrap so the table fits inside the card. The real report keeps its
+   nowrap + horizontal scroll. */
 @media(max-width:640px){
-  .teaser-report .round-table{min-width:0}
+  .teaser-report{max-height:none;overflow:visible}
+  .teaser-report:after{display:none}
+  .teaser-report .round-table{display:table;min-width:0;width:100%;overflow:visible;table-layout:auto}
   .teaser-report .round-table td,
-  .teaser-report .round-table th{white-space:normal}
+  .teaser-report .round-table th{white-space:normal;overflow-wrap:break-word;padding:7px 6px;vertical-align:top}
+  .teaser-report .round-table th{letter-spacing:.06em}
   .teaser-report .model-estimate{
     display:inline-block;
     max-width:100%;
     white-space:normal;
-    overflow-wrap:anywhere;
+    overflow-wrap:break-word;
     line-height:1.35;
   }
 }
