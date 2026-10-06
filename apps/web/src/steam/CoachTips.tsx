@@ -1,5 +1,6 @@
 import { coachTips } from "./coachTips";
 import type { MatchReport } from "./types";
+import "./coachTips.css";
 
 /** "What to fix" from this demo only (rule-based, see coachTips). Hidden when you're not in it. */
 export function CoachTips({ report }: { report: MatchReport }) {
