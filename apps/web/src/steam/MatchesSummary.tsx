@@ -174,9 +174,7 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
       </dl>
       {totals.outdated_matches ? (
         <p className="steam-muted outdated-summary" role="note">
-          {plural(totals.outdated_matches, "match")} {totals.outdated_matches === 1 ? "was" : "were"} parsed by an older
-          version and {totals.outdated_matches === 1 ? "is" : "are"} counted as stored (e.g. warmup or knife rounds). Upload
-          {totals.outdated_matches === 1 ? " that demo" : " those demos"} again to update {totals.outdated_matches === 1 ? "it" : "them"} (marked RE-UPLOAD TO UPDATE below).
+          {plural(totals.outdated_matches, "match")} marked OUTDATED — re-upload {totals.outdated_matches === 1 ? "that demo" : "those demos"}.
         </p>
       ) : null}
       {formLine(form) && <p className="summary-form">{formLine(form)}</p>}

@@ -47,10 +47,10 @@ describe("matches parsed by an older version: re-upload to update", () => {
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const items = screen.getAllByRole("listitem");
-    const tagged = items.filter((item) => within(item).queryByText("RE-UPLOAD TO UPDATE"));
+    const tagged = items.filter((item) => within(item).queryByText("OUTDATED"));
     expect(tagged).toHaveLength(1);
     expect(tagged[0]).toHaveTextContent("ancient");
-    expect(within(tagged[0]).getByText("RE-UPLOAD TO UPDATE")).toHaveAttribute(
+    expect(within(tagged[0]).getByText("OUTDATED")).toHaveAttribute(
       "title", "Parsed by an older version (warmup or knife rounds may still be counted). Upload this demo again to update it.");
 
     fireEvent.click(screen.getByRole("button", { name: /ancient/ }));
@@ -68,14 +68,15 @@ describe("matches parsed by an older version: re-upload to update", () => {
     expect(screen.queryByText(/Upload this demo again to update it/)).not.toBeInTheDocument();
   });
 
-  it("the summary counts outdated matches and says how to update them", async () => {
+  it("the summary counts outdated matches in one line", async () => {
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const panel = screen.getByRole("region", { name: "Across your matches" });
     expect(within(panel).getByLabelText("Previous matches summary")).toHaveTextContent("MATCHES342 rounds · 40 scored · 1 to re-upload");
-    expect(panel).toHaveTextContent(
-      "1 match was parsed by an older version and is counted as stored (e.g. warmup or knife rounds). Upload that demo again to update it");
+    const note = within(panel).getByRole("note");
+    expect(note).toHaveTextContent(/^1 match marked OUTDATED — re-upload that demo\.$/);  // the tag's tooltip explains why
+    expect(note).not.toHaveTextContent(/warmup|knife|counted as stored/i);
   });
 
   it("no outdated matches: no count, no note", async () => {
@@ -85,7 +86,7 @@ describe("matches parsed by an older version: re-upload to update", () => {
     }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    expect(screen.queryByText("RE-UPLOAD TO UPDATE")).not.toBeInTheDocument();
+    expect(screen.queryByText("OUTDATED")).not.toBeInTheDocument();
     expect(screen.queryByText(/to re-upload/)).not.toBeInTheDocument();
   });
 

@@ -3,16 +3,10 @@ import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouInMatch } from "./types";
 import { kdText, matchDate, outdatedText, resultText } from "./format";
+import { MatchList, MatchListError, MatchListLoading } from "./MatchList";
 import { MatchesSummaryPanel } from "./MatchesSummary";
 import { ACCOUNT_PATH } from "./routes";
 import { weaponName } from "./weapons";
-
-const MATCH_STATUS: Record<string, string> = {
-  demo_unavailable: "Demo is no longer available from Valve.",
-  demo_too_large: "Demo exceeded the server’s size limit.",
-  parser_error: "Demo could not be parsed.",
-  demo_has_no_rounds: "Demo has no completed rounds.",
-};
 
 const sideName = (side: string | null | undefined) => (side === "ct" ? "CT" : side === "t" ? "T" : "—");
 const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
@@ -118,6 +112,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: ReactNode } | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [listError, setListError] = useState("");
+  const [listReady, setListReady] = useState(false);  // first GET /matches finished (ok or error)
   const [listVersion, setListVersion] = useState(0);  // bumped per list load: refreshes the summary panel
 
   const loadMatches = useCallback(async () => {
@@ -127,6 +122,8 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
       setListError("");
     } catch (reason) {
       setListError(reason instanceof ApiError ? reason.message : "Could not load your matches.");
+    } finally {
+      setListReady(true);
     }
   }, []);
 
@@ -382,30 +379,24 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
         </div>
       )}
       {notice && <div className={notice.tone === "ok" ? "steam-notice" : "steam-error"} role="status">{notice.text}</div>}
-      {listError && <div className="steam-error" role="alert">{listError}</div>}
       <MatchesSummaryPanel refreshKey={listVersion} />
 
-      {matches.length === 0 ? (
+      {!listReady ? (
+        <MatchListLoading />
+      ) : listError && matches.length === 0 ? (
+        <MatchListError message={listError} onRetry={() => { setListReady(false); void loadMatches(); }} />
+      ) : matches.length === 0 ? (
         <EmptyMatches linked={linked} relink={!!relink} awaitingShare={awaitingShare} uploading={uploading} canSync={canSync} steamAvailable={steamAvailable}
           onFile={(file) => void uploadFile(file)} />
       ) : (
-        <ul className="match-list">
-          {matches.map((match) => (
-            <li key={match.id}>
-              <button type="button" className={`match-item ${selected === match.id ? "selected" : ""}`} onClick={() => setSelected(selected === match.id ? null : match.id)}>
-                <strong>
-                  {mapLabel(match.map_name)}{match.source === "upload" && <span className="source-tag">UPLOADED</span>}
-                  {match.outdated && <span className="source-tag outdated-tag" title={outdatedText(match) ?? undefined}>RE-UPLOAD TO UPDATE</span>}
-                </strong>
-                <span>{match.status === "imported" ? `${match.rounds_count} rounds` : MATCH_STATUS[match.status_reason ?? ""] ?? "Not imported"}</span>
-                <span className="steam-muted" title={matchDate(match).label}>
-                  {matchDate(match).played ? matchDate(match).day : `Added ${matchDate(match).day}`}
-                </span>
-              </button>
-              {selected === match.id && match.status === "imported" && <MatchReportView matchId={match.id} />}
-            </li>
-          ))}
-        </ul>
+        <>
+          {listError && (
+            <MatchListError message={listError} onRetry={() => { setListReady(false); void loadMatches(); }} />
+          )}
+          <MatchList matches={matches} selected={selected} onSelect={setSelected}>
+            {(match) => <MatchReportView matchId={match.id} />}
+          </MatchList>
+        </>
       )}
     </div>
   );
