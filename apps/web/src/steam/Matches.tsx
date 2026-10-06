@@ -115,9 +115,15 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
   const [listReady, setListReady] = useState(false);  // first GET /matches finished (ok or error)
   const [listVersion, setListVersion] = useState(0);  // bumped per list load: refreshes the summary panel
 
+  // Reports already opened this list load: re-opening a row is instant (no refetch). Cleared on
+  // every list (re)load, so an import or re-upload never shows a stale report.
+  const reports = useRef(new Map<string, MatchReport>());
+
   const loadMatches = useCallback(async () => {
     try {
-      setMatches((await steamApi.listMatches(50, 0)).matches);
+      const listed = (await steamApi.listMatches(50, 0)).matches;
+      reports.current.clear();
+      setMatches(listed);
       setListVersion((n) => n + 1);
       setListError("");
     } catch (reason) {
@@ -394,7 +400,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
             <MatchListError message={listError} onRetry={() => { setListReady(false); void loadMatches(); }} />
           )}
           <MatchList matches={matches} selected={selected} onSelect={setSelected}>
-            {(match) => <MatchReportView matchId={match.id} />}
+            {(match) => <MatchReportView matchId={match.id} cache={reports.current} />}
           </MatchList>
         </>
       )}
@@ -445,17 +451,18 @@ function EmptyMatches({ linked, relink, awaitingShare, uploading, canSync, steam
   );
 }
 
-function MatchReportView({ matchId }: { matchId: string }) {
-  const [report, setReport] = useState<MatchReport | null>(null);
+function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<string, MatchReport> }) {
+  const [report, setReport] = useState<MatchReport | null>(() => cache?.get(matchId) ?? null);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (cache?.has(matchId)) return;
     let cancelled = false;
     steamApi.getMatch(matchId)
-      .then((body) => { if (!cancelled) setReport(body); })
+      .then((body) => { cache?.set(matchId, body); if (!cancelled) setReport(body); })
       .catch((reason) => { if (!cancelled) setError(reason instanceof ApiError ? reason.message : "Could not load the report."); });
     return () => { cancelled = true; };
-  }, [matchId]);
+  }, [matchId, cache]);
 
   if (error) return <div className="steam-error" role="alert">{error}</div>;
   if (!report) return <p className="steam-muted">Loading round report…</p>;

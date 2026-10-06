@@ -103,3 +103,15 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .account-loading{display:grid;gap:10px}
 .account-loading span{display:block;height:12px;background:#151c23;border-radius:2px}
 .account-loading span:nth-child(1){width:40%}.account-loading span:nth-child(2){width:75%}.account-loading span:nth-child(3){width:55%;height:40px}
+/* Mobile perf: rows off screen skip layout/paint until scrolled near (long lists); phones skip the
+   large blurred shadows and the masked hero grid (expensive to paint, barely visible at that size). */
+.match-list>li{content-visibility:auto;contain-intrinsic-size:auto 64px}
+@media(max-width:640px){
+  .workspace,.topbar nav.main-nav{box-shadow:none}
+  .hero-grid{display:none}
+  .live-indicator span,.result-status i{box-shadow:none}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*:before,*:after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
+}
