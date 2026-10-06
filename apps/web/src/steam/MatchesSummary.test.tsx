@@ -38,7 +38,7 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     const api = installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    expect(api.count("GET /matches/summary")).toBe(1);  // once per list load, not before it
+    expect(api.count("GET /matches/summary?recent=50")).toBe(1);  // once per list load, not before it
 
     const tiles = within(panel()).getByLabelText("Previous matches summary");
     expect(tiles).toHaveTextContent("MATCHES4");
@@ -145,7 +145,7 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     fireEvent.change(input, { target: { files: [new File(["demo"], "match.dem")] } });
     await rtlAct(async () => FakeXHR.last().respond(200, uploadDone));  // already stored: finished at once
     await advance();
-    expect(api.count("GET /matches/summary")).toBe(2);
+    expect(api.count("GET /matches/summary?recent=50")).toBe(2);
     const tiles = within(panel()).getByLabelText("Previous matches summary");
     expect(tiles).toHaveTextContent("MATCHES1");
     expect(tiles).toHaveTextContent("MODEL HIT RATE89%");

@@ -78,7 +78,7 @@ describe("demo upload", () => {
     expect(fileInput()).not.toBeDisabled();
     expect(api.count(`GET ${JOB}`)).toBe(4);
     // the list is reloaded and the new match's report is opened
-    expect(screen.getByText("UPLOADED")).toBeInTheDocument();
+    expect(screen.getByLabelText("Uploaded")).toHaveTextContent("↑");
     expect(api.count(`GET /matches/${MATCH_ID}`)).toBe(1);
     expect(screen.queryByText(/rounds could be scored/)).toBeNull();
 

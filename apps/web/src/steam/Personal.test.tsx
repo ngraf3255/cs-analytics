@@ -40,7 +40,7 @@ const rows = (name: string) => within(within(panel()).getByRole("table", { name 
 describe("personal analytics: the signed-in player's own side each round", () => {
   beforeEach(() => { vi.useFakeTimers(); });
 
-  it("summary: your round win rate as CT / T, K/D, opening duels, maps and recent matches, above the all-player numbers", async () => {
+  it("summary: your round win rate as CT / T, K/D, opening duels, maps (no duplicate recent-matches table), above the all-player numbers", async () => {
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
@@ -51,10 +51,10 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     expect(tiles).toHaveTextContent("OPENING DUELS100%");
     expect(panel()).not.toHaveTextContent("Your last 1 match");
     expect(rows("Your maps").map(cells)).toEqual([["mirage", "1 (1–0)", "24", "54%", "75% (9/12)", "33% (4/12)", "1.71"]]);
-    expect(rows("Your recent matches").map(cells)).toEqual([
-      [`${day(FACEIT.imported_at, { month: "short", day: "numeric" })}`, "mirage", "Won 13–11", "T", "13 of 24", "29 / 17"],
-    ]);
+    expect(within(panel()).queryByRole("table", { name: "Your recent matches" })).not.toBeInTheDocument();
     expect(panel()).not.toHaveTextContent("Not in your stats");
+    // Collapsed row carries W/L · your-side score · K-D (no duplicate recent-matches table).
+    expect(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i })).toBeInTheDocument();
     // The all-player numbers stay, labelled, below the personal ones.
     expect(panel()).toHaveTextContent("ALL PLAYERS IN THESE DEMOS · MAP SIDES");
     const all = within(panel()).getByLabelText("Previous matches summary");
@@ -84,27 +84,26 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     expect(panel()).not.toHaveTextContent("your own team isn’t tracked yet");
   });
 
-  it("match list: played date when Valve gave one, else the import date", async () => {
+  it("match list: date groups when the list spans days; no Added essays on rows", async () => {
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    const items = screen.getAllByRole("listitem");
-    expect(items[0]).toHaveTextContent(day(FACEIT.imported_at));
-    expect(items[1]).toHaveTextContent(day(SYNCED_MIRAGE.played_at!));
-    expect(items[1]).not.toHaveTextContent("Added");
-    expect(within(items[1]).getByTitle("Played (from Valve)")).toBeInTheDocument();
+    // 3 matches on different calendar days → Today/Yesterday/Oct N labels (not per-row essays).
+    expect(screen.getByText("Yesterday")).toBeInTheDocument();  // FACEIT imported Oct 5 vs today Oct 6
+    expect(screen.getByText(day(SYNCED_MIRAGE.played_at!, { month: "short", day: "numeric" }))).toBeInTheDocument();
+    expect(screen.queryByText(/Added /)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i })).toBeInTheDocument();
   });
 
   it("report: your result, side and every round you played highlighted (won / lost, kills, opening duels)", async () => {
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /24 rounds/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i }));
     await advance();
-    const header = screen.getByLabelText("Match summary");
-    expect(header).toHaveTextContent("YOUWon 13–1129 K / 17 D");
-    expect(header).toHaveTextContent(`DATE${day(FACEIT.imported_at)}`);
-    expect(header).not.toHaveTextContent("Added (no match date in the demo)");
+    expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Match summary")).not.toBeInTheDocument();
+    expect(screen.queryByText("Added (no match date in the demo)")).not.toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Rounds" });
     expect(within(table).getAllByRole("columnheader").map((c) => c.textContent)).toEqual(
       ["Round", "You", "Opening kill", "Actual winner", "Model estimate"]);
@@ -126,12 +125,11 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /10 rounds/ }));
+    fireEvent.click(screen.getByRole("button", { name: /mirage · 2–8 · 10r/i }));
     await advance();
-    const header = screen.getByLabelText("Match summary");
-    expect(header).toHaveTextContent("YOUNot in this demo");
-    expect(header).not.toHaveTextContent("Your SteamID isn’t in this match");
-    expect(header).toHaveTextContent(`DATE${day(SYNCED_MIRAGE.played_at!)}Played (from Valve)`);
+    expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Match summary")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Your SteamID/)).not.toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Rounds" });
     expect(within(table).queryByRole("columnheader", { name: "You" })).not.toBeInTheDocument();
     expect(within(table).getAllByRole("row")).toHaveLength(11);
@@ -145,12 +143,11 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /24 rounds/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i }));
     await advance();
-    const header = screen.getByLabelText("Match summary");
-    expect(header).not.toHaveTextContent("YOU");
-    expect(header).toHaveTextContent(`DATE${day(FACEIT.imported_at)}`);
-    expect(header).not.toHaveTextContent("Added");
+    expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Match summary")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^YOU$/)).not.toBeInTheDocument();
     expect(within(screen.getByRole("table", { name: "Rounds" })).getAllByRole("columnheader")).toHaveLength(4);
   });
 });

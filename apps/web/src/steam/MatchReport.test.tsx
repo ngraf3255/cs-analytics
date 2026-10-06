@@ -30,21 +30,19 @@ describe("match list and per-round report (real API response shapes)", () => {
     expect(screen.getByText("Signed in as", { exact: false })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Account settings" })[0]).toHaveAttribute("href", "/account");
     expect(screen.queryByRole("form", { name: "Link match history" })).toBeNull();
-    const item = screen.getByRole("button", { name: /mirage/i });
-    expect(item).toHaveTextContent("10 rounds");
-    expect(item).toHaveTextContent("UPLOADED");
+    const item = screen.getByRole("button", { name: /mirage · 2–8 · 10r/i });
+    expect(item).toHaveTextContent("· 10r");
+    expect(within(item).getByLabelText("Uploaded")).toHaveTextContent("↑");
     expect(api.count(`GET /matches/${MATCH.id}`)).toBe(0);
 
     fireEvent.click(item);
     await advance();
     expect(api.count(`GET /matches/${MATCH.id}`)).toBe(1);
-    // header: map, score, date, source (no essay captions)
-    const header = screen.getByLabelText("Match summary");
-    expect(header).toHaveTextContent("MAPmirage");
-    expect(header).toHaveTextContent("SCORE8 – 2");
-    expect(header).not.toHaveTextContent("sides at the end");
-    expect(header).toHaveTextContent(`DATE${new Date(reportFixture.match.imported_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`);
-    expect(header).toHaveTextContent("SOURCEUpload");
+    // Expand: Share + timeline/table — no restating MAP/SCORE/DATE/SOURCE tiles
+    expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Match summary")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^MAP$/)).not.toBeInTheDocument();
+    expect(screen.queryByText("sides at the end")).not.toBeInTheDocument();
 
     const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
     expect(rows).toHaveLength(10);
@@ -67,16 +65,20 @@ describe("match list and per-round report (real API response shapes)", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  it("report header falls back when the score is unknown and names Steam sync as the source", async () => {
+  it("collapsed row shows — when the score is unknown (no restating header tiles)", async () => {
     const synced = { ...reportFixture, match: { ...reportFixture.match, source: "steam_sync", score: null } };
-    installFakeApi(routes({ [`GET /matches/${MATCH.id}`]: { status: 200, body: synced } }));
+    installFakeApi(routes({
+      "GET /matches?limit=50&offset=0": { status: 200, body: { matches: [{ ...MATCH, source: "steam_sync", score: null }], limit: 50, offset: 0 } },
+      [`GET /matches/${MATCH.id}`]: { status: 200, body: synced },
+    }));
     render(<SteamSection />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /mirage/i }));
+    const item = screen.getByRole("button", { name: /mirage · 10r/i });
+    expect(within(item).getByText("—")).toBeInTheDocument();
+    fireEvent.click(item);
     await advance();
-    const header = screen.getByLabelText("Match summary");
-    expect(header).toHaveTextContent("SCORE—");
-    expect(header).toHaveTextContent("SOURCESteam sync");
+    expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Match summary")).not.toBeInTheDocument();
   });
 
   it("shows unavailable / stub matches without a report", async () => {
@@ -85,8 +87,9 @@ describe("match list and per-round report (real API response shapes)", () => {
     render(<SteamSection />);
     await advance();
     const item = screen.getByRole("button", { name: /Unknown map/ });
-    expect(item).toHaveTextContent("NOT IMPORTED");
+    expect(within(item).getByLabelText("Not imported")).toHaveTextContent("⊘");
     expect(item).not.toHaveTextContent(/Valve/);
+    expect(item).not.toHaveTextContent("NOT IMPORTED");
     fireEvent.click(item);
     await advance();
     expect(screen.getByRole("note")).toHaveTextContent("Demo gone from Valve — upload the .dem above if you have it.");

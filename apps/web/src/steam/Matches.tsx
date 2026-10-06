@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
-import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouInMatch } from "./types";
-import { matchDate, outdatedText, resultText } from "./format";
-import { MatchList, MatchListError, MatchListLoading } from "./MatchList";
+import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouAnalytics } from "./types";
+import { outdatedText } from "./format";
+import { MatchList, MatchListError, MatchListLoading, type YouMatchBits } from "./MatchList";
 import { OpeningDuels, RoundTimeline } from "./MatchDetail";
 import { CoachTips } from "./CoachTips";
 import { MatchesSummaryPanel } from "./MatchesSummary";
@@ -102,6 +102,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
   const [listError, setListError] = useState("");
   const [listReady, setListReady] = useState(false);  // first GET /matches finished (ok or error)
   const [listVersion, setListVersion] = useState(0);  // bumped per list load: refreshes the summary panel
+  const [youById, setYouById] = useState<Record<string, YouMatchBits>>({});
 
   // Reports already opened this list load: re-opening a row is instant (no refetch). Cleared on
   // every list (re)load, so an import or re-upload never shows a stale report.
@@ -333,6 +334,14 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
   const syncBusy = syncing || syncJobs !== null;
   const syncLabel = syncing ? "SYNCING…" : syncJobs ? syncJobsLabel(syncJobs) : hasMore ? "SYNC MORE MATCHES" : "SYNC MATCHES";
 
+  const onPersonalMatches = useCallback((rows: YouAnalytics["recent_form"]["matches"]) => {
+    const next: Record<string, YouMatchBits> = {};
+    for (const row of rows) {
+      next[row.id] = { result: row.result, score: row.score, kills: row.kills, deaths: row.deaths };
+    }
+    setYouById(next);
+  }, []);
+
   const linked = me.match_access.linked;
   const relink = linked ? me.match_access.needs_relink ?? null : null;
   // Auth code saved, no share code yet: nothing to sync from until they add one after a match.
@@ -359,7 +368,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
         </div>
       )}
       {notice && <div className={notice.tone === "ok" ? "steam-notice" : "steam-error"} role="status">{notice.text}</div>}
-      <MatchesSummaryPanel refreshKey={listVersion} />
+      <MatchesSummaryPanel refreshKey={listVersion} onPersonalMatches={onPersonalMatches} />
 
       {!listReady ? (
         <MatchListLoading />
@@ -374,7 +383,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
             <MatchListError message={listError} onRetry={() => { setListReady(false); void loadMatches(); }} />
           )}
           {canSync && !linked && <LinkHistoryTip />}
-          <MatchList matches={matches} selected={selected} onSelect={setSelected}>
+          <MatchList matches={matches} selected={selected} onSelect={setSelected} youById={youById}>
             {(match) => <MatchReportView matchId={match.id} cache={reports.current} />}
           </MatchList>
         </>
@@ -429,22 +438,10 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
   if (!report) return <p className="steam-muted">Loading round report…</p>;
 
   const { match } = report;
-  const score = match.score ?? null;
-  const date = matchDate(match);
   const you = report.you;
   const inMatch = you?.status === "in_match";
   return (
     <div className="match-report">
-      <dl className={`report-header ${you ? "with-you" : ""}`} aria-label="Match summary">
-        <div><dt>MAP</dt><dd>{mapLabel(match.map_name)}</dd></div>
-        <div>
-          <dt>SCORE</dt>
-          <dd>{score ? `${Math.max(score.ct, score.t)} – ${Math.min(score.ct, score.t)}` : "—"}</dd>
-        </div>
-        <div><dt>DATE</dt><dd>{date.day}</dd>{date.label ? <small>{date.label}</small> : null}</div>
-        <div><dt>SOURCE</dt><dd>{match.source === "upload" ? "Upload" : "Steam sync"}</dd></div>
-        {you && <YouTile you={you} />}
-      </dl>
       <div className="report-actions"><ShareButton card={() => matchCard(report)} label="Share match" /></div>
       {outdatedText(match) && <div className="outdated-note" role="note">{outdatedText(match)}</div>}
       <CoachTips report={report} />
@@ -510,21 +507,3 @@ function yourRound(round: RoundReport) {
   );
 }
 
-/** The signed-in player's line in the report header. */
-function YouTile({ you }: { you: YouInMatch }) {
-  if (you.status !== "in_match") {
-    return (
-      <div className="you-tile muted">
-        <dt>YOU</dt>
-        <dd>{you.status === "not_in_match" ? "Not in this demo" : "Not tracked"}</dd>
-      </div>
-    );
-  }
-  return (
-    <div className="you-tile">
-      <dt>YOU</dt>
-      <dd>{resultText(you) ?? `${you.won} of ${you.rounds} rounds won`}</dd>
-      <small>{you.kills} K / {you.deaths} D</small>
-    </div>
-  );
-}

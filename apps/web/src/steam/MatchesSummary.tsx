@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { steamApi } from "./api";
 import { ApiError } from "./errors";
-import { kdText, resultText } from "./format";
+import { kdText } from "./format";
 import { FormTrend } from "./FormTrend";
 import { ShareButton } from "./ShareButton";
 import { profileCard } from "./shareCard";
@@ -64,32 +64,22 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
           ))}
         </tbody>
       </table>
-      {you.recent_form.matches.length > 0 && (
-        <table className="round-table" aria-label="Your recent matches">
-          <thead><tr><th>Date</th><th>Map</th><th>Result</th><th>Started</th><th>Rounds won</th><th>K / D</th></tr></thead>
-          <tbody>
-            {you.recent_form.matches.map((m) => (
-              <tr key={m.id}>
-                <td title={m.date_source === "played" ? "Played (from Valve)" : undefined}>
-                  {new Date(m.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                </td>
-                <td>{mapLabel(m.map_name)}</td>
-                <td className={m.result === "won" ? "you-won" : m.result === "lost" ? "you-lost" : ""}>{resultText(m) ?? "—"}</td>
-                <td>{m.first_side === "ct" ? "CT" : "T"}</td>
-                <td>{m.won} of {m.rounds}</td>
-                <td>{m.kills} / {m.deaths}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
     </div>
   );
 }
 
 /** Compact analytics across all the user's previous matches (GET /matches/summary), shown above
  * the match list. ``refreshKey`` changes whenever the list is (re)loaded, e.g. after an import. */
-export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
+/** Cover the match list window so collapsed rows can join W/L · you–them · K-D. */
+const LIST_RECENT = 50;
+
+type MatchesSummaryPanelProps = {
+  refreshKey: number;
+  /** Personal recent_form rows for MatchList collapsed chips (id → bits). */
+  onPersonalMatches?: (matches: YouAnalytics["recent_form"]["matches"]) => void;
+};
+
+export function MatchesSummaryPanel({ refreshKey, onPersonalMatches }: MatchesSummaryPanelProps) {
   const [summary, setSummary] = useState<MatchesAnalytics | null>(null);
   const [error, setError] = useState("");
   const [unsupported, setUnsupported] = useState(false);
@@ -97,16 +87,22 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
   useEffect(() => {
     if (refreshKey < 1) return;  // wait for the match list: one request per list load
     let cancelled = false;
-    steamApi.getMatchesSummary()
-      .then((body) => { if (!cancelled) { setSummary(body); setError(""); } })
+    steamApi.getMatchesSummary(LIST_RECENT)
+      .then((body) => {
+        if (cancelled) return;
+        setSummary(body);
+        setError("");
+        onPersonalMatches?.(body.you?.recent_form.matches ?? []);
+      })
       .catch((reason) => {
         if (cancelled) return;
+        onPersonalMatches?.([]);
         // An older API has no summary route (it answers 404 match_not_found): show nothing.
         if (reason instanceof ApiError && reason.status === 404) setUnsupported(true);
         else setError(reason instanceof ApiError ? reason.message : "");
       });
     return () => { cancelled = true; };
-  }, [refreshKey]);
+  }, [refreshKey, onPersonalMatches]);
 
   if (unsupported) return null;
   if (!summary) {
