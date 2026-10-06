@@ -15,11 +15,23 @@ Interactive API docs are available at `http://localhost:8000/docs`.
 
 ## Steam match sync (feature-flagged)
 
-Steam sign-in, match-history linking and sync are **disabled** (routes return
-`503 steam_sync_disabled`, `GET /steam/status` returns `{"enabled": false}`)
-unless both `DATABASE_URL` and `TOKEN_ENCRYPTION_KEYS` are set. When enabled,
-these are also required: `SESSION_SECRET` (32+ chars), `PUBLIC_API_URL`,
-`FRONTEND_URL`, `STEAM_WEB_API_KEY`.
+Two feature levels (`steamlink/config.py`); a route whose feature is off
+returns `503 steam_sync_disabled`:
+
+- **Demo upload + reports** (`/me`, `/matches*`, `POST /matches/upload`,
+  `POST /auth/guest`, logout, `DELETE /me`): `DATABASE_URL` + `SESSION_SECRET`
+  (32+ chars). No Steam key. `POST /auth/guest` starts a guest session (a
+  `users` row with `steam_id = "guest:<hex>"`, no personal "you" analytics)
+  only when `GUEST_UPLOADS=true`; by default it is off (503
+  `guest_uploads_disabled`) and uploads need a Steam sign-in.
+- **Steam** (OpenID login, `/steam/match-access`, `/steam/sync`,
+  `/steam/auto-sync`, automatic sync): additionally `TOKEN_ENCRYPTION_KEYS` +
+  `STEAM_WEB_API_KEY`, and then `PUBLIC_API_URL` + `FRONTEND_URL` are required.
+  Guests get `403 steam_sign_in_required` on these. `STEAM_WEB_API_KEY`
+  without `TOKEN_ENCRYPTION_KEYS` refuses to start.
+
+`GET /steam/status`: `{"enabled": <steam, kept for older web builds>, "steam",
+"upload", "guest", "auto_sync"}`.
 
 Optional: `SESSION_COOKIE_SAMESITE` (lax), `SESSION_COOKIE_SECURE` (true),
 `SESSION_COOKIE_DOMAIN`, `SYNC_MAX_MATCHES_PER_REQUEST` (3), `SYNC_JOB_MAX_ATTEMPTS` (5),
@@ -72,6 +84,18 @@ fresh share code after a break of 30+ days). Each `422` names the box to fix:
 `invalid_auth_code` (Valve) / `invalid_share_code_format`,
 `share_code_is_auth_code`, `invalid_share_code` (Valve); plus `consent_required`,
 `429 valve_rate_limited`, `502 valve_unavailable`.
+
+`share_code` is optional: signing in never needs a match, and someone without a
+recent Competitive/Premier/Wingman match has no share code yet. An empty
+`share_code` saves the auth code alone (format-checked only; Valve can't be
+asked without a known share code) and `GET /me` shows
+`match_access.awaiting_share_code: true`; `POST /steam/sync` answers
+`409 needs_share_code` and auto-sync is paused (`paused_reason:
+needs_share_code`) until the user adds a share code after a match (an empty
+`auth_code` then keeps the stored one). While a share code is stored, an empty
+`share_code` keeps it (new auth code only, checked with Valve against it).
+Linked with neither code: `422 share_code_required`. No migration: the
+`cursor_share_code` column stays `NOT NULL` and `""` means "no share code yet".
 
 `GET /me` `match_access.needs_relink` is `{reason, field}` when the last sync
 failed in a way only new codes fix, until the codes are updated:

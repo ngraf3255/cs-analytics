@@ -10,8 +10,14 @@ import type { AutoSync, Me, NeedsRelink } from "./types";
 
 type Props = {
   me: Me | null;
+  /** Steam sign-in is configured on the server (else "Connect Steam" is shown as coming soon). */
+  steam?: boolean;
+  /** Uploading without Steam (guest session) is available. */
+  guest?: boolean;
   onChange: () => Promise<unknown>;
   onSignedOut: () => void;
+  /** A guest session was started (with the demo the user picked, to upload right away). */
+  onGuest?: (me: Me, file?: File) => void;
 };
 
 function errorText(reason: unknown, fallback: string) {
@@ -28,23 +34,124 @@ export const RELINK_TEXT: Record<string, string> = {
     "Your saved Game Authentication Code can’t be read any more (the server’s key changed). Paste it again below.",
 };
 
-export function SteamAccount({ me, onChange, onSignedOut }: Props) {
+export function SteamAccount({ me, steam = true, guest = false, onChange, onSignedOut, onGuest }: Props) {
   if (!me) {
     return (
-      <div className="steam-card">
-        <span className="section-kicker">STEP 1 · VERIFY YOUR STEAM ACCOUNT</span>
-        <h3>Connect Steam</h3>
-        <p>
-          You sign in on Steam’s own site. We only learn your public SteamID. We never see or ask for your
-          Steam password or Steam Guard codes.
-        </p>
-        <a className="steam-button" href={steamLoginUrl("/#matches")}>
-          Sign in through Steam ↗
-        </a>
+      <div className={`account-options ${guest ? "two" : ""}`}>
+        {steam ? (
+          <div className="steam-card">
+            <span className="section-kicker">STEP 1 · VERIFY YOUR STEAM ACCOUNT</span>
+            <h3>Connect Steam</h3>
+            <p>
+              You sign in on Steam’s own site. We only learn your public SteamID. We never see or ask for your
+              Steam password or Steam Guard codes.
+            </p>
+            <a className="steam-button" href={steamLoginUrl("/#matches")}>
+              Sign in through Steam ↗
+            </a>
+          </div>
+        ) : (
+          <div className="steam-card soft-disabled" aria-label="Connect Steam (coming soon)">
+            <span className="section-kicker">STEAM SYNC · COMING SOON</span>
+            <h3>Connect Steam</h3>
+            <p>
+              Automatic match import from your Steam match history isn’t switched on yet.
+              {guest ? " You can already upload demos and get full round reports." : ""}
+            </p>
+            <button type="button" className="steam-button" disabled aria-disabled="true">Sign in through Steam · soon</button>
+          </div>
+        )}
+        {guest && onGuest && <GuestStart onGuest={onGuest} />}
       </div>
     );
   }
+  if (me.account === "guest") return <GuestAccount steam={steam} onSignedOut={onSignedOut} />;
   return <SignedIn me={me} onChange={onChange} onSignedOut={onSignedOut} />;
+}
+
+const DEMO_ACCEPT = ".dem,.bz2,application/x-bzip2";
+
+/** Signed out: upload a demo right away, no Steam account needed (starts a guest session). */
+function GuestStart({ onGuest }: { onGuest: (me: Me, file?: File) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function start(file?: File) {
+    setBusy(true);
+    setError("");
+    try {
+      onGuest(await steamApi.startGuest(), file);
+    } catch (reason) {
+      setError(errorText(reason, "Could not start a guest session."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="steam-card">
+      <span className="section-kicker">NO STEAM NEEDED</span>
+      <h3>Upload a demo</h3>
+      <p>
+        Drop in any CS2 <code>.dem</code> or <code>.dem.bz2</code> (your replays live in <code>game/csgo/replays</code>)
+        and get a round-by-round report. Your uploads stay tied to this browser.
+      </p>
+      <div className="steam-actions">
+        <label className={`steam-button upload-button guest-upload ${busy ? "busy" : ""}`} aria-disabled={busy}>
+          <span>{busy ? "STARTING…" : "CHOOSE A DEMO FILE"}</span>
+          <input type="file" accept={DEMO_ACCEPT} disabled={busy} aria-label="Choose a demo file to upload without Steam"
+            onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void start(file); }} />
+        </label>
+        <button type="button" className="ghost-button" onClick={() => void start()} disabled={busy}>Open my uploads</button>
+      </div>
+      {error && <div className="steam-error" role="alert">{error}</div>}
+    </div>
+  );
+}
+
+/** Signed in as a guest (POST /auth/guest). */
+function GuestAccount({ steam, onSignedOut }: { steam: boolean; onSignedOut: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function run(action: () => Promise<unknown>, fallback: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      onSignedOut();
+    } catch (reason) {
+      setError(errorText(reason, fallback));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const signOut = () => {
+    if (!window.confirm("Sign out of this guest session? Guest uploads can’t be opened again after signing out.")) return;
+    void run(() => steamApi.logout(), "Could not sign out.");
+  };
+  const deleteAll = () => {
+    if (!window.confirm("Delete this guest session and every match you uploaded? This cannot be undone.")) return;
+    void run(() => steamApi.deleteMe(), "Could not delete your data.");
+  };
+
+  return (
+    <div className="steam-card">
+      <span className="section-kicker">GUEST SESSION</span>
+      <h3>Uploading as a guest</h3>
+      <p>
+        Your uploads and reports are tied to this browser for about two weeks. Clearing cookies or signing out ends access to them.
+        {steam ? " Sign in through Steam for a permanent list with automatic match sync (it starts a separate list)." : " Steam sign-in and automatic sync are coming soon."}
+      </p>
+      <div className="steam-actions">
+        {steam && <a className="steam-button" href={steamLoginUrl("/#matches")}>Sign in through Steam ↗</a>}
+        <button type="button" className="ghost-button" onClick={signOut} disabled={busy}>Sign out</button>
+        <button type="button" className="danger-button" onClick={deleteAll} disabled={busy}>Delete my data</button>
+      </div>
+      {error && <div className="steam-error" role="alert">{error}</div>}
+    </div>
+  );
 }
 
 function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promise<unknown>; onSignedOut: () => void }) {
@@ -53,6 +160,7 @@ function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promi
   const [busy, setBusy] = useState(false);
   const access = me.match_access;
   const relink = access.linked ? access.needs_relink ?? null : null;
+  const awaitingShare = access.linked && !!access.awaiting_share_code;
 
   async function run(action: () => Promise<unknown>, fallback: string) {
     setBusy(true);
@@ -108,11 +216,20 @@ function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promi
       {access.linked ? (
         <div className="steam-linked">
           <p>
-            Match history linked. Game Authentication Code <code>{access.auth_code_hint}</code>
+            {awaitingShare ? "Game Authentication Code saved" : "Match history linked. Game Authentication Code"}{" "}
+            <code>{access.auth_code_hint}</code>
             {access.updated_at && <> · updated {new Date(access.updated_at).toLocaleString()}</>}
           </p>
           <AutoSyncStatus me={me} onChange={onChange} />
-          {relink ? (
+          {awaitingShare && !relink ? (
+            <>
+              <p className="steam-notice awaiting-share" role="status">
+                Waiting for your first match. After you play a Competitive, Premier or Wingman match, paste its share
+                code below once and we sync from there (automatically, if auto-sync is on).
+              </p>
+              <LinkForm onLinked={linked} linked awaitingShare authHint={access.auth_code_hint} />
+            </>
+          ) : relink ? (
             <>
               <div className="steam-error relink-alert" role="alert">
                 <strong>Re-link needed to keep syncing.</strong> {RELINK_TEXT[relink.reason] ?? RELINK_TEXT.invalid_known_code}
@@ -131,7 +248,13 @@ function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promi
           </p>
         </div>
       ) : (
-        <LinkForm onLinked={linked} linked={false} />
+        <>
+          <p className="steam-muted link-optional">
+            You’re signed in. Linking match history is optional: upload demos below any time, and link whenever you
+            like. No recent match yet? Save just your authentication code and add a share code after you play.
+          </p>
+          <LinkForm onLinked={linked} linked={false} />
+        </>
       )}
       <div className="steam-actions">
         {access.linked && (
@@ -150,6 +273,7 @@ export const AUTO_SYNC_PAUSED_TEXT: Record<string, string> = {
   turned_off: "auto-sync off",
   needs_relink: "auto-sync paused until you re-link",
   not_linked: "auto-sync starts once you link",
+  needs_share_code: "auto-sync starts once you add a share code",
   server_disabled: "auto-sync isn’t available on this server",
   demo_retrieval_not_configured: "auto-sync starts once the server can download demos",
 };
@@ -216,9 +340,11 @@ type LinkFormProps = {
   authHint?: string | null;
   /** The last sync needs new codes: which one to replace. */
   relink?: NeedsRelink | null;
+  /** Auth code saved without a share code yet: this form adds the first one. */
+  awaitingShare?: boolean;
 };
 
-function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
+function LinkForm({ onLinked, linked, authHint, relink, awaitingShare = false }: LinkFormProps) {
   const [authCode, setAuthCode] = useState("");
   const [shareCode, setShareCode] = useState("");
   const [consent, setConsent] = useState(false);
@@ -232,7 +358,10 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
   // The stored auth code can be kept unless it is the one that stopped working.
   const authOptional = linked && relink?.field !== "auth_code";
   const auth = checkAuthCode(authCode, authOptional);
-  const share = checkShareCode(shareCode);
+  // The share code is optional (nobody needs a recent match to link) unless it is the one that
+  // stopped working. Linked users still have to change something (the server says share_code_required).
+  const shareOptional = relink?.field !== "share_code";
+  const share = checkShareCode(shareCode, shareOptional);
   const ids = { auth: "link-auth-hint", share: "link-share-hint" };
 
   useEffect(() => {
@@ -247,12 +376,13 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
     setTouched({ auth: true, share: true });
     setError("");
     setFieldError(null);
-    if (!auth.ok || !share.ok) {
+    const nothingToSave = linked && !auth.value && !share.value;
+    if (!auth.ok || !share.ok || nothingToSave) {
       if (!auth.ok) {
         if (!authCode.trim()) setFieldError({ field: "auth", text: `Paste your Game Authentication Code (${AUTH_CODE_EXAMPLE}).` });
         authRef.current?.focus();
       } else {
-        if (!shareCode.trim()) setFieldError({ field: "share", text: "Paste a recent match sharing code (CSGO-…)." });
+        if (!shareCode.trim()) setFieldError({ field: "share", text: "Paste a match sharing code (CSGO-…)." });
         shareRef.current?.focus();
       }
       return;
@@ -276,10 +406,12 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
     }
   }
 
-  const foundInLink = share.ok && share.value !== shareCode.trim();
+  const foundInLink = share.ok && !!share.value && share.value !== shareCode.trim();
+  const kicker = awaitingShare ? "ADD A MATCH SHARING CODE" : linked ? "UPDATE MATCH-HISTORY CODES" : "STEP 2 · AUTHORIZE MATCH HISTORY (OPTIONAL)";
+  const submitText = linked ? (awaitingShare ? "SAVE SHARE CODE" : "SAVE NEW CODES") : "LINK MATCH HISTORY";
   return (
     <form className="steam-form" onSubmit={submit} noValidate aria-label="Link match history">
-      <span className="section-kicker">{linked ? "UPDATE MATCH-HISTORY CODES" : "STEP 2 · AUTHORIZE MATCH HISTORY"}</span>
+      <span className="section-kicker">{kicker}</span>
       <ol className="steam-steps">
         <li>
           Open Valve’s <a href={AUTH_CODE_URL} target="_blank" rel="noreferrer">Access to Your Match History ↗</a> page
@@ -290,8 +422,9 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
         <li>
           On the same page, copy <em>Your most recently completed match token</em>. That is a <strong>match sharing code</strong>{" "}
           (<code>CSGO-xxxxx-…</code>). Or, in CS2, open <em>Watch → Your Matches</em> and copy the sharing code of one of your
-          last matches. Pasting the whole <code>steam://…</code> share link is fine too. No code yet? Play a Competitive,
-          Premier or Wingman match first.
+          last matches. Pasting the whole <code>steam://…</code> share link is fine too. No code yet (no recent
+          Competitive, Premier or Wingman match)? Leave it empty: we save your authentication code now and you add a
+          share code here after your next match.
         </li>
         <li>
           We import that match and every <em>newer</em> one, not your whole history: Valve’s codes expire after about 30 days.
@@ -316,7 +449,12 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
           : auth.ok && auth.value && <span className="field-hint ok">Looks right.</span>}
       </label>
       <label className="field">
-        <span className="field-label">{relink?.field === "share_code" ? "NEW MATCH SHARING CODE" : "RECENT MATCH SHARING CODE"}</span>
+        <span className="field-label">
+          {relink?.field === "share_code" ? "NEW MATCH SHARING CODE" : "RECENT MATCH SHARING CODE"}
+          {shareOptional && !awaitingShare && (
+            <span className="unit">{linked ? "OPTIONAL · LEAVE EMPTY TO KEEP YOURS" : "OPTIONAL · ADD AFTER YOUR NEXT MATCH"}</span>
+          )}
+        </span>
         <span className="number-wrap">
           <input ref={shareRef} type="text" autoComplete="off" spellCheck={false} name="share_code" placeholder={SHARE_CODE_EXAMPLE} value={shareCode}
             aria-invalid={shareMessage ? true : undefined} aria-describedby={shareMessage ? ids.share : undefined}
@@ -325,7 +463,7 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
         </span>
         {shareMessage
           ? <span id={ids.share} className="field-hint error">{shareMessage}</span>
-          : share.ok && <span className="field-hint ok">{foundInLink ? `Found ${share.value} in the link.` : "Looks right."}</span>}
+          : share.ok && share.value && <span className="field-hint ok">{foundInLink ? `Found ${share.value} in the link.` : "Looks right."}</span>}
       </label>
       <label className="steam-consent">
         <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
@@ -335,7 +473,7 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
         </span>
       </label>
       <button className="submit-button" type="submit" disabled={busy || !consent}>
-        <span>{busy ? "CHECKING WITH VALVE" : linked ? "SAVE NEW CODES" : "LINK MATCH HISTORY"}</span><span className="button-arrow">↗</span>
+        <span>{busy ? (share.value ? "CHECKING WITH VALVE" : "SAVING") : submitText}</span><span className="button-arrow">↗</span>
       </button>
       {!consent && !busy && <span className="field-hint">Tick the box above to enable linking.</span>}
       {error && <div className="steam-error" role="alert">{error}</div>}

@@ -1,0 +1,20 @@
+/* Round predictor: quick presets, time chips (see roundForm.ts) */
+.preset-field{margin-top:18px}
+.preset-row{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:34px;border:1px solid #2d3740;background:#0c1117;color:#aab3ba;font:500 10px 'DM Mono',monospace;letter-spacing:.06em;padding:0 11px;cursor:pointer;transition:border-color .2s,background .2s,color .2s}
+.chip:hover:not(:disabled){border-color:#4b5a66;color:#e8ebed}
+.chip.selected{background:#151f25;border-color:#6f8646;color:#f1f4ed}
+.chip:disabled{opacity:.5;cursor:not-allowed}
+.chip:focus-visible{outline:1px solid var(--acid);outline-offset:1px}
+.preset-chip{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;padding:6px 11px;text-align:left}
+.preset-chip strong{font:700 13px 'Barlow Condensed',sans-serif;letter-spacing:.04em;text-transform:uppercase;color:inherit}
+.preset-chip span{font-size:9px;color:#7f8b93}
+.time-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+
+@media(max-width:640px){
+  /* 16px keeps iOS Safari from zooming into the field on focus */
+  .select-wrap select,.number-wrap input{font-size:16px}
+  .preset-row{display:grid;grid-template-columns:1fr 1fr}
+  .preset-chip{width:100%}
+  .time-chips .chip{flex:1 1 0}
+}

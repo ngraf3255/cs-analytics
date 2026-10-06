@@ -107,7 +107,7 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     fireEvent.click(within(group()).getByRole("button", { name: "Rounds CSV" }));
     await advance();
     expect(saved).toEqual([]);
-    expect(within(group()).getByRole("status")).toHaveTextContent("Export failed. Sign in with Steam to continue.");
+    expect(within(group()).getByRole("status")).toHaveTextContent("Export failed. Sign in to continue.");
   });
 
   it("api.downloadExport: unreachable API -> api_unreachable; file name uses the UTC date", async () => {

@@ -1,5 +1,5 @@
 import { ApiError } from "./errors";
-import type { AutoSync, MatchAccess, MatchesAnalytics, MatchReport, MatchSummary, Me, SyncResult, SyncState, UploadJob } from "./types";
+import type { AutoSync, MatchAccess, MatchesAnalytics, MatchReport, MatchSummary, Me, ServerStatus, SyncResult, SyncState, UploadJob } from "./types";
 
 const apiBase = (
   import.meta.env.VITE_API_BASE_URL ||
@@ -149,8 +149,10 @@ export function steamLoginUrl(next = "/#matches"): string {
 }
 
 export const steamApi = {
-  status: () => request<{ enabled: boolean }>("/steam/status"),
+  status: () => request<ServerStatus>("/steam/status"),
   me: () => request<Me>("/me"),
+  /** Start (or keep) a guest session: upload demos without Steam. */
+  startGuest: () => request<Me>("/auth/guest", { method: "POST" }, true),
   logout: () => request<void>("/auth/logout", { method: "POST" }, true),
   deleteMe: () => request<void>("/me", { method: "DELETE" }, true),
   putMatchAccess: (body: { auth_code: string; share_code: string; consent: boolean }) =>
