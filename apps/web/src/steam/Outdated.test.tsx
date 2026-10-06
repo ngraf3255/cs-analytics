@@ -47,10 +47,10 @@ describe("matches parsed by an older version: re-upload to update", () => {
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const items = screen.getAllByRole("listitem");
-    const tagged = items.filter((item) => within(item).queryByText("RE-UPLOAD TO UPDATE"));
+    const tagged = items.filter((item) => within(item).queryByText("OUTDATED"));
     expect(tagged).toHaveLength(1);
     expect(tagged[0]).toHaveTextContent("ancient");
-    expect(within(tagged[0]).getByText("RE-UPLOAD TO UPDATE")).toHaveAttribute(
+    expect(within(tagged[0]).getByText("OUTDATED")).toHaveAttribute(
       "title", "Parsed by an older version (warmup or knife rounds may still be counted). Upload this demo again to update it.");
 
     fireEvent.click(screen.getByRole("button", { name: /ancient/ }));
@@ -85,7 +85,7 @@ describe("matches parsed by an older version: re-upload to update", () => {
     }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    expect(screen.queryByText("RE-UPLOAD TO UPDATE")).not.toBeInTheDocument();
+    expect(screen.queryByText("OUTDATED")).not.toBeInTheDocument();
     expect(screen.queryByText(/to re-upload/)).not.toBeInTheDocument();
   });
 

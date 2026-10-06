@@ -2,20 +2,17 @@ import type { ReactNode } from "react";
 import type { MatchSummary } from "./types";
 import { matchDate, outdatedText, scoreLine } from "./format";
 
-const MATCH_STATUS: Record<string, string> = {
-  demo_unavailable: "Demo is no longer available from Valve.",
-  demo_too_large: "Demo exceeded the server’s size limit.",
-  parser_error: "Demo could not be parsed.",
-  demo_has_no_rounds: "Demo has no completed rounds.",
+/** One-line stub note per status_reason (the row itself only says NOT IMPORTED). */
+const STUB_NOTE: Record<string, string> = {
+  demo_unavailable: "Demo gone from Valve — upload the .dem above if you have it.",
+  demo_too_large: "Demo too large for the server — try uploading the .dem above.",
+  parser_error: "Demo couldn’t be parsed — try uploading the .dem above.",
+  demo_has_no_rounds: "Demo has no completed rounds — nothing to score.",
 };
+const STUB_DEFAULT = "Not imported — upload the .dem above if you have it.";
 
 const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : word.endsWith("ch") ? "es" : "s"}`;
-
-function statusText(match: MatchSummary): string {
-  if (match.status === "imported") return plural(match.rounds_count, "round");
-  return MATCH_STATUS[match.status_reason ?? ""] ?? "Not imported";
-}
 
 function MatchRow({
   match,
@@ -29,7 +26,6 @@ function MatchRow({
   const date = matchDate(match);
   const score = scoreLine(match.score);
   const imported = match.status === "imported";
-  const reason = !imported ? statusText(match) : null;
 
   return (
     <button
@@ -43,21 +39,21 @@ function MatchRow({
         {match.source === "upload" && <span className="source-tag">UPLOADED</span>}
         {match.outdated && (
           <span className="source-tag outdated-tag" title={outdatedText(match) ?? undefined}>
-            RE-UPLOAD TO UPDATE
+            OUTDATED
           </span>
         )}
         {!imported && <span className="source-tag stub-tag">NOT IMPORTED</span>}
       </span>
-      <span className="match-score" title={score?.detail}>
+      <span className="match-score" title={imported ? score?.detail : undefined}>
         {imported && score ? (
           <>
             <strong>{score.primary}</strong>
-            <small>{score.detail}</small>
+            <small>CT–T</small>
           </>
         ) : imported ? (
           <span className="steam-muted">No score</span>
         ) : (
-          <span className="match-status-short" title={reason ?? undefined}>{reason}</span>
+          <span className="steam-muted" aria-label="No score">—</span>
         )}
       </span>
       <span className="match-meta steam-muted" title={date.label}>
@@ -70,11 +66,9 @@ function MatchRow({
 }
 
 function MatchStubNote({ match }: { match: MatchSummary }) {
-  const reason = MATCH_STATUS[match.status_reason ?? ""] ?? "This match could not be imported.";
   return (
     <div className="match-stub-note" role="note">
-      <p>{reason}</p>
-      <p className="steam-muted">If you still have the .dem, upload it above to analyse the rounds.</p>
+      <p>{STUB_NOTE[match.status_reason ?? ""] ?? STUB_DEFAULT}</p>
     </div>
   );
 }
@@ -106,7 +100,6 @@ export function MatchList({ matches, selected, onSelect, children }: MatchListPr
     <div className="match-list-wrap">
       <div className="match-list-heading">
         <span className="section-kicker">{matches.length === 1 ? "1 MATCH" : `${matches.length} MATCHES`}</span>
-        <span className="steam-muted match-list-hint">Tap a match for the round report</span>
       </div>
       <ul className="match-list">
         {matches.map((match) => (

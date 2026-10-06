@@ -86,9 +86,11 @@ describe("match list and per-round report (real API response shapes)", () => {
     render(<SteamSection />);
     await advance();
     const item = screen.getByRole("button", { name: /Unknown map/ });
-    expect(item).toHaveTextContent("Demo is no longer available from Valve.");
+    expect(item).toHaveTextContent("NOT IMPORTED");
+    expect(item).not.toHaveTextContent(/Valve/);
     fireEvent.click(item);
     await advance();
+    expect(screen.getByRole("note")).toHaveTextContent("Demo gone from Valve — upload the .dem above if you have it.");
     expect(api.count("GET /matches/stub")).toBe(0);
   });
 

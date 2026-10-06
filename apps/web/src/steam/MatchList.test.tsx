@@ -23,8 +23,9 @@ function routes(extra: Parameters<typeof installFakeApi>[0] = {}) {
 }
 
 describe("scoreLine", () => {
-  it("puts the higher side first and keeps CT/T detail", () => {
-    expect(scoreLine({ ct: 2, t: 8 })).toEqual({ primary: "8–2", detail: "CT 2 · T 8" });
+  it("always shows CT–T (not winner-first) and keeps CT/T detail", () => {
+    expect(scoreLine({ ct: 2, t: 8 })).toEqual({ primary: "2–8", detail: "CT 2 · T 8" });
+    expect(scoreLine({ ct: 13, t: 11 })).toEqual({ primary: "13–11", detail: "CT 13 · T 11" });
     expect(scoreLine(null)).toBeNull();
   });
 });
@@ -85,7 +86,12 @@ describe("match list UX", () => {
     expect(screen.getByText("3 MATCHES")).toBeInTheDocument();
     const first = screen.getAllByRole("button", { name: /mirage/i })[0];
     expect(within(first).getByText("13–11")).toBeInTheDocument();
-    expect(within(first).getByText("CT 13 · T 11")).toBeInTheDocument();
+    expect(within(first).getByText("CT–T")).toBeInTheDocument();
+    expect(screen.queryByText(/Tap a match/i)).not.toBeInTheDocument();
+    const ancient = screen.getByRole("button", { name: /ancient/i });
+    expect(within(ancient).getByText("6–2")).toBeInTheDocument();
+    const second = screen.getAllByRole("button", { name: /mirage/i })[1];
+    expect(within(second).getByText("2–8")).toBeInTheDocument();
     expect(within(first).getByText("24 rounds")).toBeInTheDocument();
 
     fireEvent.click(first);
@@ -120,8 +126,11 @@ describe("match list UX", () => {
 
     const row = screen.getByRole("button", { name: /dust2/i });
     expect(within(row).getByText("NOT IMPORTED")).toBeInTheDocument();
+    expect(within(row).getByText("—")).toBeInTheDocument();
+    expect(row).not.toHaveTextContent(/Valve/i);
     fireEvent.click(row);
-    expect(screen.getByRole("note")).toHaveTextContent(/no longer available from Valve/i);
-    expect(screen.getByRole("note")).toHaveTextContent(/upload it above/i);
+    const note = screen.getByRole("note");
+    expect(note).toHaveTextContent("Demo gone from Valve — upload the .dem above if you have it.");
+    expect(note.querySelectorAll("p")).toHaveLength(1);
   });
 });

@@ -83,7 +83,6 @@
 /* Match list UX: score-first rows, loading skeleton, error retry, mobile labels */
 .match-list-wrap{display:grid;gap:8px}
 .match-list-heading{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
-.match-list-hint{font-size:11px}
 .match-item{grid-template-columns:minmax(0,1.4fr) minmax(0,.9fr) minmax(0,1.1fr);gap:10px 14px}
 .match-map{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
 .match-map strong{font:700 16px 'Barlow Condensed',sans-serif;text-transform:uppercase}
@@ -96,7 +95,6 @@
 .match-chevron{color:var(--acid);font-size:12px;margin-left:4px}
 .match-item-stub{opacity:.92}
 .stub-tag{color:#ffb3a1;border-color:#744239}
-.match-status-short{font:11px 'DM Mono',monospace;color:#ffb3a1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .match-stub-note{border:1px solid #27313a;border-top:0;background:#0a0f14;padding:12px 14px;display:grid;gap:6px;font-size:12px}
 .match-stub-note p{margin:0;line-height:1.6;color:#c0c8cd}
 .match-list-error{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
