@@ -237,7 +237,7 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
           : "CT / T are the map sides of everyone in the match; your own team isn’t tracked yet."}{" "}
         Model numbers are a retrospective estimate, not calibrated for matchmaking.
       </p>
-      <TableauExport />
+      <TableauExport matches={totals.imported_matches} rounds={totals.rounds} personalMatches={summary.you?.matches} />
     </section>
   );
 }

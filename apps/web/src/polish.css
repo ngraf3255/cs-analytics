@@ -114,6 +114,7 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 @media(prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*:before,*:after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
+}
 /* /account as a profile page: identity header + facts, section nav, then one card per section
    (match history, session, your data) with the destructive action set apart. */
 .profile-header{grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:16px}

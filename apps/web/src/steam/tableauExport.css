@@ -1,0 +1,10 @@
+/* Export for Tableau: what each file holds (with row counts) before downloading. */
+.export-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.export-option{border:1px solid #27313a;background:#0b1015;padding:10px 12px;display:grid;gap:6px;align-content:start}
+.export-option strong{font:700 15px 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.03em}
+.export-option strong small{font:10px 'DM Mono',monospace;color:var(--label-dim);text-transform:none;letter-spacing:0}
+.export-option p{margin:0;font-size:12px;line-height:1.5;color:#9aa4ab}
+.export-option .ghost-button{justify-self:start;min-height:38px}
+.tableau-export-buttons{align-items:center}
+.export-guide{font:11px 'DM Mono',monospace;color:var(--acid);text-decoration:underline;text-underline-offset:2px}
+@media(max-width:640px){.export-option .ghost-button,.tableau-export-buttons .ghost-button{justify-self:stretch;width:100%}}
