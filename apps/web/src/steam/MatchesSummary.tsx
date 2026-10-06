@@ -6,6 +6,7 @@ import { FormTrend } from "./FormTrend";
 import { ShareButton } from "./ShareButton";
 import { profileCard } from "./shareCard";
 import { PeerCompare } from "./PeerCompare";
+import { RoleBreakdown } from "./RoleBreakdown";
 import { TableauExport } from "./TableauExport";
 import type { MatchesAnalytics, YouAnalytics } from "./types";
 import { weaponName } from "./weapons";
@@ -52,6 +53,7 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
   }
   const r = you.results;
   const duels = you.opening_duels;
+  const hasDuels = you.maps.some((m) => m.opening_attempt_rate !== undefined);
   return (
     <div className="you-section">
       <span className="section-kicker">YOU · YOUR SIDE EACH ROUND</span>
@@ -77,8 +79,9 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
       {youFormLine(you.recent_form) && <p className="summary-form">{youFormLine(you.recent_form)}</p>}
       <FormTrend refreshKey={refreshKey} matchCount={you.matches} />
       {you.matches > 0 && <PeerCompare refreshKey={refreshKey} />}
+      {you.roles && <RoleBreakdown roles={you.roles} />}
       <table className="round-table summary-maps" aria-label="Your maps">
-        <thead><tr><th>Map</th><th>Matches</th><th>Your rounds</th><th>Won</th><th>As CT</th><th>As T</th><th>K/D</th></tr></thead>
+        <thead><tr><th>Map</th><th>Matches</th><th>Your rounds</th><th>Won</th><th>As CT</th><th>As T</th><th>K/D</th>{hasDuels && <th>Opening duels</th>}</tr></thead>
         <tbody>
           {you.maps.map((map) => (
             <tr key={map.map_name ?? "unknown"}>
@@ -89,6 +92,11 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
               <td>{map.sides.ct.rounds ? `${pct(map.sides.ct.win_rate)} (${map.sides.ct.won}/${map.sides.ct.rounds})` : "—"}</td>
               <td>{map.sides.t.rounds ? `${pct(map.sides.t.win_rate)} (${map.sides.t.won}/${map.sides.t.rounds})` : "—"}</td>
               <td>{kdText(map.kd)}</td>
+              {hasDuels && (
+                <td>{(map.opening_kills ?? 0) + (map.opening_deaths ?? 0)
+                  ? `${map.opening_kills}–${map.opening_deaths} · in ${pct(map.opening_attempt_rate)} of rounds`
+                  : "—"}</td>
+              )}
             </tr>
           ))}
         </tbody>
