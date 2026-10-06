@@ -4,6 +4,7 @@ import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouInMatch } from "./types";
 import { kdText, matchDate, outdatedText, resultText } from "./format";
 import { MatchList, MatchListError, MatchListLoading } from "./MatchList";
+import { OpeningDuels, RoundTimeline } from "./MatchDetail";
 import { MatchesSummaryPanel } from "./MatchesSummary";
 import { ACCOUNT_PATH } from "./routes";
 import { ShareButton } from "./ShareButton";
@@ -495,6 +496,8 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
       <p className="steam-muted">
         {summary.scored} of {summary.rounds} rounds could be scored. The model’s favourite won {summary.correct_predictions} of {summary.scored}.
       </p>
+      <RoundTimeline rounds={report.rounds} />
+      <OpeningDuels report={report} />
       <div className="report-legend">
         <span><i className="legend actual" /> Actual winner (from the demo)</span>
         <span><i className="legend model" /> Model estimate (in hindsight)</span>
