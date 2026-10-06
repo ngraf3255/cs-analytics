@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -59,10 +60,13 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-Requested-With"],
 )
 
-# Steam linking/sync is feature-flagged: disabled (routes return 503) unless
-# DATABASE_URL and TOKEN_ENCRYPTION_KEYS are set.
+# Feature-flagged (steamlink.config): demo upload + match reports need DATABASE_URL and
+# SESSION_SECRET; Steam sign-in / sync additionally TOKEN_ENCRYPTION_KEYS and
+# STEAM_WEB_API_KEY. Routes of a feature that is off return 503.
 scorer = RoundScorer(model, map_options, weapon_options)
-register_steam(app, build_steam_context(settings, scorer) if settings.steam_enabled else None)
+for note in settings.startup_notes():
+    logging.getLogger("prediction_api").warning(note)
+register_steam(app, build_steam_context(settings, scorer) if settings.demo_upload_enabled else None)
 
 
 class PredictionInput(BaseModel):

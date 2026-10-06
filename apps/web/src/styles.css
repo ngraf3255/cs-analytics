@@ -54,3 +54,13 @@
   .topbar nav a,.brand{white-space:nowrap}
 }
 @media(max-width:380px){.topbar{padding:0 14px}.topbar nav a:nth-child(4){display:none}.brand{font-size:16px}}
+
+/* Accounts: Steam (or soft-disabled "coming soon") next to the no-Steam guest upload */
+.account-options{display:grid;gap:12px}
+.account-options.two{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.steam-button{display:inline-flex;align-items:center;justify-content:center;border:0;cursor:pointer;text-align:center}
+.steam-button:disabled{cursor:not-allowed}
+.soft-disabled{opacity:.62}
+.soft-disabled .steam-button{background:#2a333b;color:#9aa4ab}
+.empty-option.soft-disabled{border-style:dotted}
+.guest-upload{position:relative;min-height:44px}

@@ -3,10 +3,21 @@ import { ApiError } from "./errors";
 import { steamApi } from "./api";
 import type { Me } from "./types";
 
+export type Features = {
+  /** Steam sign-in, match-history linking and sync. */
+  steam: boolean;
+  /** Demo upload + match reports for a signed-in account. */
+  upload: boolean;
+  /** Upload without Steam (guest session). */
+  guest: boolean;
+  /** GET /steam/status answered (false: API down / waking up). */
+  reachable: boolean;
+};
+
+const NO_FEATURES: Features = { steam: false, upload: false, guest: false, reachable: false };
+
 export function useSteamStatus() {
-  const [enabled, setEnabled] = useState(false);
-  // GET /steam/status answered (false: the API is down or waking up).
-  const [reachable, setReachable] = useState(false);
+  const [features, setFeatures] = useState<Features>(NO_FEATURES);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,11 +26,12 @@ export function useSteamStatus() {
       .status()
       .then((body) => {
         if (cancelled) return;
-        setEnabled(Boolean(body.enabled));
-        setReachable(true);
+        const steam = Boolean(body.steam ?? body.enabled);
+        // Older APIs only send ``enabled`` (uploads were part of Steam then).
+        setFeatures({ steam, upload: Boolean(body.upload ?? steam), guest: Boolean(body.guest), reachable: true });
       })
       .catch(() => {
-        if (!cancelled) setEnabled(false);
+        if (!cancelled) setFeatures(NO_FEATURES);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -29,7 +41,7 @@ export function useSteamStatus() {
     };
   }, []);
 
-  return { enabled, reachable, loading };
+  return { ...features, enabled: features.steam || features.upload, loading };
 }
 
 export function useMe(enabled: boolean) {

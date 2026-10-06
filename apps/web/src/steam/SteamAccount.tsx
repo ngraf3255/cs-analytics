@@ -10,8 +10,14 @@ import type { AutoSync, Me, NeedsRelink } from "./types";
 
 type Props = {
   me: Me | null;
+  /** Steam sign-in is configured on the server (else "Connect Steam" is shown as coming soon). */
+  steam?: boolean;
+  /** Uploading without Steam (guest session) is available. */
+  guest?: boolean;
   onChange: () => Promise<unknown>;
   onSignedOut: () => void;
+  /** A guest session was started (with the demo the user picked, to upload right away). */
+  onGuest?: (me: Me, file?: File) => void;
 };
 
 function errorText(reason: unknown, fallback: string) {
@@ -28,23 +34,124 @@ export const RELINK_TEXT: Record<string, string> = {
     "Your saved Game Authentication Code can’t be read any more (the server’s key changed). Paste it again below.",
 };
 
-export function SteamAccount({ me, onChange, onSignedOut }: Props) {
+export function SteamAccount({ me, steam = true, guest = false, onChange, onSignedOut, onGuest }: Props) {
   if (!me) {
     return (
-      <div className="steam-card">
-        <span className="section-kicker">STEP 1 · VERIFY YOUR STEAM ACCOUNT</span>
-        <h3>Connect Steam</h3>
-        <p>
-          You sign in on Steam’s own site. We only learn your public SteamID. We never see or ask for your
-          Steam password or Steam Guard codes.
-        </p>
-        <a className="steam-button" href={steamLoginUrl("/#matches")}>
-          Sign in through Steam ↗
-        </a>
+      <div className={`account-options ${guest ? "two" : ""}`}>
+        {steam ? (
+          <div className="steam-card">
+            <span className="section-kicker">STEP 1 · VERIFY YOUR STEAM ACCOUNT</span>
+            <h3>Connect Steam</h3>
+            <p>
+              You sign in on Steam’s own site. We only learn your public SteamID. We never see or ask for your
+              Steam password or Steam Guard codes.
+            </p>
+            <a className="steam-button" href={steamLoginUrl("/#matches")}>
+              Sign in through Steam ↗
+            </a>
+          </div>
+        ) : (
+          <div className="steam-card soft-disabled" aria-label="Connect Steam (coming soon)">
+            <span className="section-kicker">STEAM SYNC · COMING SOON</span>
+            <h3>Connect Steam</h3>
+            <p>
+              Automatic match import from your Steam match history isn’t switched on yet.
+              {guest ? " You can already upload demos and get full round reports." : ""}
+            </p>
+            <button type="button" className="steam-button" disabled aria-disabled="true">Sign in through Steam · soon</button>
+          </div>
+        )}
+        {guest && onGuest && <GuestStart onGuest={onGuest} />}
       </div>
     );
   }
+  if (me.account === "guest") return <GuestAccount steam={steam} onSignedOut={onSignedOut} />;
   return <SignedIn me={me} onChange={onChange} onSignedOut={onSignedOut} />;
+}
+
+const DEMO_ACCEPT = ".dem,.bz2,application/x-bzip2";
+
+/** Signed out: upload a demo right away, no Steam account needed (starts a guest session). */
+function GuestStart({ onGuest }: { onGuest: (me: Me, file?: File) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function start(file?: File) {
+    setBusy(true);
+    setError("");
+    try {
+      onGuest(await steamApi.startGuest(), file);
+    } catch (reason) {
+      setError(errorText(reason, "Could not start a guest session."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="steam-card">
+      <span className="section-kicker">NO STEAM NEEDED</span>
+      <h3>Upload a demo</h3>
+      <p>
+        Drop in any CS2 <code>.dem</code> or <code>.dem.bz2</code> (your replays live in <code>game/csgo/replays</code>)
+        and get a round-by-round report. Your uploads stay tied to this browser.
+      </p>
+      <div className="steam-actions">
+        <label className={`steam-button upload-button guest-upload ${busy ? "busy" : ""}`} aria-disabled={busy}>
+          <span>{busy ? "STARTING…" : "CHOOSE A DEMO FILE"}</span>
+          <input type="file" accept={DEMO_ACCEPT} disabled={busy} aria-label="Choose a demo file to upload without Steam"
+            onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void start(file); }} />
+        </label>
+        <button type="button" className="ghost-button" onClick={() => void start()} disabled={busy}>Open my uploads</button>
+      </div>
+      {error && <div className="steam-error" role="alert">{error}</div>}
+    </div>
+  );
+}
+
+/** Signed in as a guest (POST /auth/guest). */
+function GuestAccount({ steam, onSignedOut }: { steam: boolean; onSignedOut: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function run(action: () => Promise<unknown>, fallback: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      onSignedOut();
+    } catch (reason) {
+      setError(errorText(reason, fallback));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const signOut = () => {
+    if (!window.confirm("Sign out of this guest session? Guest uploads can’t be opened again after signing out.")) return;
+    void run(() => steamApi.logout(), "Could not sign out.");
+  };
+  const deleteAll = () => {
+    if (!window.confirm("Delete this guest session and every match you uploaded? This cannot be undone.")) return;
+    void run(() => steamApi.deleteMe(), "Could not delete your data.");
+  };
+
+  return (
+    <div className="steam-card">
+      <span className="section-kicker">GUEST SESSION</span>
+      <h3>Uploading as a guest</h3>
+      <p>
+        Your uploads and reports are tied to this browser for about two weeks. Clearing cookies or signing out ends access to them.
+        {steam ? " Sign in through Steam for a permanent list with automatic match sync (it starts a separate list)." : " Steam sign-in and automatic sync are coming soon."}
+      </p>
+      <div className="steam-actions">
+        {steam && <a className="steam-button" href={steamLoginUrl("/#matches")}>Sign in through Steam ↗</a>}
+        <button type="button" className="ghost-button" onClick={signOut} disabled={busy}>Sign out</button>
+        <button type="button" className="danger-button" onClick={deleteAll} disabled={busy}>Delete my data</button>
+      </div>
+      {error && <div className="steam-error" role="alert">{error}</div>}
+    </div>
+  );
 }
 
 function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promise<unknown>; onSignedOut: () => void }) {

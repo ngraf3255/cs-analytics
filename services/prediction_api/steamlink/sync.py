@@ -141,11 +141,11 @@ class SyncService:
         self,
         *,
         storage: Storage,
-        history: MatchHistoryClient,
+        history: MatchHistoryClient | None,  # None: Steam off (upload-only server; sync() is never called)
         locator: DemoLocator,
         fetcher: DemoFetcher,
         parser: DemoParser,
-        cipher: AuthCodeCipher,
+        cipher: AuthCodeCipher | None,
         clock: Callable[[], datetime],
         max_matches: int = 3,
         lock_ttl_seconds: int = 900,

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useHashScroll, useMe, useSteamStatus } from "./hooks";
 import { Matches } from "./Matches";
 import { SteamAccount } from "./SteamAccount";
@@ -9,9 +9,11 @@ function loginFailureReason(): string | null {
 }
 
 export function SteamSection() {
-  const { enabled, reachable, loading } = useSteamStatus();
+  const { steam, upload, guest, reachable, enabled, loading } = useSteamStatus();
   const { me, setMe, error, refresh } = useMe(enabled);
   const failure = loginFailureReason();
+  // A demo picked before a guest session existed: uploaded once the session is ready.
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (failure) window.history.replaceState(null, "", window.location.pathname + window.location.hash);
@@ -19,20 +21,36 @@ export function SteamSection() {
 
   useHashScroll(!loading);
 
+  const onGuest = useCallback((next: typeof me, file?: File) => {
+    if (file) setPendingFile(file);
+    setMe(next);
+  }, [setMe]);
+
   if (loading) return null;
 
+  const isGuest = me?.account === "guest";
   return (
     <section id="matches" className="steam-section" aria-label="Your CS2 matches">
       <div className="info-intro">
         <span className="section-kicker">YOUR MATCHES</span>
         <h2>Your rounds.<br /><em>Model in hindsight.</em></h2>
       </div>
-      {!enabled && <ComingSoon reachable={reachable} />}
-      {failure && <div className="steam-error" role="alert">Steam sign-in could not be verified. Please try again.</div>}
-      {error && <div className="steam-error" role="alert">{error}</div>}
-      {enabled && <SteamAccount me={me} onChange={refresh} onSignedOut={() => setMe(null)} />}
-      {/* keyed by account: a different user signed in (e.g. in another tab) gets a fresh list */}
-      {me && <Matches key={me.steam_id} me={me} onMeChange={refresh} />}
+      {!enabled ? (
+        <ComingSoon reachable={reachable} />
+      ) : (
+        <>
+          {failure && <div className="steam-error" role="alert">Steam sign-in could not be verified. Please try again.</div>}
+          {error && <div className="steam-error" role="alert">{error}</div>}
+          <SteamAccount me={me} steam={steam} guest={guest && upload} onChange={refresh}
+            onSignedOut={() => { setPendingFile(null); setMe(null); }} onGuest={onGuest} />
+          {/* keyed by account: a different user signed in (e.g. in another tab) gets a fresh list */}
+          {me && (
+            <Matches key={me.steam_id ?? `guest-${me.created_at}`} me={me} onMeChange={refresh}
+              canSync={steam && !isGuest} steamAvailable={steam}
+              initialFile={pendingFile} onInitialFile={() => setPendingFile(null)} />
+          )}
+        </>
+      )}
     </section>
   );
 }

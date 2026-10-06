@@ -50,7 +50,10 @@ export type AutoSync = {
 export type SyncState = SyncStatus & { jobs: UploadJob[] };
 
 export type Me = {
-  steam_id: string;
+  /** SteamID64; null for a guest account (POST /auth/guest: upload + reports without Steam). */
+  steam_id: string | null;
+  /** Missing on older APIs (always Steam then). */
+  account?: "steam" | "guest";
   created_at: string;
   match_access: MatchAccess;
   sync: SyncStatus;
@@ -272,4 +275,13 @@ export type MatchesAnalytics = {
     matches: (ModelTally & { id: string; map_name: string | null; imported_at: string; rounds: number;
       score: { ct: number; t: number } | null })[];
   };
+};
+
+/** GET /steam/status. ``enabled``: Steam sign-in + sync (older APIs only send this one);
+ * ``upload``: demo upload + match reports; ``guest``: upload without Steam (POST /auth/guest). */
+export type ServerStatus = {
+  enabled: boolean;
+  steam?: boolean;
+  upload?: boolean;
+  guest?: boolean;
 };
