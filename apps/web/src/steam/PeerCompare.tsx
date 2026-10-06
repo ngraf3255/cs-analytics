@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { steamApi } from "./api";
 import { kdText } from "./format";
 import type { PeerCompare as Compare, PeerComparison, PeerGroup } from "./types";
+import "./peerCompare.css";
 
 const pct = (rate: number | null | undefined) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
 const num = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));

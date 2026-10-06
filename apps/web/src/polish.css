@@ -228,12 +228,3 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .onboarding-tip a{text-decoration:underline;text-underline-offset:2px;color:var(--acid)}
 .tip-dismiss{background:transparent;border:0;color:#9aa4ab;cursor:pointer;min-width:32px;min-height:32px;font-size:13px}
 .tip-dismiss:focus-visible{outline:1px solid var(--acid)}
-
-/* You vs your lobbies (peers = other players in your own matches). */
-.peer-compare{display:grid;gap:8px;border:1px solid #27313a;background:#0b1015;padding:12px 14px}
-.peer-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.peer-map{min-width:180px}.peer-map select{height:36px}
-.peer-map .chevron{top:5px}
-.peer-headline{margin:0;font-size:13px;color:#d6dce0}.peer-headline strong{color:var(--acid)}
-.peer-note{margin:0;font-size:11px}
-@media(max-width:640px){.peer-map{width:100%}}
