@@ -114,6 +114,7 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 @media(prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*:before,*:after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
+}
 /* /account as a profile page: identity header + facts, section nav, then one card per section
    (match history, session, your data) with the destructive action set apart. */
 .profile-header{grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:16px}
@@ -230,3 +231,14 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .onboarding-tip a{text-decoration:underline;text-underline-offset:2px;color:var(--acid)}
 .tip-dismiss{background:transparent;border:0;color:#9aa4ab;cursor:pointer;min-width:32px;min-height:32px;font-size:13px}
 .tip-dismiss:focus-visible{outline:1px solid var(--acid)}
+
+/* Export for Tableau: what each file holds (with row counts) before downloading. */
+.export-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.export-option{border:1px solid #27313a;background:#0b1015;padding:10px 12px;display:grid;gap:6px;align-content:start}
+.export-option strong{font:700 15px 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.03em}
+.export-option strong small{font:10px 'DM Mono',monospace;color:var(--label-dim);text-transform:none;letter-spacing:0}
+.export-option p{margin:0;font-size:12px;line-height:1.5;color:#9aa4ab}
+.export-option .ghost-button{justify-self:start;min-height:38px}
+.tableau-export-buttons{align-items:center}
+.export-guide{font:11px 'DM Mono',monospace;color:var(--acid);text-decoration:underline;text-underline-offset:2px}
+@media(max-width:640px){.export-option .ghost-button,.tableau-export-buttons .ghost-button{justify-self:stretch;width:100%}}

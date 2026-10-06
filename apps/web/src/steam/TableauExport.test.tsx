@@ -126,4 +126,22 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     await advance();
     expect(screen.queryByRole("group", { name: "Export for Tableau" })).toBeNull();
   });
+
+  it("says what each file holds (row counts, your columns) and downloads both in one tap", async () => {
+    const api = installFakeApi(routes());
+    render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+    const totals = summaryPersonal.totals;
+    expect(group()).toHaveTextContent(`Rounds · ${totals.rounds.toLocaleString()} rows`);
+    expect(group()).toHaveTextContent(`Matches · ${totals.imported_matches.toLocaleString()} row`);
+    expect(group()).toHaveTextContent(/The “you_” columns are filled for the 1 match you’re in\./);
+    expect(within(group()).getByRole("link", { name: /How to open them in Tableau/ })).toHaveAttribute("href", expect.stringContaining("tableau/README.md"));
+    fireEvent.click(within(group()).getByRole("button", { name: "Download both" }));
+    await advance();
+    await advance();
+    expect(api.count("GET /matches/export/rounds.csv")).toBe(1);
+    expect(api.count("GET /matches/export/matches.csv")).toBe(1);
+    expect(saved.map((f) => f.download)).toEqual([expect.stringMatching(/^cs2-rounds-/), expect.stringMatching(/^cs2-matches-/)]);
+    expect(within(group()).getByRole("status")).toHaveTextContent(/Downloaded cs2-rounds-\d{8}\.csv and cs2-matches-\d{8}\.csv\./);
+  });
 });
