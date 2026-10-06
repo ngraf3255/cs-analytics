@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { MatchResult, MatchSummary } from "./types";
-import { matchDate, outdatedText, scoreLine } from "./format";
+import { mapLabel, matchDate, outdatedText, scoreLine } from "./format";
 
 /** One-line stub note per status_reason (the row itself only says a glyph). */
 const STUB_NOTE: Record<string, string> = {
@@ -10,8 +10,6 @@ const STUB_NOTE: Record<string, string> = {
   demo_has_no_rounds: "Demo has no completed rounds — nothing to score.",
 };
 const STUB_DEFAULT = "Not imported — upload the .dem above if you have it.";
-
-const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 
 /** Personal bits for a collapsed row (from summary you.recent_form).
  * Bold score uses your rounds won–lost (``won`` / ``rounds``), not remapped CT–T ``score``. */
@@ -83,11 +81,12 @@ function MatchRow({
     : result === "tied" ? "T"
     : null;
   const map = mapLabel(match.map_name);
+  const ariaMetric = you && metric ? `K-D ${metric}` : metric;
   const aria = [
     chip ? (result === "won" ? "Won" : result === "lost" ? "Lost" : "Tied") : null,
     map,
-    primary,
-    metric,
+    primary ? (you ? `score ${primary}` : primary) : null,
+    ariaMetric,
   ].filter(Boolean).join(" · ");
 
   return (

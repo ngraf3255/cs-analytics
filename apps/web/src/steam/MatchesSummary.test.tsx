@@ -49,10 +49,10 @@ describe("summary across previous matches (GET /matches/summary)", () => {
 
     const tiles = within(panel()).getByLabelText("Previous matches summary");
     expect(tiles).toHaveTextContent("MATCHES4");
-    expect(tiles).toHaveTextContent("MODEL HIT RATE88%");
-    expect(tiles).toHaveTextContent("BRIER SCORE0.133");
-    expect(tiles).toHaveTextContent("CT / T ROUNDS56% / 44%");
-    expect(tiles).toHaveTextContent("OPENING KILL WINS86%");
+    expect(tiles).toHaveTextContent("HIT RATE88%");
+    expect(tiles).toHaveTextContent("BRIER0.133");
+    expect(tiles).toHaveTextContent("CT / T56% / 44%");
+    expect(tiles).toHaveTextContent("OPENINGS86%");
     expect(panel()).not.toHaveTextContent("favourite won");
 
     const maps = within(within(panel()).getByRole("table", { name: "By map" })).getAllByRole("row").slice(1);
@@ -75,7 +75,7 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     expect(panel()).not.toHaveTextContent("favourite won");
-    expect(panel()).toHaveTextContent("MODEL HIT RATE");
+    expect(panel()).toHaveTextContent("HIT RATE");
   });
 
   it("no matches: no panel, just the empty list", async () => {
@@ -114,8 +114,8 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     const tiles = within(panel()).getByLabelText("Previous matches summary");
-    expect(tiles).toHaveTextContent("MODEL HIT RATE—");
-    expect(tiles).toHaveTextContent("BRIER SCORE—");
+    expect(tiles).toHaveTextContent("HIT RATE—");
+    expect(tiles).toHaveTextContent("BRIER—");
     const row = within(within(panel()).getByRole("table", { name: "By map" })).getAllByRole("row")[1];
     expect(cells(row)).toEqual(["mirage", "1", "10", "20%", "Not scored", "—"]);
     expect(within(panel()).queryByRole("table", { name: "Model calibration" })).not.toBeInTheDocument();

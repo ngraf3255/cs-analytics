@@ -18,11 +18,22 @@ describe("round timeline", () => {
     expect(cells.filter((c) => c.classList.contains("side-swap"))).toHaveLength(1);
     const last = cells[cells.length - 1].getAttribute("aria-label") ?? "";
     expect(last).toContain(`score ${personal.you!.status === "in_match" ? `${(personal.you as { won: number }).won}–` : ""}`);
+    expect(screen.getByText("TIMELINE")).toBeInTheDocument();
+    expect(screen.getByLabelText("Timeline legend")).toBeInTheDocument();
+    expect(screen.queryByText("ROUND TIMELINE")).toBeNull();
+    // Legend lines live inside the ⓘ details, not as 5 open rows
+    const info = screen.getByLabelText("Timeline legend").closest("details");
+    expect(info).not.toBeNull();
+    expect(info!.textContent).toMatch(/CT won/);
+    expect(info!.textContent).toMatch(/Underline: your team won/);
   });
 
   it("without per-player rounds: no your-team marks or legend", () => {
     render(<RoundTimeline rounds={(reportFixture as MatchReport).rounds} />);
-    expect(screen.queryByText(/your team won/)).toBeNull();
+    expect(screen.getByLabelText("Timeline legend")).toBeInTheDocument();
+    const info = screen.getByLabelText("Timeline legend").closest("details")!;
+    expect(info.textContent).not.toMatch(/your team won/);
+    expect(info.textContent).not.toMatch(/You got/);
   });
 });
 

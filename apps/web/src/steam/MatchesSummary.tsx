@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { steamApi } from "./api";
 import { ApiError } from "./errors";
-import { kdText } from "./format";
+import { kdText, mapLabel } from "./format";
 import { FormTrend } from "./FormTrend";
 import { ShareButton } from "./ShareButton";
 import { profileCard } from "./shareCard";
@@ -12,7 +12,6 @@ import type { MatchesAnalytics, YouAnalytics } from "./types";
 import { weaponName } from "./weapons";
 
 const pct = (rate: number | null | undefined) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
-const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : word.endsWith("ch") ? "es" : "s"}`;
 
 /** Four home tiles (and Share). Deeper tables / lobbies live on /stats. */
@@ -23,21 +22,21 @@ function YouHomeTiles({ you }: { you: YouAnalytics }) {
     <div className="you-section you-home">
       <dl className="report-header summary-tiles you-tiles" aria-label="Your stats">
         <div>
-          <dt>ROUNDS WON</dt><dd>{pct(you.win_rate)}</dd>
+          <dt>WON</dt><dd>{pct(you.win_rate)}</dd>
         </div>
         <div>
-          <dt>AS CT / AS T</dt><dd>{pct(you.sides.ct.win_rate)} / {pct(you.sides.t.win_rate)}</dd>
+          <dt>CT / T</dt><dd>{pct(you.sides.ct.win_rate)} / {pct(you.sides.t.win_rate)}</dd>
         </div>
         <div>
           <dt>K/D</dt><dd>{kdText(you.kd)}</dd>
         </div>
         <div>
-          <dt>OPENING DUELS</dt><dd>{pct(duels.win_rate)}</dd>
+          <dt>OPENINGS</dt><dd>{pct(duels.win_rate)}</dd>
         </div>
       </dl>
       <div className="report-actions home-tile-actions">
-        <ShareButton card={() => profileCard(you)} label="Share my numbers" />
-        <a className="ghost-button" href={STATS_PATH}>More stats</a>
+        <ShareButton card={() => profileCard(you)} label="Share" />
+        <a className="ghost-button" href={STATS_PATH}>Stats</a>
       </div>
     </div>
   );
@@ -49,22 +48,6 @@ function YouStatsSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: n
   const hasDuels = you.maps.some((m) => m.opening_attempt_rate !== undefined);
   return (
     <div className="you-section">
-      <span className="section-kicker">YOU · YOUR SIDE EACH ROUND</span>
-      <dl className="report-header summary-tiles you-tiles" aria-label="Your stats">
-        <div>
-          <dt>ROUNDS WON</dt><dd>{pct(you.win_rate)}</dd>
-        </div>
-        <div>
-          <dt>AS CT / AS T</dt><dd>{pct(you.sides.ct.win_rate)} / {pct(you.sides.t.win_rate)}</dd>
-        </div>
-        <div>
-          <dt>K/D</dt><dd>{kdText(you.kd)}</dd>
-        </div>
-        <div>
-          <dt>OPENING DUELS</dt><dd>{pct(you.opening_duels.win_rate)}</dd>
-        </div>
-      </dl>
-      <div className="report-actions"><ShareButton card={() => profileCard(you)} label="Share my numbers" /></div>
       <FormTrend refreshKey={refreshKey} matchCount={you.matches} />
       {you.matches > 0 && <PeerCompare refreshKey={refreshKey} />}
       {you.roles && <RoleBreakdown roles={you.roles} />}
@@ -98,22 +81,22 @@ function AllPlayersSection({ summary }: { summary: MatchesAnalytics }) {
   const calibration = prediction.calibration.filter((bin) => bin.rounds > 0);
   return (
     <>
-      {summary.you && <span className="section-kicker all-players-kicker">ALL PLAYERS IN THESE DEMOS · MAP SIDES</span>}
+      {summary.you && <span className="section-kicker all-players-kicker">ALL PLAYERS</span>}
       <dl className="report-header summary-tiles" aria-label="Previous matches summary">
         <div>
           <dt>MATCHES</dt><dd>{totals.imported_matches}</dd>
         </div>
         <div>
-          <dt>MODEL HIT RATE</dt><dd>{pct(prediction.hit_rate)}</dd>
+          <dt>HIT RATE</dt><dd>{pct(prediction.hit_rate)}</dd>
         </div>
         <div>
-          <dt>BRIER SCORE</dt><dd>{prediction.brier_score == null ? "—" : prediction.brier_score.toFixed(3)}</dd>
+          <dt>BRIER</dt><dd>{prediction.brier_score == null ? "—" : prediction.brier_score.toFixed(3)}</dd>
         </div>
         <div>
-          <dt>CT / T ROUNDS</dt><dd>{pct(sides.ct_win_rate)} / {pct(sides.t_win_rate)}</dd>
+          <dt>CT / T</dt><dd>{pct(sides.ct_win_rate)} / {pct(sides.t_win_rate)}</dd>
         </div>
         <div>
-          <dt>OPENING KILL WINS</dt><dd>{pct(opening.conversion_rate)}</dd>
+          <dt>OPENINGS</dt><dd>{pct(opening.conversion_rate)}</dd>
         </div>
       </dl>
       {totals.outdated_matches ? (
@@ -226,7 +209,7 @@ export function MatchesSummaryPanel({ refreshKey, onPersonalMatches, variant = "
   return (
     <section className="summary-panel" aria-label="Across your matches">
       <div className="summary-heading">
-        <span className="section-kicker">ACROSS YOUR MATCHES</span>
+        <span className="section-kicker">STATS</span>
       </div>
       {summary.you && <YouStatsSection you={summary.you} refreshKey={refreshKey} />}
       <AllPlayersSection summary={summary} />

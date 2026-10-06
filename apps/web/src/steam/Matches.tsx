@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouAnalytics } from "./types";
-import { outdatedText } from "./format";
+import { outdatedText, mapLabel } from "./format";
 import { MatchList, MatchListError, MatchListLoading, type YouMatchBits } from "./MatchList";
 import { OpeningDuels, RoundTimeline } from "./MatchDetail";
 import { CoachTips } from "./CoachTips";
@@ -15,7 +15,6 @@ import { matchCard } from "./shareCard";
 import { weaponName } from "./weapons";
 
 const sideName = (side: string | null | undefined) => (side === "ct" ? "CT" : side === "t" ? "T" : "—");
-const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : word.endsWith("ch") ? "es" : "s"}`;
 

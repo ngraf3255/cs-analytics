@@ -20,8 +20,8 @@ export function AccountPage() {
   return (
     <section id="account" className="steam-section account-page" aria-label="Account settings" aria-busy={pending || undefined}>
       <div className="info-intro">
-        <a className="account-back" href="/#matches">← Your rounds</a>
-        <h2>Account settings</h2>
+        <a className="account-back" href="/">← Home</a>
+        <h2>Account</h2>
       </div>
       {pending ? (
         // Status + session still loading (the API can take a moment to wake): keep the page's shape

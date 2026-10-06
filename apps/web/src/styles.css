@@ -69,7 +69,7 @@
 .account-link{white-space:nowrap}.sync-meta a{text-decoration:underline;text-underline-offset:2px;color:var(--acid)}
 .empty-option a{text-decoration:underline;text-underline-offset:2px}
 .account-settings{display:grid;gap:12px}
-.account-back{font:11px 'DM Mono',monospace;color:var(--acid);display:inline-block;margin-bottom:8px}
+.account-back{font:11px 'DM Mono',monospace;color:var(--acid);display:block;width:fit-content;margin-bottom:8px}
 .steam-steps-short{margin:6px 0 4px!important}
 @media(max-width:640px){.account-summary{grid-template-columns:1fr}.account-link{justify-self:stretch;text-align:center}}
 .steam-card a.account-link{text-decoration:none}.account-settings .steam-form{margin-top:12px}.account-settings .auto-sync{margin:6px 0}

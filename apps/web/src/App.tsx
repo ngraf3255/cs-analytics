@@ -26,7 +26,7 @@ type Prediction = {
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "/api" : "https://api-site.csgooner.com")).replace(/\/$/, "");
 
-const mapLabel = (map: string) => map.replace(/^de_/, "").replaceAll("_", " ");
+const mapLabel = (map: string) => map.replace(/^de_/i, "").replaceAll("_", " ").toLowerCase();
 /** After the first prediction, edits re-predict on their own after this pause. */
 const AUTO_PREDICT_MS = 350;
 
@@ -208,12 +208,12 @@ function PredictorWorkspace() {
     <section id="predictor" className="workspace" aria-label="Round winner predictor">
       <div className="form-panel">
         <div className="panel-heading">
-          <div><h2>Build the round</h2></div>
+          <div><h2>Round</h2></div>
         </div>
         <form onSubmit={submit}>
           {presets.length > 0 && (
             <div className="field preset-field" role="group" aria-label="Quick presets">
-              <span className="field-label">QUICK START</span>
+              <span className="field-label">PRESETS</span>
               <div className="preset-row">
                 {presets.map((preset) => (
                   <button type="button" key={preset.id} className={`chip preset-chip ${activePreset === preset.id ? "selected" : ""}`}
@@ -238,10 +238,10 @@ function PredictorWorkspace() {
             <legend className="field-label">Side</legend>
             <div className="side-options">
               <button type="button" className={`side-option ct-option ${side === "ct" ? "selected" : ""}`} onClick={() => edit(setSide)("ct")} aria-pressed={side === "ct"}>
-                <span className="side-symbol ct-symbol">C</span><span>Counter-Terrorists</span><span className="radio-dot" />
+                <span className="side-symbol ct-symbol">C</span><span>CT</span><span className="radio-dot" />
               </button>
               <button type="button" className={`side-option t-option ${side === "t" ? "selected" : ""}`} onClick={() => edit(setSide)("t")} aria-pressed={side === "t"}>
-                <span className="side-symbol t-symbol">T</span><span>Terrorists</span><span className="radio-dot" />
+                <span className="side-symbol t-symbol">T</span><span>T</span><span className="radio-dot" />
               </button>
             </div>
           </fieldset>
@@ -282,7 +282,7 @@ function PredictorWorkspace() {
 
       <div className="result-panel" aria-live="polite">
         <div className="result-topline">
-          <span className="section-kicker">MODEL READOUT</span>
+          <span className="section-kicker">READOUT</span>
           <span className={`result-status ${prediction ? "has-result" : ""}`} aria-hidden="true"><i /></span>
         </div>
         {prediction ? (
@@ -310,7 +310,7 @@ function PredictorWorkspace() {
         ) : (
           <div className="readout-empty" role="status">
             <span className="readout-empty-mark" aria-hidden="true" />
-            <strong>{loading ? "Predicting…" : "Predict to see the odds"}</strong>
+            <strong>{loading ? "…" : "Predict"}</strong>
           </div>
         )}
         {prediction && <WhyThisRound inputs={lastInputs} ct={prediction.probabilities.ct} weapons={options?.weapons ?? []} />}
