@@ -23,6 +23,15 @@ Feature definitions match the training data (``data/rounds.parquet`` /
   back to their side in a kill of the round; plus their kills / deaths, opening
   kill / death and whether they survived (see the function). Same single parse
   pass (``player_spawn`` is one more event in it);
+* round end reason (``RoundRecord.end_reason``) = the ``round_end`` event's ``reason``
+  as demoparser2 names it (``t_killed``, ``ct_killed``, ``bomb_exploded``,
+  ``bomb_defused``, ``target_saved``, ``t_surrender``, ...);
+* per-player equipment value (``PlayerRoundRecord.equip_value``) = the player's
+  ``current_equip_value`` at the round's freeze end (what they carry into the round:
+  the buy), read with one ``parse_ticks`` call over the freeze-end ticks. If that
+  call fails the parse still succeeds without equipment values;
+* clutches (``PlayerRoundRecord.clutch_vs``) = the number of enemies alive when the
+  player became the last one alive on their team in the round (0: no clutch);
 * warmup / knife rounds (:func:`match_rounds`): rounds that ended at or before the
   last ``begin_new_match`` (the server's restart into the real match) are not part
   of the match. They are dropped before anything is extracted, so rounds,
@@ -75,6 +84,7 @@ class ParsedRound:
     freeze_end_tick: int | None
     end_tick: int
     winner_side: str | None
+    end_reason: str | None = None  # round_end ``reason`` (e.g. t_killed, bomb_defused)
 
 
 @dataclass(frozen=True)
@@ -99,6 +109,13 @@ class ParsedSpawn:
 
 
 @dataclass(frozen=True)
+class ParsedEquip:
+    tick: int  # a round's freeze end
+    steamid: str
+    value: int  # current_equip_value
+
+
+@dataclass(frozen=True)
 class ParsedDemo:
     map_name: str | None
     rounds: list[ParsedRound] = field(default_factory=list)
@@ -108,6 +125,8 @@ class ParsedDemo:
     # Tick of the last begin_new_match before the last round_end (the restart into the real
     # match after warmup / a knife round), if any.
     match_start_tick: int | None = None
+    # Equipment value of each player at each freeze end (empty: not read).
+    equipment: list[ParsedEquip] = field(default_factory=list)
     # PacketEntities soft-skips from the patched demoparser2 (EntityNotFound / MalformedMessage).
     # Non-zero => parse is degraded (some player props / positions may be missing).
     packet_ents_skips: int = 0
@@ -268,8 +287,8 @@ def _windows(demo: ParsedDemo) -> list[_Window]:
                 continue  # warmup / knife round before the restart into the match
             start = max(start, start_tick - 1)
         live = rnd.freeze_end_tick if rnd.freeze_end_tick is not None and rnd.freeze_end_tick > start else start + 1
-        windows.append(_Window(ParsedRound(len(windows) + 1, rnd.freeze_end_tick, rnd.end_tick, rnd.winner_side),
-                               start, live))
+        windows.append(_Window(ParsedRound(len(windows) + 1, rnd.freeze_end_tick, rnd.end_tick, rnd.winner_side,
+                                           rnd.end_reason), start, live))
     return windows
 
 
@@ -318,6 +337,7 @@ def extract_rounds(demo: ParsedDemo) -> list[RoundRecord]:
             opening_kill_seconds=seconds,
             opening_weapon=weapon,
             unscored_reason=reason,
+            end_reason=normalize_reason(rnd.end_reason),
         ))
     return records
 
@@ -345,7 +365,13 @@ def extract_player_rounds(demo: ParsedDemo) -> list[PlayerRoundRecord]:
       round_end (the server kills everyone after the match);
     * opening_kill / opening_death: the player got / suffered the round's
       opening kill (the same death :func:`extract_rounds` uses);
-    * survived: not killed before the round ended.
+    * survived: not killed before the round ended;
+    * equip_value: ``current_equip_value`` at the round's freeze end (None: not read,
+      or the round has no freeze end);
+    * clutch_vs: enemies alive at the death that left the player the last one alive
+      on their team in the round (0: never in that spot). Everyone with a side in the
+      round counts as alive at the freeze end; a side that starts the round with one
+      player is not a clutch.
     """
 
     deaths = sorted(demo.deaths, key=lambda d: d.tick)
@@ -380,6 +406,7 @@ def extract_player_rounds(demo: ParsedDemo) -> list[PlayerRoundRecord]:
         for sid, side in after.items():
             sides.setdefault(sid, _OTHER_SIDE[side] if switched else side)
 
+    equip: dict[tuple[int, str], int] = {(e.tick, e.steamid): e.value for e in demo.equipment}
     records: list[PlayerRoundRecord] = []
     for index, window in enumerate(windows):
         rnd, sides = window.rnd, round_sides[index]
@@ -390,6 +417,7 @@ def extract_player_rounds(demo: ParsedDemo) -> list[PlayerRoundRecord]:
         live = [d for d in deaths if window.live <= d.tick <= rnd.end_tick]
         counted = [d for d in deaths if window.live <= d.tick < stats_end]
         opening = live[0] if live else None
+        clutches = _clutches(sides, live)
         for steamid, side in sides.items():
             kills = sum(1 for d in counted if d.attacker_steamid == steamid and d.victim_steamid != steamid
                         and d.attacker_side in ("ct", "t") and d.victim_side in ("ct", "t")
@@ -402,8 +430,61 @@ def extract_player_rounds(demo: ParsedDemo) -> list[PlayerRoundRecord]:
                 opening_kill=bool(opening_kill),
                 opening_death=opening is not None and opening.victim_steamid == steamid,
                 survived=not any(d.victim_steamid == steamid for d in live),
+                equip_value=(equip.get((rnd.freeze_end_tick, steamid)) if rnd.freeze_end_tick is not None
+                             and demo.equipment else None),
+                clutch_vs=clutches.get(steamid, 0),
             ))
     return records
+
+
+def _clutches(sides: dict[str, str], live: list[ParsedDeath]) -> dict[str, int]:
+    """{SteamID: enemies alive when they became their team's last player alive} for one round."""
+
+    alive = {side: {sid for sid, s in sides.items() if s == side} for side in ("ct", "t")}
+    found: dict[str, int] = {}
+    for death in live:
+        side = sides.get(death.victim_steamid) if death.victim_steamid else None
+        if side is None or death.victim_steamid not in alive[side]:
+            continue
+        alive[side].discard(death.victim_steamid)
+        team, enemies = alive[side], len(alive[_OTHER_SIDE[side]])
+        if len(team) == 1 and enemies:
+            (last,) = team
+            found.setdefault(last, enemies)
+        if not team or not enemies:
+            break
+    return found
+
+
+# round_end reasons as stored (demoparser2 names) -> how the round was decided.
+_REASONS = {
+    "t_killed": "elimination", "ct_killed": "elimination", "bomb_exploded": "bomb", "bomb_defused": "defuse",
+    "target_saved": "time", "time_ran_out": "time", "t_surrender": "surrender", "ct_surrender": "surrender",
+    "draw": "draw",
+}
+# Some demos give the reason as the game's RoundEndReason number (seen on the demoparser2
+# fixture: 9 with "#SFUI_Notice_Terrorists_Win", 7 with "#SFUI_Notice_Bomb_Defused").
+_REASON_NUMBERS = {1: "bomb_exploded", 7: "bomb_defused", 8: "t_killed", 9: "ct_killed", 10: "draw",
+                   12: "target_saved", 17: "t_surrender", 18: "ct_surrender"}
+
+
+def normalize_reason(reason) -> str | None:
+    """The round_end reason as a lower-case demoparser2 name, or None (missing / unknown number)."""
+
+    if isinstance(reason, bool) or reason is None:
+        return None
+    if isinstance(reason, (int, float)):
+        return _REASON_NUMBERS.get(int(reason)) if reason == reason else None
+    text = str(reason).strip().lower()
+    if text.isdigit():
+        return _REASON_NUMBERS.get(int(text))
+    return text or None
+
+
+def round_outcome(reason: str | None) -> str | None:
+    """How a round was decided: elimination | bomb | defuse | time | surrender | draw | None."""
+
+    return _REASONS.get(reason) if reason else None
 
 
 def final_score(demo: ParsedDemo) -> tuple[int, int] | None:
@@ -442,7 +523,9 @@ _EVENTS = ("round_end", "round_freeze_end", "player_death", "player_spawn", "beg
 _DEATH_COLUMNS = ("tick", "attacker_team_num", "user_team_num", "weapon", "attacker_team_rounds_total",
                   "user_team_rounds_total", "attacker_steamid", "user_steamid")
 _SPAWN_COLUMNS = ("tick", "user_steamid", "user_team_num")
-_INT_COLUMNS = ("winner", "attacker_team_num", "user_team_num", "attacker_team_rounds_total", "user_team_rounds_total")
+_EQUIP_PROPS = ["current_equip_value"]
+_INT_COLUMNS = ("winner", "attacker_team_num", "user_team_num", "attacker_team_rounds_total", "user_team_rounds_total",
+                "current_equip_value")
 
 
 class Demoparser2Parser(DemoParser):
@@ -562,6 +645,8 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
         parser = _Parser(demo_path)
         header = parser.parse_header() or {}
         frames = dict(parser.parse_events(list(_EVENTS), player=["team_num", "team_rounds_total"]))
+        # Read the skip count now: _equipment() below runs a second parse pass over the
+        # same demo and would otherwise double it.
         if _packet_ents_skips is not None:
             counts = _packet_ents_skips() or {}
             packet_ents_skips = int(counts.get("total") or 0)
@@ -570,13 +655,14 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
                     "demo parse degraded: PacketEntities soft-skips=%s (entity_not_found=%s malformed_message=%s) path=%s",
                     packet_ents_skips, counts.get("entity_not_found"), counts.get("malformed_message"), demo_path,
                 )
-        del parser
-        round_end = _rows(frames.pop("round_end", None), ("tick", "winner"))
+        round_end = _rows(frames.pop("round_end", None), ("tick", "winner", "reason"))
         freeze_ticks = sorted(int(t) for t in _column(frames.pop("round_freeze_end", None), "tick"))
         deaths = _rows(frames.pop("player_death", None), _DEATH_COLUMNS)
         spawn_rows = _rows(frames.pop("player_spawn", None), _SPAWN_COLUMNS)
         match_starts = [int(t) for t in _column(frames.pop("begin_new_match", None), "tick")]
         frames.clear()
+        equipment = _equipment(parser, freeze_ticks)
+        del parser
     except Exception as exc:  # parser raises a variety of native errors
         detail = f"demo could not be parsed: {exc!r}"
         if header:  # the header parsed: say which CS2 build recorded the demo
@@ -593,6 +679,7 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
             freeze_end_tick=freezes[-1] if freezes else None,
             end_tick=end_tick,
             winner_side=TEAM_NUM_TO_SIDE.get(row.get("winner")),
+            end_reason=normalize_reason(row.get("reason")),
         ))
         previous_end = end_tick
     return ParsedDemo(
@@ -618,8 +705,29 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
             and (side := TEAM_NUM_TO_SIDE.get(row.get("user_team_num")))
         ],
         match_start_tick=_last_match_start(match_starts, rounds),
+        equipment=equipment,
         packet_ents_skips=packet_ents_skips,
     )
+
+
+def _equipment(parser, freeze_ticks: list[int]) -> list[ParsedEquip]:
+    """Every player's equipment value at each freeze end. Optional detail: a failure here
+    is logged and the demo still parses (without equipment values)."""
+
+    if not freeze_ticks:
+        return []
+    try:
+        frame = parser.parse_ticks(_EQUIP_PROPS, ticks=sorted(set(freeze_ticks)))
+        rows = _rows(frame, ("tick", "steamid", "current_equip_value"))
+    except Exception as exc:  # native parser errors
+        logger.warning("equipment values not read: %r", exc)
+        return []
+    found = []
+    for row in rows:
+        steamid, value = normalize_steamid(row.get("steamid")), row.get("current_equip_value")
+        if steamid and isinstance(value, (int, float)) and value == value:
+            found.append(ParsedEquip(int(row["tick"]), steamid, int(value)))
+    return found
 
 
 def _last_match_start(match_starts: list[int], rounds: list[ParsedRound]) -> int | None:
@@ -634,11 +742,12 @@ def parsed_demo_to_json(demo: ParsedDemo) -> dict:
     return {
         "map_name": demo.map_name,
         "tickrate": demo.tickrate,
-        "rounds": [[r.number, r.freeze_end_tick, r.end_tick, r.winner_side] for r in demo.rounds],
+        "rounds": [[r.number, r.freeze_end_tick, r.end_tick, r.winner_side, r.end_reason] for r in demo.rounds],
         "deaths": [[d.tick, d.attacker_side, d.victim_side, d.weapon, d.attacker_score, d.victim_score,
                     d.attacker_steamid, d.victim_steamid] for d in demo.deaths],
         "spawns": [[s.tick, s.steamid, s.side] for s in demo.spawns],
         "match_start_tick": demo.match_start_tick,
+        "equipment": [[e.tick, e.steamid, e.value] for e in demo.equipment],
         "packet_ents_skips": demo.packet_ents_skips,
     }
 
@@ -647,13 +756,15 @@ def parsed_demo_from_json(data: dict) -> ParsedDemo:
     return ParsedDemo(
         map_name=data["map_name"],
         tickrate=int(data["tickrate"]),
-        rounds=[ParsedRound(number=int(n), freeze_end_tick=None if f is None else int(f), end_tick=int(e),
-                            winner_side=w) for n, f, e, w in data["rounds"]],
+        rounds=[ParsedRound(number=int(r[0]), freeze_end_tick=None if r[1] is None else int(r[1]),
+                            end_tick=int(r[2]), winner_side=r[3], end_reason=r[4] if len(r) > 4 else None)
+                for r in data["rounds"]],
         deaths=[ParsedDeath(int(d[0]), d[1], d[2], d[3], *(None if x is None else int(x) for x in d[4:6]),
                             *(d[6:8] if len(d) >= 8 else (None, None)))
                 for d in data["deaths"]],
         spawns=[ParsedSpawn(int(t), str(sid), side) for t, sid, side in data.get("spawns", [])],
         match_start_tick=None if data.get("match_start_tick") is None else int(data["match_start_tick"]),
+        equipment=[ParsedEquip(int(t), str(sid), int(v)) for t, sid, v in data.get("equipment", [])],
         packet_ents_skips=int(data.get("packet_ents_skips") or 0),
     )
 

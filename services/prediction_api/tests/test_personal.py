@@ -138,7 +138,9 @@ def test_match_report_highlights_your_rounds(app_client):
     assert report["you"] == {
         "status": "in_match", "steam_id": ME, "first_side": "t", "last_side": "ct", "rounds": 4, "won": 3,
         "win_rate": 0.75, "kills": 6, "deaths": 2, "kd": 3.0, "opening_kills": 1, "opening_deaths": 1,
-        "survived": 2, "score": {"you": 3, "them": 1}, "result": "won"}
+        "survived": 2, "score": {"you": 3, "them": 1}, "result": "won",
+        # Match detail: no clutches / buys recorded by this (pre-detail style) store.
+        "opening_duels": {"taken": 2, "won": 1, "lost": 1, "win_rate": 0.5}, "clutches": None, "buys": None}
     rounds = report["rounds"]
     assert [r["you"]["side"] for r in rounds] == ["t", "t", "ct", "ct"]
     assert [r["you"]["won"] for r in rounds] == [True, False, True, True]

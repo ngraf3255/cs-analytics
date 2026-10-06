@@ -159,6 +159,7 @@ rounds = Table(
     Column("opening_kill_seconds", Float),
     Column("opening_weapon", String),
     Column("unscored_reason", String),
+    Column("end_reason", String),
 )
 # Every player's side and stats per round of a match (shared by all owners).
 player_rounds = Table(
@@ -172,6 +173,8 @@ player_rounds = Table(
     Column("opening_kill", Integer, nullable=False, default=0),
     Column("opening_death", Integer, nullable=False, default=0),
     Column("survived", Integer, nullable=False, default=1),
+    Column("equip_value", Integer),
+    Column("clutch_vs", Integer),
 )
 upload_jobs = Table(
     "upload_jobs", metadata,
@@ -260,6 +263,15 @@ def _player_round(row) -> PlayerRoundRecord:
     return PlayerRoundRecord(
         round_number=row.round_number, steam_id=row.steam_id, side=row.side, kills=row.kills, deaths=row.deaths,
         opening_kill=bool(row.opening_kill), opening_death=bool(row.opening_death), survived=bool(row.survived),
+        equip_value=row.equip_value, clutch_vs=row.clutch_vs,
+    )
+
+
+def _round(row) -> RoundRecord:
+    return RoundRecord(
+        round_number=row.round_number, winner_side=row.winner_side, opening_kill_side=row.opening_kill_side,
+        opening_kill_seconds=row.opening_kill_seconds, opening_weapon=row.opening_weapon,
+        unscored_reason=row.unscored_reason, end_reason=row.end_reason,
     )
 
 
@@ -695,7 +707,8 @@ class SqlStorage(Storage):
             conn.execute(insert(player_rounds), [
                 dict(match_id=match_id, steam_id=p.steam_id, round_number=p.round_number, side=p.side,
                      kills=p.kills, deaths=p.deaths, opening_kill=int(p.opening_kill),
-                     opening_death=int(p.opening_death), survived=int(p.survived))
+                     opening_death=int(p.opening_death), survived=int(p.survived), equip_value=p.equip_value,
+                     clutch_vs=p.clutch_vs)
                 for p in match.player_rounds
             ])
 
@@ -705,7 +718,7 @@ class SqlStorage(Storage):
             conn.execute(insert(rounds), [
                 dict(match_id=match_id, round_number=r.round_number, winner_side=r.winner_side,
                      opening_kill_side=r.opening_kill_side, opening_kill_seconds=r.opening_kill_seconds,
-                     opening_weapon=r.opening_weapon, unscored_reason=r.unscored_reason)
+                     opening_weapon=r.opening_weapon, unscored_reason=r.unscored_reason, end_reason=r.end_reason)
                 for r in match.rounds
             ])
 
@@ -892,12 +905,7 @@ class SqlStorage(Storage):
             round_rows = conn.execute(
                 select(rounds).where(rounds.c.match_id == match_id).order_by(rounds.c.round_number)
             ).all()
-        return _match_record(row, _Owner(row)), [
-            RoundRecord(round_number=r.round_number, winner_side=r.winner_side,
-                        opening_kill_side=r.opening_kill_side, opening_kill_seconds=r.opening_kill_seconds,
-                        opening_weapon=r.opening_weapon, unscored_reason=r.unscored_reason)
-            for r in round_rows
-        ]
+        return _match_record(row, _Owner(row)), [_round(r) for r in round_rows]
 
     def get_player_rounds(self, match_id: str, steam_id: str) -> list[PlayerRoundRecord]:
         with self.engine.begin() as conn:
@@ -905,6 +913,14 @@ class SqlStorage(Storage):
                 select(player_rounds).where(and_(player_rounds.c.match_id == match_id,
                                                  player_rounds.c.steam_id == steam_id))
                 .order_by(player_rounds.c.round_number)
+            ).all()
+        return [_player_round(r) for r in rows]
+
+    def get_match_player_rounds(self, match_id: str) -> list[PlayerRoundRecord]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(player_rounds).where(player_rounds.c.match_id == match_id)
+                .order_by(player_rounds.c.round_number, player_rounds.c.steam_id)
             ).all()
         return [_player_round(r) for r in rows]
 
@@ -958,10 +974,7 @@ class SqlStorage(Storage):
             ).all()
         by_match: dict[str, list[RoundRecord]] = {}
         for r in round_rows:
-            by_match.setdefault(r.match_id, []).append(RoundRecord(
-                round_number=r.round_number, winner_side=r.winner_side, opening_kill_side=r.opening_kill_side,
-                opening_kill_seconds=r.opening_kill_seconds, opening_weapon=r.opening_weapon,
-                unscored_reason=r.unscored_reason))
+            by_match.setdefault(r.match_id, []).append(_round(r))
         return [(_match_record(row, _Owner(row)), by_match.get(row.id, [])) for row in rows]
 
     def list_all_player_rounds(self, user_id: str) -> dict[str, list[PlayerRoundRecord]]:

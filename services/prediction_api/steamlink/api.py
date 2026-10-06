@@ -29,6 +29,7 @@ from .config import Settings
 from .crypto import AuthCodeCipher, DecryptionError
 from . import export as tableau_export
 from .jobs import UploadJobWorker
+from .match_detail import clutch_view, economy_by_round, player_detail, round_end_view
 from .players import match_players
 from .scoring import RoundScorer
 from .sessions import LOGIN_STATE_COOKIE, CookieSigner
@@ -220,6 +221,8 @@ def _match_view(match) -> dict:
         # Parsed by an older parser (null: up to date). The demo is not kept on the server,
         # so the way to refresh it is to upload the same demo again (fix: "reupload").
         "outdated": None if match.outdated_reason is None else {"reason": match.outdated_reason, "fix": "reupload"},
+        # Round end reasons, buys and clutches recorded (false: parsed before; re-upload adds them).
+        "detail_recorded": match.detail_recorded,
         # Soft-skipped PacketEntities during parse (Rush etc.): some props may be incomplete.
         "degraded": (
             {
@@ -628,7 +631,7 @@ async def upload_demo(
             known = ctx.storage.claim_known_match(
                 user.id, share_code=share_code, valve_match_id=valve_match_id, demo_sha256=digest,
                 share_code_verified=False, source="upload", now=now)
-        if known is not None and known[0].outdated_reason is None:
+        if known is not None and not known[0].reparse_on_upload:
             record, added = known
             job = UploadJob(id=job_id, user_id=user.id, status="done", demo_path=raw_path, size_bytes=written,
                             created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest,
@@ -753,6 +756,8 @@ def build_match_report(storage: Storage, scorer: RoundScorer, user_id: str, matc
         return None
     match, rounds = found
     mine = {r.round_number: r for r in storage.get_player_rounds(match_id, steam_id)} if steam_id else {}
+    # Each team's buy per round (match detail; empty for matches parsed before it was recorded).
+    economy = economy_by_round(rounds, storage.get_match_player_rounds(match_id)) if match.detail_recorded else {}
     scores = scorer.score_rounds(match.map_name, rounds)
     round_views, scored, correct = [], 0, 0
     for rnd, score in zip(rounds, scores):
@@ -773,6 +778,9 @@ def build_match_report(storage: Storage, scorer: RoundScorer, user_id: str, matc
             },
             "prediction": prediction,
             "unscored_reason": score.unscored_reason,
+            # How the round ended (null: not recorded) and each team's buy (null: not recorded).
+            "end": round_end_view(rnd),
+            "economy": economy.get(rnd.round_number),
             # The signed-in player's round (null: not in this round / match, or not recorded).
             "you": None if record is None else {
                 "side": record.side,
@@ -780,6 +788,9 @@ def build_match_report(storage: Storage, scorer: RoundScorer, user_id: str, matc
                 "kills": record.kills, "deaths": record.deaths, "opening_kill": record.opening_kill,
                 "opening_death": record.opening_death, "survived": record.survived,
                 "win_probability": None if prediction is None else prediction["probabilities"][record.side],
+                "equip_value": record.equip_value,
+                # Last one alive on your team vs ``vs`` enemies (null: no clutch, or not recorded).
+                "clutch": clutch_view(record, rnd.winner_side),
             },
         })
     report = {
@@ -789,13 +800,13 @@ def build_match_report(storage: Storage, scorer: RoundScorer, user_id: str, matc
         "rounds": round_views,
     }
     if steam_id is not None:
-        report["you"] = _you_in_match(match, rounds, [mine[n] for n in sorted(mine)], steam_id)
+        report["you"] = _you_in_match(match, rounds, [mine[n] for n in sorted(mine)], steam_id, economy)
     # Everyone in the demo (empty when per-player rounds weren't recorded: re-upload).
     report["players"] = match_players(storage, user_id, match_id, steam_id) if match.players_recorded else []
     return report
 
 
-def _you_in_match(match, rounds, mine, steam_id: str) -> dict:
+def _you_in_match(match, rounds, mine, steam_id: str, economy: dict | None = None) -> dict:
     """The signed-in player's summary of one match. ``status``: ``in_match``,
     ``not_in_match`` (e.g. an uploaded pro demo) or ``unknown`` (parsed before
     per-player rounds were recorded: re-upload the demo to fill it in)."""
@@ -814,6 +825,8 @@ def _you_in_match(match, rounds, mine, steam_id: str) -> dict:
         "opening_kills": sum(r.opening_kill for r in mine), "opening_deaths": sum(r.opening_death for r in mine),
         "survived": sum(r.survived for r in mine),
         **match_result(match, mine),
+        # Opening duels, clutches and round wins by your team's buy (match detail).
+        **player_detail(rounds, mine, economy or {}),
     }
 
 

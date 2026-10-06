@@ -20,7 +20,7 @@ def storage(tmp_path):
     applied = apply_migrations(engine)
     assert applied == ["0001_steam_sync", "0002_cross_source_dedupe", "0003_upload_jobs", "0004_sync_jobs",
                        "0005_shared_matches", "0006_match_score", "0007_player_rounds", "0008_parse_version",
-                       "0009_auto_sync"]
+                       "0009_auto_sync", "0010_match_detail"]
     # Metadata tables must match the migration (re-create is a no-op if identical).
     metadata.create_all(engine)
     return SqlStorage(engine)
