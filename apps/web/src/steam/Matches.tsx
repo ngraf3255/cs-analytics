@@ -335,7 +335,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
               ? syncJobsHint(syncJobs)
               : !canSync ? `Upload a CS2 .dem / .dem.bz2 to get a round-by-round report.${steamAvailable ? " Sign in through Steam to sync matches automatically." : " Steam sync is coming soon."}`
               : !linked ? <>Link match history in <a href={ACCOUNT_PATH}>Account settings</a> to sync, or upload a demo.</>
-                : awaitingShare ? <>Sync starts once you add a share code in <a href={ACCOUNT_PATH}>Account settings</a>. Uploads work now.</>
+                : awaitingShare ? <>Add a share code in <a href={ACCOUNT_PATH}>Account settings</a>.</>
                 : relink ? <>Sync is paused: {relink.field === "auth_code" ? "update your authentication code" : "add a recent share code"} in <a href={ACCOUNT_PATH}>Account settings</a>.</>
                 : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}${me.sync.auto_sync?.active ? " · auto-sync on" : ""}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
         </span>
@@ -398,7 +398,7 @@ function EmptyMatches({ linked, relink, awaitingShare, uploading, canSync, steam
               : relink
                 ? <>Sync is paused until you update your codes in <a href={ACCOUNT_PATH}>Account settings</a>.</>
                 : awaitingShare
-                  ? <>Your authentication code is saved. After your next match, add its share code in <a href={ACCOUNT_PATH}>Account settings</a>.</>
+                  ? <>Add a share code in <a href={ACCOUNT_PATH}>Account settings</a> after your next match.</>
                 : "Press Sync matches above. We import the match you linked with and your newer Competitive, Premier and Wingman matches; each one downloads and parses in the background."}
           </p>
         </div>

@@ -29,6 +29,18 @@ describe("/account", () => {
     expect(decodeURIComponent(link.getAttribute("href") ?? "")).toMatch(/next=\/account$/);
   });
 
+  it("failed Steam sign-in that started here comes back here and says so", async () => {
+    window.history.replaceState(null, "", "/account?steam_login=failed&reason=bad_signature");
+    installFakeApi({
+      "GET /steam/status": { status: 200, body: { steam: true, upload: true } },
+      "GET /me": { status: 401, body: { detail: "not_signed_in" } },
+    });
+    render(<AccountPage />);
+    expect(await screen.findByText("Steam sign-in could not be verified. Please try again.")).toBeInTheDocument();
+    expect(window.location.pathname + window.location.search).toBe("/account");
+    window.history.replaceState(null, "", "/");
+  });
+
   it("signed in: holds the codes form, disconnect, sign out and delete", async () => {
     installFakeApi({
       "GET /steam/status": { status: 200, body: { steam: true, upload: true } },
@@ -36,9 +48,10 @@ describe("/account", () => {
       "POST /auth/logout": { status: 204 },
     });
     render(<AccountPage />);
-    expect(await screen.findByRole("heading", { name: "Account settings" })).toBeInTheDocument();
-    expect(screen.getByText("ADD A MATCH SHARING CODE")).toBeInTheDocument();
-    expect(screen.getByLabelText(/MATCH SHARING CODE/)).toBeInTheDocument();
+    // wait for the signed-in panel itself (the heading also renders while signed out / loading)
+    expect(await screen.findByText("Paste a share code from a recent match.")).toBeInTheDocument();
+    expect(screen.getByText(/Auth saved/)).toBeInTheDocument();
+    await vi.waitFor(() => expect(screen.getByLabelText(/^Share code/)).toHaveFocus());  // sync is blocked: land on the form
     expect(screen.getByRole("button", { name: "Disconnect match history" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete my data" })).toBeInTheDocument();
     const assign = vi.fn();

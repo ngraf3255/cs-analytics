@@ -74,3 +74,8 @@
 .steam-steps-short{margin:6px 0 4px!important}
 @media(max-width:640px){.account-summary{grid-template-columns:1fr}.account-link{justify-self:stretch;text-align:center}}
 .steam-card a.account-link{text-decoration:none}.account-settings .steam-form{margin-top:12px}.account-settings .auto-sync{margin:6px 0}
+/* /account codes form: compact when fixing one code; "Update codes" collapses the replace form */
+.steam-form.compact{max-width:420px}
+.replace-codes summary{cursor:pointer;font:11px 'DM Mono',monospace;color:#9aa4ab;letter-spacing:.04em;margin:4px 0}
+.replace-codes[open] summary{color:var(--acid)}
+.account-summary .relink-alert{grid-column:1/-1}.account-summary .relink-alert a{text-decoration:underline;text-underline-offset:2px}

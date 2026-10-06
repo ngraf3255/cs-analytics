@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { steamLoginUrl } from "./api";
 import { useMe, useSteamStatus } from "./hooks";
 import { ACCOUNT_PATH } from "./routes";
@@ -8,7 +8,8 @@ import { AccountSettings, SteamAccount } from "./SteamAccount";
 export function AccountPage() {
   const { steam, upload, guest, enabled, reachable, loading } = useSteamStatus();
   const { me, setMe, error, refresh, checked } = useMe(enabled);
-  const failure = new URLSearchParams(window.location.search).get("steam_login") === "failed";
+  // read once: the flag is stripped from the URL below and must survive re-renders
+  const [failure] = useState(() => new URLSearchParams(window.location.search).get("steam_login") === "failed");
 
   useEffect(() => {
     if (failure) window.history.replaceState(null, "", window.location.pathname);

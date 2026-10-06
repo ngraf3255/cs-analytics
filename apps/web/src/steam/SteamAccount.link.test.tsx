@@ -18,8 +18,8 @@ const relinkShare: Me = { ...unlinked, match_access: { ...LINKED_ACCESS, needs_r
 const awaiting: Me = { ...unlinked, match_access: { ...LINKED_ACCESS, awaiting_share_code: true } };
 const relinkAuth: Me = { ...relinkShare, match_access: { ...LINKED_ACCESS, needs_relink: { reason: "invalid_auth_code", field: "auth_code" } } };
 
-const authBox = () => screen.getByLabelText(/GAME AUTHENTICATION CODE/) as HTMLInputElement;
-const shareBox = () => screen.getByLabelText(/MATCH SHARING CODE/) as HTMLInputElement;
+const authBox = () => screen.getByLabelText(/^Auth code/) as HTMLInputElement;
+const shareBox = () => screen.getByLabelText(/^Share code/) as HTMLInputElement;
 const consent = () => screen.getByRole("checkbox");
 
 function renderAccount(me: Me) {
@@ -29,17 +29,21 @@ function renderAccount(me: Me) {
 }
 
 describe("link match history (Leetify-style onboarding)", () => {
-  it("links Valve's page in one short line (no wall of share-code instructions)", () => {
+  it("first link: two short hints, short labels and consent, no kicker (no wall of instructions)", () => {
     installFakeApi({});
     renderAccount(unlinked);
     const form = screen.getByRole("form", { name: "Link match history" });
-    expect(within(form).getByRole("link", { name: /match history page/ })).toHaveAttribute(
+    expect(within(form).getByRole("link", { name: /Valve’s match-history page/ })).toHaveAttribute(
       "href", "https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128");
-    expect(form).toHaveTextContent("Share code optional.");
-    expect(form).not.toHaveTextContent("Your most recently completed match token");
-    expect(form).not.toHaveTextContent("Watch → Your Matches");
-    expect(screen.getByRole("button", { name: /LINK MATCH HISTORY/ })).toBeDisabled();
-    expect(screen.getByText("Tick the box above to enable linking.")).toBeInTheDocument();
+    expect(form).toHaveTextContent("Codes from Valve’s match-history page ↗.");
+    expect(form).toHaveTextContent("Imports that match and newer. Expire ~30 days. Older/FACEIT: upload a demo.");
+    expect(shareBox()).toHaveAccessibleDescription("Optional · latest match token there, or CS2 Watch → Your Matches.");
+    expect(form).not.toHaveTextContent("most recent completed match token");
+    expect(form.querySelector(".section-kicker")).toBeNull();
+    expect(form).not.toHaveTextContent(/OPTIONAL/);
+    expect(within(form).getByRole("checkbox", { name: "Store encrypted; auto-sync on by default. Disconnect anytime." })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: /^Link/ })).toBeDisabled();
+    expect(form).not.toHaveTextContent("Tick the box");
   });
 
   it("accepts codes as pasted (lowercase auth code without dashes, CS2 steam:// share link) and sends them cleaned up", async () => {
@@ -53,7 +57,7 @@ describe("link match history (Leetify-style onboarding)", () => {
     expect(screen.getAllByText("Looks right.")).toHaveLength(1);
     expect(screen.getByText(`Found ${SHARE} in the link.`)).toBeInTheDocument();
     await user.click(consent());
-    await user.click(screen.getByRole("button", { name: /LINK MATCH HISTORY/ }));
+    await user.click(screen.getByRole("button", { name: /^Link/ }));
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     const put = api.calls.find((c) => c.method === "PUT");
     expect(put?.body).toEqual({ auth_code: "AB12-CDE34-FG56", share_code: SHARE, consent: true });
@@ -74,7 +78,7 @@ describe("link match history (Leetify-style onboarding)", () => {
     expect(authBox()).toHaveAccessibleDescription(/That’s a match sharing code/);
     expect(shareBox()).toHaveAccessibleDescription(/That’s your Game Authentication Code/);
     await user.click(consent());
-    await user.click(screen.getByRole("button", { name: /LINK MATCH HISTORY/ }));
+    await user.click(screen.getByRole("button", { name: /^Link/ }));
     expect(api.calls).toHaveLength(0);
     expect(authBox()).toHaveFocus();
   });
@@ -89,12 +93,12 @@ describe("link match history (Leetify-style onboarding)", () => {
     await user.type(authBox(), "AB12-CDE34-FG56");
     await user.type(shareBox(), SHARE);
     await user.click(consent());
-    await user.click(screen.getByRole("button", { name: /LINK MATCH HISTORY/ }));
+    await user.click(screen.getByRole("button", { name: /^Link/ }));
     await waitFor(() => expect(shareBox()).toHaveAccessibleDescription(/last 30 days/));
     expect(shareBox()).toHaveFocus();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /LINK MATCH HISTORY/ }));
+    await user.click(screen.getByRole("button", { name: /^Link/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Valve is rate-limiting requests");
   });
 
@@ -102,13 +106,17 @@ describe("link match history (Leetify-style onboarding)", () => {
     const user = userEvent.setup();
     const api = installFakeApi({ "PUT /steam/match-access": { status: 200, body: LINKED_ACCESS } });
     const onChange = renderAccount(relinkShare);
-    expect(screen.getByRole("alert")).toHaveTextContent(/Re-link needed to keep syncing.*last 30 days.*Your authentication code is kept/);
-    expect(shareBox()).toHaveFocus();
-    expect(screen.getByLabelText(/NEW MATCH SHARING CODE/)).toBe(shareBox());
-    expect(authBox()).toHaveAttribute("placeholder", "Keep ****-*****-FG56");
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Re-link needed to keep syncing. Paste a share code from a match in the last 30 days.");
+    expect(alert).toHaveFocus();  // announced first
+    expect(shareBox()).toHaveAccessibleDescription(alert.textContent!);  // share-code text, not auth-code text
+    expect(screen.queryByText("Paste a share code from a recent match.")).toBeNull();
+    expect(screen.queryByText(/Optional · latest match token/)).toBeNull();
+    await user.click(shareBox());
+    expect(screen.queryByLabelText(/^Auth code/)).toBeNull();  // the stored auth code is kept
+    expect(screen.queryByRole("checkbox")).toBeNull();  // consent was given at link
     await user.paste(SHARE);
-    await user.click(consent());
-    await user.click(screen.getByRole("button", { name: /SAVE NEW CODES/ }));
+    await user.click(screen.getByRole("button", { name: /Save share code/ }));
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ auth_code: "", share_code: SHARE, consent: true });
   });
@@ -117,12 +125,13 @@ describe("link match history (Leetify-style onboarding)", () => {
     const user = userEvent.setup();
     const api = installFakeApi({});
     renderAccount(relinkAuth);
-    expect(screen.getByRole("alert")).toHaveTextContent(/Valve rejected your saved Game Authentication Code/);
-    expect(authBox()).toHaveFocus();
+    expect(screen.getByRole("alert")).toHaveTextContent("Re-link needed to keep syncing. Paste your current Game Authentication Code.");
+    expect(screen.getByRole("alert")).toHaveFocus();
+    expect(authBox()).toHaveAccessibleDescription(/Paste your current Game Authentication Code/);
     expect(authBox()).toHaveAttribute("placeholder", "ABCD-EFGHI-JKLM");
-    await user.type(shareBox(), SHARE);
+    expect(screen.queryByLabelText(/^Share code/)).toBeNull();
     await user.click(consent());
-    await user.click(screen.getByRole("button", { name: /SAVE NEW CODES/ }));
+    await user.click(screen.getByRole("button", { name: /^Save/ }));
     expect(api.calls).toHaveLength(0);
     expect(authBox()).toHaveAccessibleDescription(/Paste your Game Authentication Code/);
   });
@@ -131,11 +140,9 @@ describe("link match history (Leetify-style onboarding)", () => {
     const user = userEvent.setup();
     const api = installFakeApi({ "PUT /steam/match-access": { status: 200, body: { ...LINKED_ACCESS, awaiting_share_code: true } } });
     const onChange = renderAccount(unlinked);
-    expect(screen.getByText("LINK MATCH HISTORY", { selector: ".section-kicker" })).toBeInTheDocument();
-    expect(screen.getByText("OPTIONAL · ADD AFTER YOUR NEXT MATCH")).toBeInTheDocument();
     await user.type(authBox(), "AB12-CDE34-FG56");
     await user.click(consent());
-    await user.click(screen.getByRole("button", { name: /LINK MATCH HISTORY/ }));
+    await user.click(screen.getByRole("button", { name: /^Link/ }));
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ auth_code: "AB12-CDE34-FG56", share_code: "", consent: true });
   });
@@ -146,7 +153,7 @@ describe("link match history (Leetify-style onboarding)", () => {
     renderAccount(unlinked);
     await user.type(shareBox(), SHARE);
     await user.click(consent());
-    await user.click(screen.getByRole("button", { name: /LINK MATCH HISTORY/ }));
+    await user.click(screen.getByRole("button", { name: /^Link/ }));
     expect(api.calls).toHaveLength(0);
     expect(authBox()).toHaveAccessibleDescription(/Paste your Game Authentication Code/);
   });
@@ -155,18 +162,48 @@ describe("link match history (Leetify-style onboarding)", () => {
     const user = userEvent.setup();
     const api = installFakeApi({ "PUT /steam/match-access": { status: 200, body: LINKED_ACCESS } });
     const onChange = renderAccount(awaiting);
-    expect(screen.getByText(/Authentication code saved/)).toBeInTheDocument();
+    expect(screen.getByText(/Auth saved/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByText("ADD A MATCH SHARING CODE")).toBeInTheDocument();
-    expect(screen.queryByLabelText(/GAME AUTHENTICATION CODE/)).toBeNull();  // only the share code is asked for
-    await user.click(consent());
-    await user.click(screen.getByRole("button", { name: /SAVE SHARE CODE/ }));
+    expect(screen.getByText("Paste a share code from a recent match.")).toBeInTheDocument();
+    expect(screen.queryByText("ADD A MATCH SHARING CODE")).toBeNull();
+    expect(screen.queryByLabelText(/^Auth code/)).toBeNull();  // only the share code is asked for
+    expect(shareBox()).toHaveFocus();  // sync is blocked on this box
+    expect(shareBox()).toHaveAccessibleDescription("Paste a share code from a recent match.");
+    await user.click(screen.getByRole("button", { name: /Save share code/ }));
     expect(api.calls).toHaveLength(0);  // nothing to save yet
     expect(shareBox()).toHaveAccessibleDescription(/Paste a match sharing code/);
     await user.type(shareBox(), SHARE);
-    await user.click(screen.getByRole("button", { name: /SAVE SHARE CODE/ }));
+    await user.click(screen.getByRole("button", { name: /Save share code/ }));
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ auth_code: "", share_code: SHARE, consent: true });
+  });
+
+  it("linked and healthy: 'Update codes' replaces either code (empty keeps it); consent only for a new auth code", async () => {
+    const user = userEvent.setup();
+    const api = installFakeApi({ "PUT /steam/match-access": { status: 200, body: LINKED_ACCESS } });
+    const onChange = renderAccount(linked);
+    const details = screen.getByText("Update codes").closest("details") as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    const form = within(details).getByRole("form", { name: "Update codes" });
+    expect(form.querySelector(".section-kicker")).toBeNull();
+    expect(form).not.toHaveTextContent(/OPTIONAL|Replace codes if/);
+    expect(authBox()).toHaveAttribute("placeholder", "Keep current");
+    expect(shareBox()).toHaveAttribute("placeholder", "Keep current");
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /^Save/ }));
+    expect(api.calls).toHaveLength(0);  // nothing to save
+    await user.type(authBox(), "AB12-CDE34-FG56");
+    expect(screen.getByRole("button", { name: /^Save/ })).toBeDisabled();
+    await user.click(consent());
+    await user.click(screen.getByRole("button", { name: /^Save/ }));
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ auth_code: "AB12-CDE34-FG56", share_code: "", consent: true });
+  });
+
+  it("session & data: no Valve-revoke paragraph (it lives in the disconnect confirm)", () => {
+    installFakeApi({});
+    renderAccount(linked);
+    expect(screen.queryByText(/To revoke access on Valve’s side/)).toBeNull();
   });
 
   it("linked: codes are tucked away under 'Update codes'; disconnect confirms and offers to link again", async () => {
@@ -229,8 +266,9 @@ describe("match list empty state and paused sync", () => {
     render(<Matches me={awaiting} onMeChange={async () => undefined} />);
     await advance();
     expect(screen.getByRole("button", { name: /SYNC MATCHES/ })).toBeDisabled();
-    expect(screen.getByText(/Sync starts once you add a share code in/)).toBeInTheDocument();
-    expect(screen.getByLabelText("No matches yet")).toHaveTextContent("Your authentication code is saved.");
+    expect(document.querySelector(".sync-meta")?.textContent).toBe("Add a share code in Account settings.");
+    expect(screen.getByLabelText("No matches yet")).toHaveTextContent("Add a share code in Account settings after your next match.");
+    expect(screen.queryByText(/Uploads work now|Your authentication code is saved/)).toBeNull();
     expect(screen.getByLabelText("Choose a demo file to upload")).toBeEnabled();
   });
 
@@ -244,6 +282,14 @@ describe("match list empty state and paused sync", () => {
 });
 
 describe("main matches page once signed in", () => {
+  it("sync blocked by a re-link: says so on the home page and links to the form in Account settings", async () => {
+    const { SteamAccount } = await import("./SteamAccount");
+    render(<SteamAccount me={relinkAuth} onChange={async () => undefined} onSignedOut={() => undefined} />);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Sync paused. Paste your current Game Authentication Code.");
+    expect(within(alert).getByRole("link", { name: /Re-link in Account settings/ })).toHaveAttribute("href", "/account");
+  });
+
   it("shows only who is signed in and a link to Account settings: no codes form, no account buttons", async () => {
     const { SteamAccount } = await import("./SteamAccount");
     for (const me of [unlinked, awaiting, relinkShare, linked]) {
@@ -251,7 +297,7 @@ describe("main matches page once signed in", () => {
       expect(screen.getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/account");
       expect(screen.queryByRole("form")).toBeNull();
       expect(screen.queryByRole("button", { name: /Delete my data|Sign out|Disconnect/ })).toBeNull();
-      expect(screen.queryByText(/Game Authentication Code/)).toBeNull();
+      if (me !== relinkShare) expect(screen.queryByRole("alert")).toBeNull();
       unmount();
     }
   });
