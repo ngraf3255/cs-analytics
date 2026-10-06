@@ -48,10 +48,14 @@ export function useMe(enabled: boolean) {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Which ``enabled`` value the last /me answer was for: until it matches, pages
+  // shouldn't render a signed-out state (avoids a "Sign in" flash while /me loads).
+  const [checkedFor, setCheckedFor] = useState<boolean | null>(null);
 
   const refresh = useCallback(async () => {
     if (!enabled) {
       setMe(null);
+      setCheckedFor(false);
       return null;
     }
     setLoading(true);
@@ -69,6 +73,7 @@ export function useMe(enabled: boolean) {
       return null;
     } finally {
       setLoading(false);
+      setCheckedFor(true);
     }
   }, [enabled]);
 
@@ -99,7 +104,7 @@ export function useMe(enabled: boolean) {
     };
   }, [enabled, refresh]);
 
-  return { me, setMe, loading, error, refresh };
+  return { me, setMe, loading, error, refresh, checked: checkedFor === enabled };
 }
 
 /** Scroll to the element named by the URL hash (e.g. #matches) once ``ready`` and on every

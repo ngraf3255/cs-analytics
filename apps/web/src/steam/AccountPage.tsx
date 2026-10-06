@@ -7,14 +7,14 @@ import { AccountSettings, SteamAccount } from "./SteamAccount";
 /** ``/account``: everything about linking and the account, kept off the main matches page. */
 export function AccountPage() {
   const { steam, upload, guest, enabled, reachable, loading } = useSteamStatus();
-  const { me, setMe, error, refresh } = useMe(enabled);
+  const { me, setMe, error, refresh, checked } = useMe(enabled);
   const failure = new URLSearchParams(window.location.search).get("steam_login") === "failed";
 
   useEffect(() => {
     if (failure) window.history.replaceState(null, "", window.location.pathname);
   }, [failure]);
 
-  if (loading) return null;
+  if (loading || (enabled && !checked)) return null;
 
   return (
     <section id="account" className="steam-section account-page" aria-label="Account settings">
