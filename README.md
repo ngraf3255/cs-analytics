@@ -35,7 +35,7 @@ The local frontend calls the API through the Vite development proxy. API documen
 
 ### Deploy
 
-**Baseline:** FastAPI + Postgres on the home Proxmox VM `counterstrike` (`192.168.4.54`, headless Debian 13, 2 vCPU / 8 GB); site on Cloudflare; API at **`api-site.csgooner.com`** (not `api.csgooner.com`). Compose/env/Caddy: [`deploy/homelab/`](deploy/homelab/). Steps: [`docs/deploy-homelab.md`](docs/deploy-homelab.md). `render.yaml` is optional/legacy.
+**Baseline:** FastAPI + Postgres on the home Proxmox VM `counterstrike` (`192.168.4.54`, headless Debian 13, 4 vCPU / ~6 GB RAM, 5.7 GiB usable); site on Cloudflare; API at **`api-site.csgooner.com`** (not `api.csgooner.com`). Compose/env/Caddy: [`deploy/homelab/`](deploy/homelab/). Steps: [`docs/deploy-homelab.md`](docs/deploy-homelab.md). `render.yaml` is optional/legacy.
 
 1. On the homelab VM: copy `deploy/homelab/.env.example` → `.env`, set secrets (including `STEAM_WEB_API_KEY`; see [Steam Web API key](docs/deploy-homelab.md#steam-web-api-key)), then `docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d --build` (or the systemd unit in the same folder). The API is published on `127.0.0.1:8000` only.
 2. Cloudflare Tunnel: `cloudflared` runs on the VM host as a systemd service, with public hostname `api-site.csgooner.com` → `http://localhost:8000`. The compose `cloudflared` sidecar (`--profile tunnel`) is not used.

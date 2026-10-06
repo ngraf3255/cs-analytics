@@ -1,4 +1,4 @@
-# Homelab: FastAPI + Postgres on one Proxmox VM (2 vCPU / 8 GB).
+# Homelab: FastAPI + Postgres on one Proxmox VM (4 vCPU / ~6 GB RAM, 5.7 GiB usable).
 # Current VM: counterstrike (192.168.4.54, headless Debian 13).
 # Public API: https://api-site.csgooner.com via Cloudflare Tunnel. cloudflared
 # runs on the HOST as a systemd service (dashboard install script), and its

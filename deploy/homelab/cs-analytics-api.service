@@ -30,7 +30,7 @@ ExecStartPre=/opt/cs-analytics/.venv/bin/python -m steamlink.migrate --if-config
 ExecStart=/opt/cs-analytics/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips='*'
 Restart=on-failure
 RestartSec=5
-# Demo parse child can use a lot of file-backed memory; leave headroom on 8 GB VM.
+# Demo parse child can use a lot of file-backed memory; leave headroom on the ~6 GB (5.7 GiB usable) VM.
 LimitNOFILE=65535
 
 [Install]

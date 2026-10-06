@@ -6,7 +6,7 @@ Proxmox VM. Site stays on Cloudflare; API is public at **`api-site.csgooner.com`
 | Piece | Where |
 | --- | --- |
 | Frontend | Cloudflare Worker (`csgooner.com`) |
-| API + Postgres | Homelab Proxmox VM **`counterstrike`** (`192.168.4.54`, headless Debian 13): **2 vCPU** (R5 5600X host), **8 GB RAM** |
+| API + Postgres | Homelab Proxmox VM **`counterstrike`** (`192.168.4.54`, headless Debian 13): **4 vCPU** (R5 5600X host), **~6 GB RAM** (5.7 GiB usable) |
 | Public API | `https://api-site.csgooner.com` → Cloudflare Tunnel → host `cloudflared` (systemd) → `http://localhost:8000` |
 
 > **Hostname:** the public API is `api-site.csgooner.com`, **not**
@@ -26,7 +26,7 @@ In-repo wiring: [`deploy/homelab/`](../deploy/homelab/) (`docker-compose.yml`,
 ## Capacity note
 
 Overnight measurement on a tighter free-shape (0.1 CPU / 512 MB): a 441 MB
-`.dem` finished in ~53 s. 2 cores + 8 GB is enough headroom for API + Postgres
+`.dem` finished in ~53 s. 4 vCPU + ~6 GB (5.7 GiB usable) is enough headroom for API + Postgres
 and demo parse jobs.
 
 ## Current homelab setup
@@ -36,7 +36,7 @@ and demo parse jobs.
 | VM name | `counterstrike` (Proxmox) |
 | LAN IP | `192.168.4.54` |
 | OS | Debian 13, headless; Docker + Compose plugin |
-| vCPU / RAM | 2 / 8 GB |
+| vCPU / RAM | 4 / ~6 GB (5.7 GiB usable) |
 | Role | API + Postgres colocated (compose stack in this repo) |
 | Public hostname | `api-site.csgooner.com` |
 | Edge | Cloudflare Tunnel; **`cloudflared` runs on the VM host as a systemd service** (installed with the Cloudflare dashboard install script) |
