@@ -95,7 +95,7 @@ describe("match list and per-round report (real API response shapes)", () => {
     render(<SteamSection />);
     await advance();
     expect(screen.getByRole("link", { name: /Sign in through Steam/ })).toHaveAttribute("href", expect.stringContaining("/auth/steam/login?next=%2F%23matches"));
-    expect(screen.queryByText("STEP 3 · IMPORT MATCHES")).not.toBeInTheDocument();
+    expect(screen.queryByText("IMPORT MATCHES")).not.toBeInTheDocument();
   });
 
   it("shows a coming-soon empty state (no sign-in, no upload) when the deployment has Steam features disabled", async () => {

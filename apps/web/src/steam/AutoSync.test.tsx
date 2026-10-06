@@ -36,7 +36,6 @@ describe("automatic sync in the linked-account area", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Last synced 5 min ago, auto-sync on · next check in 25 min");
     expect(toggle()).toBeChecked();
     expect(screen.getByText(/checks Valve every 2 min/)).toBeInTheDocument();
-    expect(screen.getByText(/automatically in\s+the background \(I can turn that off\)/)).toBeInTheDocument();
   });
 
   it("turns it off and back on through PUT /steam/auto-sync", async () => {

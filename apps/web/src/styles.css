@@ -64,3 +64,9 @@
 .soft-disabled .steam-button{background:#2a333b;color:#9aa4ab}
 .empty-option.soft-disabled{border-style:dotted}
 .guest-upload{position:relative;min-height:44px}
+
+/* Match-history link: minimal first-link form; everything after linking lives in Account settings */
+.steam-form.compact{max-width:420px}
+.account-settings summary{cursor:pointer;font:11px 'DM Mono',monospace;color:#9aa4ab;letter-spacing:.04em;margin:4px 0}
+.account-settings[open] summary{color:var(--acid)}
+.account-settings-body{display:grid;gap:12px;padding:12px 0 0 12px;border-left:1px solid #27313a}
