@@ -27,8 +27,9 @@ describe("design review polish", () => {
     render(<App />);
     await advance();
     const panel = readout();
-    expect(within(panel).getByText("NO PREDICTION YET")).toBeInTheDocument();
-    expect(within(panel).getByText("Build a round to see the odds")).toBeInTheDocument();
+    expect(within(panel).getByText("Predict to see the odds")).toBeInTheDocument();
+    expect(panel.querySelector(".readout-empty")?.textContent).toBe("Predict to see the odds");
+    expect(panel).not.toHaveTextContent("NO PREDICTION YET");
     expect(panel.querySelector(".prob-track")).toBeNull();
     expect(panel.querySelector(".probability-card")).toBeNull();
     expect(panel).not.toHaveTextContent("—");
@@ -41,7 +42,7 @@ describe("design review polish", () => {
     fireEvent.click(screen.getByRole("button", { name: /Predict/ }));
     await advance();
     const panel = readout();
-    expect(within(panel).queryByText("NO PREDICTION YET")).toBeNull();
+    expect(within(panel).queryByText("Predict to see the odds")).toBeNull();
     expect(panel).toHaveTextContent("Counter-Terrorists");
     expect(panel).toHaveTextContent("64.3%");
     expect(panel.querySelectorAll(".prob-track")).toHaveLength(2);

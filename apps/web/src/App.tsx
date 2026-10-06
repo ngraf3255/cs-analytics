@@ -242,13 +242,7 @@ function App() {
             ) : (
               <div className="readout-empty" role="status">
                 <span className="readout-empty-mark" aria-hidden="true" />
-                <span className="result-label">{loading ? "…" : "NO PREDICTION YET"}</span>
-                <strong>{loading ? "Running the model…" : "Build a round to see the odds"}</strong>
-                <p>
-                  {loading
-                    ? "Scoring your opening duel against professional CS2 rounds."
-                    : "Pick a map, side, time and weapon, then hit Predict."}
-                </p>
+                <strong>{loading ? "Predicting…" : "Predict to see the odds"}</strong>
               </div>
             )}
             <div className="result-foot"><span>Logistic regression</span></div>
