@@ -97,7 +97,19 @@ function syncJobsHint(jobs: UploadJob[]): string {
 /** How often the page checks for matches the server's automatic sync found. */
 export const AUTO_SYNC_WATCH_MS = 60_000;
 
-export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<unknown> }) {
+type MatchesProps = {
+  me: Me;
+  onMeChange: () => Promise<unknown>;
+  /** Steam sync is usable for this account (server has Steam on and it isn't a guest). */
+  canSync?: boolean;
+  /** The server has Steam sign-in on (a guest could still sign in). */
+  steamAvailable?: boolean;
+  /** A demo picked before the session existed (guest start): uploaded once on mount. */
+  initialFile?: File | null;
+  onInitialFile?: () => void;
+};
+
+export function Matches({ me, onMeChange, canSync = true, steamAvailable = true, initialFile = null, onInitialFile }: MatchesProps) {
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -186,6 +198,15 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
     await followJob(job);
   }
 
+  // Guest start: the user already picked a demo before the session existed.
+  const uploadRef = useRef(uploadFile);
+  uploadRef.current = uploadFile;
+  useEffect(() => {
+    if (!initialFile) return;
+    onInitialFile?.();
+    void uploadRef.current(initialFile);
+  }, [initialFile, onInitialFile]);
+
   const uploadLabel = !upload
     ? "UPLOAD .DEM"
     : upload.phase === "uploading"
@@ -214,6 +235,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
   }, [loadMatches]);
 
   useEffect(() => {
+    if (!canSync) return;
     const signal = { cancelled: false };
     steamApi.getSync()
       .then(({ jobs }) => {
@@ -222,7 +244,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
       })
       .catch(() => undefined);  // older API, or not signed in yet
     return () => { signal.cancelled = true; };
-  }, [followSyncJobs]);
+  }, [followSyncJobs, canSync]);
 
   // Automatic sync runs on the server: while it is on, check every minute (tab visible, nothing
   // followed already) whether it queued matches (follow them like a Sync) or imported some.
@@ -230,7 +252,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
   following.current = syncing || syncJobs !== null;
   const lastSynced = useRef(me.sync.last_synced_at ?? null);
   lastSynced.current = me.sync.last_synced_at ?? null;
-  const autoActive = !!me.sync.auto_sync?.active;
+  const autoActive = canSync && !!me.sync.auto_sync?.active;
   useEffect(() => {
     if (!autoActive) return;
     const signal = { cancelled: false };
@@ -288,11 +310,13 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
 
   return (
     <div className="steam-card">
-      <span className="section-kicker">STEP 3 · IMPORT MATCHES</span>
+      <span className="section-kicker">{canSync ? "STEP 3 · IMPORT MATCHES" : "YOUR UPLOADS"}</span>
       <div className="sync-row">
-        <button className={`submit-button sync-button ${syncJobs ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || !!relink || syncBusy || me.sync.status === "running"}>
-          <span>{syncLabel}</span><span className="button-arrow">↻</span>
-        </button>
+        {canSync && (
+          <button className={`submit-button sync-button ${syncJobs ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || !!relink || syncBusy || me.sync.status === "running"}>
+            <span>{syncLabel}</span><span className="button-arrow">↻</span>
+          </button>
+        )}
         <label className={`ghost-button upload-button ${uploading ? "busy" : ""}`} aria-disabled={uploading}>
           <span>{uploadLabel}</span>
           <input type="file" accept=".dem,.bz2,application/x-bzip2" disabled={uploading}
@@ -305,6 +329,7 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
               : "Uploading your demo…"
             : syncJobs
               ? syncJobsHint(syncJobs)
+              : !canSync ? `Upload a CS2 .dem / .dem.bz2 to get a round-by-round report.${steamAvailable ? " Sign in through Steam to sync matches automatically." : " Steam sync is coming soon."}`
               : !linked ? "Link your match history above to sync, or upload a CS2 .dem / .dem.bz2 you already have."
                 : relink ? (relink.field === "auth_code" ? "Sync is paused: paste your current Game Authentication Code above." : "Sync is paused: paste a recent share code above (your authentication code is kept).")
                 : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}${me.sync.auto_sync?.active ? " · auto-sync on" : ""}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
@@ -320,7 +345,8 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
       <MatchesSummaryPanel refreshKey={listVersion} />
 
       {matches.length === 0 ? (
-        <EmptyMatches linked={linked} relink={!!relink} uploading={uploading} onFile={(file) => void uploadFile(file)} />
+        <EmptyMatches linked={linked} relink={!!relink} uploading={uploading} canSync={canSync} steamAvailable={steamAvailable}
+          onFile={(file) => void uploadFile(file)} />
       ) : (
         <ul className="match-list">
           {matches.map((match) => (
@@ -345,15 +371,24 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
 }
 
 /** No matches yet: both ways in, side by side (Leetify-style onboarding: sync forward, upload the rest). */
-function EmptyMatches({ linked, relink, uploading, onFile }: { linked: boolean; relink: boolean; uploading: boolean; onFile: (file: File | undefined) => void }) {
+type EmptyMatchesProps = {
+  linked: boolean; relink: boolean; uploading: boolean; canSync: boolean; steamAvailable: boolean;
+  onFile: (file: File | undefined) => void;
+};
+
+function EmptyMatches({ linked, relink, uploading, canSync, steamAvailable, onFile }: EmptyMatchesProps) {
   return (
     <div className="empty-matches" aria-label="No matches yet">
       <p className="steam-muted">No imported matches yet.</p>
       <div className="empty-options">
-        <div className="empty-option">
-          <span className="section-kicker">SYNC FROM STEAM</span>
+        <div className={`empty-option ${canSync ? "" : "soft-disabled"}`}>
+          <span className="section-kicker">{canSync || steamAvailable ? "SYNC FROM STEAM" : "SYNC FROM STEAM · COMING SOON"}</span>
           <p>
-            {!linked
+            {!canSync
+              ? steamAvailable
+                ? "Sign in through Steam above to import your Competitive, Premier and Wingman matches automatically."
+                : "Automatic import from your Steam match history is coming soon. Uploading demos works now."
+              : !linked
               ? "Link your match history above (step 2), then press Sync matches. We import the match of the share code you give and your newer Competitive, Premier and Wingman matches."
               : relink
                 ? "Sync is paused until you update your codes above."

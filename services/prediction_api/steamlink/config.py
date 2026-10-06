@@ -1,9 +1,18 @@
-"""Environment-driven settings for Steam linking and match sync.
+"""Environment-driven settings for demo uploads, Steam linking and match sync.
 
-Steam linking and sync are disabled unless both ``DATABASE_URL`` and
-``TOKEN_ENCRYPTION_KEYS`` are set. When they are set, the remaining required
-settings are validated at startup so a half-configured deploy fails loudly
-instead of running with insecure defaults.
+Two feature levels, each validated at startup so a half-configured deploy fails
+loudly instead of running with insecure defaults:
+
+* **Demo upload** (``demo_upload_enabled``): ``DATABASE_URL`` + ``SESSION_SECRET``.
+  Signed-in users (and, with ``GUEST_UPLOADS`` on, guest sessions without Steam)
+  upload ``.dem`` files, get them parsed and view match reports. No Steam key needed.
+* **Steam** (``steam_enabled``): additionally ``TOKEN_ENCRYPTION_KEYS`` +
+  ``STEAM_WEB_API_KEY`` (+ ``PUBLIC_API_URL`` / ``FRONTEND_URL``): Steam OpenID
+  sign-in, match-history linking, sync and automatic sync.
+
+``TOKEN_ENCRYPTION_KEYS`` without ``STEAM_WEB_API_KEY`` runs upload-only (Steam
+stays off until the key is added); ``STEAM_WEB_API_KEY`` without
+``TOKEN_ENCRYPTION_KEYS`` is rejected (codes could not be stored encrypted).
 """
 
 from __future__ import annotations
@@ -106,6 +115,8 @@ class Settings:
     steam_bot_username: str | None = None
     steam_bot_password: str | None = None
     steam_bot_shared_secret: str | None = None
+    # Guest sessions (POST /auth/guest): upload demos and view reports without Steam.
+    guest_uploads: bool = True
 
     @property
     def demo_bot_configured(self) -> bool:
@@ -114,8 +125,20 @@ class Settings:
         )
 
     @property
+    def demo_upload_enabled(self) -> bool:
+        """Accounts, demo upload, parsing and match reports (no Steam key needed)."""
+        # A missing / too-short SESSION_SECRET leaves uploads off (see startup_notes) rather than
+        # crash-looping a deploy that only ran round prediction before.
+        return bool(self.database_url) and len(self.session_secret or "") >= 32
+
+    @property
     def steam_enabled(self) -> bool:
-        return bool(self.database_url) and bool(self.token_encryption_keys)
+        """Steam OpenID sign-in, match-history linking and sync."""
+        return self.demo_upload_enabled and bool(self.token_encryption_keys) and bool(self.steam_web_api_key)
+
+    @property
+    def guest_uploads_enabled(self) -> bool:
+        return self.demo_upload_enabled and self.guest_uploads
 
     @property
     def openid_return_url(self) -> str:
@@ -129,6 +152,21 @@ class Settings:
             raise ConfigError("PUBLIC_API_URL is not configured")
         return self.public_api_url.rstrip("/") + "/"
 
+    def startup_notes(self) -> list[str]:
+        """Human-readable reasons a feature is off (logged at startup; never contains secrets)."""
+
+        notes = []
+        if not self.database_url:
+            notes.append("DATABASE_URL not set: demo upload, match reports and Steam are off (round prediction only)")
+            return notes
+        if not self.demo_upload_enabled:
+            notes.append("SESSION_SECRET missing or shorter than 32 characters: demo upload and Steam are off")
+            return notes
+        if not self.steam_enabled:
+            notes.append("STEAM_WEB_API_KEY / TOKEN_ENCRYPTION_KEYS not set: Steam sign-in and sync are off; "
+                         + ("guest demo upload is on" if self.guest_uploads else "GUEST_UPLOADS=false, so uploads need a Steam sign-in"))
+        return notes
+
     def validate(self) -> None:
         if "*" in self.allowed_origins:
             raise ConfigError("ALLOWED_ORIGINS cannot contain '*' because credentials are allowed")
@@ -136,26 +174,33 @@ class Settings:
             raise ConfigError(
                 "STEAM_BOT_USERNAME/STEAM_BOT_PASSWORD need STEAM_BOT_SHARED_SECRET (or use STEAM_BOT_REFRESH_TOKEN)"
             )
-        if not self.steam_enabled:
+        if not self.database_url:
             return
-        missing = [
-            name
-            for name, value in (
-                ("SESSION_SECRET", self.session_secret),
-                ("PUBLIC_API_URL", self.public_api_url),
-                ("FRONTEND_URL", self.frontend_url),
-                ("STEAM_WEB_API_KEY", self.steam_web_api_key),
-            )
-            if not value
-        ]
-        if missing:
+        if self.steam_web_api_key and not self.token_encryption_keys:
             raise ConfigError(
-                "Steam sync is enabled (DATABASE_URL and TOKEN_ENCRYPTION_KEYS are set) but "
-                f"these settings are missing: {', '.join(missing)}"
+                "STEAM_WEB_API_KEY is set but TOKEN_ENCRYPTION_KEYS is missing (needed to store "
+                "Game Authentication Codes encrypted)"
             )
+        if (self.token_encryption_keys or self.steam_web_api_key) and not self.demo_upload_enabled:
+            raise ConfigError("Steam settings are set but SESSION_SECRET is missing or shorter than 32 characters")
+        if not self.demo_upload_enabled:
+            return
+        if self.steam_enabled:
+            missing = [
+                name
+                for name, value in (("PUBLIC_API_URL", self.public_api_url), ("FRONTEND_URL", self.frontend_url))
+                if not value
+            ]
+            if missing:
+                raise ConfigError(
+                    "Steam is enabled (DATABASE_URL, TOKEN_ENCRYPTION_KEYS and STEAM_WEB_API_KEY are set) but "
+                    f"these settings are missing: {', '.join(missing)}"
+                )
         if len(self.session_secret or "") < 32:
             raise ConfigError("SESSION_SECRET must be at least 32 characters")
         for name, url in (("PUBLIC_API_URL", self.public_api_url), ("FRONTEND_URL", self.frontend_url)):
+            if not url:
+                continue  # only required for Steam (checked above)
             parts = urlsplit(url or "")
             if parts.scheme not in {"http", "https"} or not parts.netloc or parts.query or parts.fragment:
                 raise ConfigError(f"{name} must be an absolute http(s) URL without query or fragment")
@@ -231,6 +276,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         steam_bot_username=env.get("STEAM_BOT_USERNAME") or None,
         steam_bot_password=env.get("STEAM_BOT_PASSWORD") or None,
         steam_bot_shared_secret=env.get("STEAM_BOT_SHARED_SECRET") or None,
+        guest_uploads=_bool(env, "GUEST_UPLOADS", True),
     )
     settings.validate()
     return settings

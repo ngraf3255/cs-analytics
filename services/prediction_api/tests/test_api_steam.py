@@ -84,7 +84,7 @@ def app_client(tmp_path):
 
 def test_disabled_by_default_in_main_app():
     client = TestClient(main.app)
-    assert client.get("/steam/status").json() == {"enabled": False}
+    assert client.get("/steam/status").json() == {"enabled": False, "steam": False, "upload": False, "guest": False}
     assert client.get("/me").status_code == 503
     assert client.post("/steam/sync", headers=H).json()["detail"] == "steam_sync_disabled"
 

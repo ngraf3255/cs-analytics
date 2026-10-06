@@ -1,6 +1,8 @@
 const MESSAGES: Record<string, string> = {
   steam_sync_disabled: "Steam linking is not available on this deployment yet.",
-  not_authenticated: "Sign in with Steam to continue.",
+  steam_sign_in_required: "Sign in through Steam to link and sync your match history.",
+  guest_uploads_disabled: "Uploading without Steam isn’t available on this server.",
+  not_authenticated: "Sign in to continue.",
   csrf_header_missing: "Your browser blocked the request. Refresh and try again.",
   origin_not_allowed: "This site is not allowed to talk to the API.",
   consent_required: "Confirm you understand before storing your match-history code.",

@@ -84,7 +84,7 @@ def test_needs_relink_pauses_auto_sync(tmp_path):
 def test_server_side_states(tmp_path):
     client, ctx = client_for(tmp_path)
     status = client.get("/steam/status").json()
-    assert status == {"enabled": True, "auto_sync": {"enabled": True, "available": True, "interval_seconds": 1800}}
+    assert status == {"enabled": True, "steam": True, "upload": True, "guest": True, "auto_sync": {"enabled": True, "available": True, "interval_seconds": 1800}}
     ctx.sync.locator = UnconfiguredDemoLocator()
     assert client.get("/steam/sync").json()["auto_sync"]["paused_reason"] == "demo_retrieval_not_configured"
     assert client.get("/steam/status").json()["auto_sync"]["available"] is False

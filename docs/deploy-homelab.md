@@ -157,21 +157,28 @@ click **Revoke My Steam Web API Key**, register a new one, and update `.env`.
 
 ## Environment variables
 
-Copy [`deploy/homelab/.env.example`](../deploy/homelab/.env.example). Steam
-features turn on when **both** `DATABASE_URL` and `TOKEN_ENCRYPTION_KEYS` are
-set; the API then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`,
-`FRONTEND_URL`, or `STEAM_WEB_API_KEY` is missing.
+Copy [`deploy/homelab/.env.example`](../deploy/homelab/.env.example). Two
+feature levels (`services/prediction_api/steamlink/config.py`):
+
+- **Demo upload + match reports**: `DATABASE_URL` + `SESSION_SECRET` (32+ chars).
+  No Steam key needed. Visitors can upload a `.dem` as a guest (browser session,
+  `POST /auth/guest`); set `GUEST_UPLOADS=false` to require a Steam sign-in.
+- **Steam sign-in + sync**: additionally `TOKEN_ENCRYPTION_KEYS` +
+  `STEAM_WEB_API_KEY`; then `PUBLIC_API_URL` and `FRONTEND_URL` are required.
+  `STEAM_WEB_API_KEY` without `TOKEN_ENCRYPTION_KEYS` refuses to start.
+
+`curl -sS http://127.0.0.1:8000/steam/status` shows what is on:
+`{"enabled": <steam>, "steam": …, "upload": …, "guest": …}`. Startup logs a
+line naming what is off and why.
 
 ### Turning Steam on
 
 On `counterstrike` Steam is currently **off on purpose**: `STEAM_WEB_API_KEY`
-and `TOKEN_ENCRYPTION_KEYS` are both empty in `deploy/homelab/.env`.
-`steamlink/config.py` enables Steam as soon as `DATABASE_URL` +
-`TOKEN_ENCRYPTION_KEYS` are set, and then refuses to start without
-`STEAM_WEB_API_KEY`. So setting the Fernet key alone (without the Steam key)
-crash-loops the API; leave both empty until you have the Steam key. With both
-empty the API runs normally (health, uploads) and `/steam/status` reports
-disabled.
+is empty in `deploy/homelab/.env`. With `DATABASE_URL` + `SESSION_SECRET` set the
+API runs in **upload-only** mode: guests upload `.dem` files and get match
+reports, `/steam/status` reports `"steam": false, "upload": true`, and the site
+shows Connect Steam as "coming soon". Setting `TOKEN_ENCRYPTION_KEYS` early is
+harmless now (it no longer crash-loops without the Steam key).
 
 To enable:
 
@@ -181,7 +188,8 @@ To enable:
 3. Restart:
    `docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d`
    (or `/opt/cs-analytics/deploy/deploy.sh`), then check
-   `curl -sS http://127.0.0.1:8000/steam/status` shows `"enabled": true`.
+   `curl -sS http://127.0.0.1:8000/steam/status` shows `"enabled": true` (and
+   `"steam": true`). Guest uploads keep working next to Steam sign-in.
 
 Auto-deploy only redeploys when `main` moves, so `.env` changes always need
 this manual restart.
@@ -191,7 +199,8 @@ this manual restart.
 | `POSTGRES_*` | Compose-only; builds `DATABASE_URL` for the api service |
 | `DATABASE_URL` | `postgresql://csgooners:…@db:5432/csgooners` (compose) or `…@127.0.0.1:5432/…` (systemd) |
 | `TOKEN_ENCRYPTION_KEYS` | Fernet key(s), newest first. `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `SESSION_SECRET` | ≥ 32 random chars |
+| `SESSION_SECRET` | ≥ 32 random chars (needed for uploads too; shorter/missing leaves uploads off) |
+| `GUEST_UPLOADS` | default `true`: upload without Steam via a guest session; `false` requires Steam sign-in |
 | `STEAM_WEB_API_KEY` | https://steamcommunity.com/dev/apikey, domain `csgooner.com` (step-by-step: [Steam Web API key](#steam-web-api-key)) |
 | `PUBLIC_API_URL` | `https://api-site.csgooner.com` (OpenID realm + return URL; must match the public hostname exactly) |
 | `FRONTEND_URL` | `https://csgooner.com` (redirect after Steam login) |
