@@ -237,9 +237,16 @@ entry and per-round report as a synced match. Same feature flag, session,
   `server_restarted` (Render's disk is ephemeral: upload again), deletes
   finished jobs after 7 days and removes stray files. Assumes one API process
   per job directory (Render: one instance, one uvicorn worker).
-- Job errors: `demo_parse_failed`, `demo_has_no_rounds`, `not_a_cs2_demo`,
-  `demo_too_large`, `server_restarted`, `internal_error`. Nothing is stored on
-  failure. Uploads never touch the share-code cursor.
+- Job errors: `demo_parse_failed`, `demo_truncated` (the CS2 header points
+  past the end of the file: a cut-off copy / download, rejected before parsing),
+  `demo_format_unsupported` (demoparser2 can't read the demo's messages, e.g.
+  `MalformedMessage` / `EntityNotFound` / `UnknownDemoCmd` from a newer CS2
+  patch or a FACEIT server), `demo_parse_timeout`, `demo_has_no_rounds`,
+  `not_a_cs2_demo`, `demo_too_large`, `server_restarted`, `internal_error`.
+  Nothing is stored on failure. Uploads never touch the share-code cursor.
+  A failed parse logs the worker's full traceback, the file's size, magic bytes
+  and header file-info offset, and the demoparser2 version (`docker compose
+  logs api | grep -A40 "demo parse worker exited"`).
 
 ### Match list and report (`GET /matches`, `GET /matches/{id}`)
 

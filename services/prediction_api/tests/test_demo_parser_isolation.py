@@ -40,9 +40,11 @@ def test_json_from_an_older_worker_without_players_still_loads():
 @pytest.mark.parametrize("isolation", ["subprocess", "inprocess"])
 def test_garbage_file_is_a_parse_error_in_both_modes(tmp_path, isolation):
     bad = tmp_path / "bad.dem"
-    bad.write_bytes(b"PBDEMS2\0" + b"\x00garbage" * 64)
-    with pytest.raises(DemoParseError):
+    body = b"\x00garbage" * 64
+    bad.write_bytes(b"PBDEMS2\0" + demo_parser.struct.pack("<ii", 8 + len(body) - 20, 0) + body)
+    with pytest.raises(DemoParseError) as err:
         Demoparser2Parser(isolation=isolation).parse(str(bad))
+    assert err.value.reason in demo_parser.DEMO_PARSE_REASONS
 
 
 def test_missing_file_is_a_parse_error(tmp_path):
@@ -60,14 +62,23 @@ def _fake_run(result=None, exc=None, seen=None):
     return run
 
 
-def test_worker_contract_env_and_timeout(monkeypatch):
+@pytest.fixture
+def demo_file(tmp_path):
+    """A file with a complete CS2 header (the parser checks it before starting the worker)."""
+
+    path = tmp_path / "demo.dem"
+    path.write_bytes(b"PBDEMS2\0" + demo_parser.struct.pack("<ii", 16 + 64 - 20, 0) + b"\x00" * 64)
+    return str(path)
+
+
+def test_worker_contract_env_and_timeout(monkeypatch, demo_file):
     seen = {}
     ok = subprocess.CompletedProcess([], 0, stdout=demo_parser.json.dumps(parsed_demo_to_json(SAMPLE)).encode(),
                                      stderr=b"")
     monkeypatch.setattr(demo_parser.subprocess, "run", _fake_run(ok, seen=seen))
     monkeypatch.delenv("RAYON_NUM_THREADS", raising=False)
-    assert Demoparser2Parser(timeout_seconds=12, threads=3).parse("/x/demo.dem") == SAMPLE
-    assert seen["cmd"][1:] == ["-m", "steamlink.parse_worker", "/x/demo.dem"]
+    assert Demoparser2Parser(timeout_seconds=12, threads=3).parse(demo_file) == SAMPLE
+    assert seen["cmd"][1:] == ["-m", "steamlink.parse_worker", demo_file]
     assert seen["timeout"] == 12 and seen["env"]["RAYON_NUM_THREADS"] == "3"
     assert seen["env"]["MALLOC_ARENA_MAX"] == "2"
 
@@ -80,10 +91,10 @@ def test_worker_contract_env_and_timeout(monkeypatch):
     {"result": subprocess.CompletedProcess([], 0, stdout=b"not json", stderr=b"")},
     {"result": subprocess.CompletedProcess([], 0, stdout=b'{"map_name": null}', stderr=b"")},
 ])
-def test_worker_failures_become_parse_errors(monkeypatch, outcome):
+def test_worker_failures_become_parse_errors(monkeypatch, outcome, demo_file):
     monkeypatch.setattr(demo_parser.subprocess, "run", _fake_run(**outcome))
     with pytest.raises(DemoParseError):
-        Demoparser2Parser().parse("/x/demo.dem")
+        Demoparser2Parser().parse(demo_file)
 
 
 def test_unknown_isolation_rejected():
@@ -123,3 +134,112 @@ def test_parse_settings_defaults_and_validation():
     for bad in ({"DEMO_PARSE_ISOLATION": "thread"}, {"DEMO_PARSE_THREADS": "0"}, {"DEMO_PARSE_TIMEOUT_SECONDS": "0"}):
         with pytest.raises(ConfigError):
             load_settings({**base, **bad})
+
+
+# Failure reasons, diagnostics and the pre-parse header check --------------------------------
+
+def _cs2_header(fileinfo_offset: int, body: bytes = b"\x00" * 64) -> bytes:
+    return b"PBDEMS2\0" + demo_parser.struct.pack("<ii", fileinfo_offset, 0) + body
+
+
+@pytest.mark.parametrize(("text", "reason"), [
+    ("Exception('MalformedMessage')", "demo_format_unsupported"),
+    ("demo could not be parsed: Exception('EntityNotFound')", "demo_format_unsupported"),
+    ("Exception('UnknownDemoCmd(34)')", "demo_format_unsupported"),
+    ("Exception('ClassMapperNotFoundFirstPass')", "demo_format_unsupported"),
+    ("Exception('DemoEndsEarly(\"x\")')", "demo_truncated"),
+    ("Exception('Source1DemoError')", "not_a_cs2_demo"),
+    ("Exception('UnknownFile')", "not_a_cs2_demo"),
+    ("Exception('VectorResizeFailure')", "demo_parse_failed"),
+    ("", "demo_parse_failed"),
+])
+def test_parser_errors_are_classified(text, reason):
+    assert demo_parser.classify_parser_error(text) == reason
+
+
+def test_header_check_accepts_a_complete_demo_and_an_unfinalized_one(tmp_path):
+    body = b"\x01" * 200
+    complete = tmp_path / "ok.dem"
+    complete.write_bytes(_cs2_header(16 + len(body) - 20, body))
+    info = demo_parser.inspect_demo_file(str(complete))
+    assert info.problem is None and info.magic == b"PBDEMS2\0" and info.size == 216
+    unfinalized = tmp_path / "unfinalized.dem"
+    unfinalized.write_bytes(_cs2_header(0, body))  # recording never finalized: offset 0, still parsed
+    assert demo_parser.inspect_demo_file(str(unfinalized)).problem is None
+
+
+@pytest.mark.parametrize(("content", "problem"), [
+    (_cs2_header(10_000_000), "demo_truncated"),  # header points past the end: a cut-off copy / download
+    (b"PBDEMS2\0\x01\x02", "demo_truncated"),  # shorter than the header
+    (b"PBDE", "demo_truncated"),
+    (b"HL2DEMO\0" + b"\x00" * 64, "not_a_cs2_demo"),  # CS:GO
+    (b"<html>error</html>", "not_a_cs2_demo"),
+    (b"", "not_a_cs2_demo"),
+])
+def test_header_check_rejects_before_parsing(tmp_path, monkeypatch, content, problem):
+    path = tmp_path / "x.dem"
+    path.write_bytes(content)
+    assert demo_parser.inspect_demo_file(str(path)).problem == problem
+
+    def no_parse(*args, **kwargs):
+        raise AssertionError("must not start the parser")
+
+    monkeypatch.setattr(demo_parser.subprocess, "run", no_parse)
+    with pytest.raises(DemoParseError) as err:
+        Demoparser2Parser().parse(str(path))
+    assert err.value.reason == problem
+
+
+def test_worker_reason_line_and_diagnostics_are_logged(tmp_path, monkeypatch, caplog):
+    demo = tmp_path / "demo.dem"
+    demo.write_bytes(_cs2_header(16 + 64 - 20))
+    stderr = (b"Traceback (most recent call last):\n  ...\nException: MalformedMessage\n"
+              b"demo: size=80 demoparser2=0.42.0\nDEMO_PARSE_REASON=demo_format_unsupported\n")
+    monkeypatch.setattr(demo_parser.subprocess, "run",
+                        _fake_run(subprocess.CompletedProcess([], 2, stdout=b"", stderr=stderr)))
+    with caplog.at_level("WARNING"), pytest.raises(DemoParseError) as err:
+        Demoparser2Parser().parse(str(demo))
+    assert err.value.reason == "demo_format_unsupported"
+    logged = caplog.text
+    assert "exited with 2" in logged and "Exception: MalformedMessage" in logged
+    assert "size=80" in logged and "PBDEMS2" in logged and "fileinfo_offset=60" in logged
+
+
+@pytest.mark.parametrize(("stderr", "returncode", "reason"), [
+    (b"DEMO_PARSE_REASON=demo_truncated\n", 2, "demo_truncated"),
+    (b"DEMO_PARSE_REASON=something_new\n", 2, "demo_parse_failed"),  # unknown codes are never passed on
+    (b"", -9, "demo_parse_failed"),  # OOM-killed: no reason line
+])
+def test_worker_reason_is_passed_on(tmp_path, monkeypatch, stderr, returncode, reason):
+    demo = tmp_path / "demo.dem"
+    demo.write_bytes(_cs2_header(16 + 64 - 20))
+    monkeypatch.setattr(demo_parser.subprocess, "run",
+                        _fake_run(subprocess.CompletedProcess([], returncode, stdout=b"", stderr=stderr)))
+    with pytest.raises(DemoParseError) as err:
+        Demoparser2Parser().parse(str(demo))
+    assert err.value.reason == reason
+
+
+def test_timeout_has_its_own_reason(tmp_path, monkeypatch):
+    demo = tmp_path / "demo.dem"
+    demo.write_bytes(_cs2_header(16 + 64 - 20))
+    monkeypatch.setattr(demo_parser.subprocess, "run", _fake_run(exc=subprocess.TimeoutExpired("worker", 1)))
+    with pytest.raises(DemoParseError) as err:
+        Demoparser2Parser().parse(str(demo))
+    assert err.value.reason == "demo_parse_timeout"
+
+
+def test_real_worker_prints_traceback_file_info_and_reason(tmp_path):
+    bad = tmp_path / "bad.dem"
+    bad.write_bytes(_cs2_header(16 + 512 - 20, b"\x00garbage" * 64))
+    import os
+    import sys
+
+    package_root = os.path.dirname(os.path.dirname(os.path.abspath(demo_parser.__file__)))
+    done = subprocess.run([sys.executable, "-m", "steamlink.parse_worker", str(bad)], capture_output=True,
+                          cwd=package_root, timeout=120, check=False)
+    stderr = done.stderr.decode()
+    assert done.returncode == 2
+    assert "Traceback (most recent call last)" in stderr
+    assert "size=528" in stderr and "PBDEMS2" in stderr and "demoparser2=" in stderr
+    assert stderr.strip().splitlines()[-1].startswith("DEMO_PARSE_REASON=")

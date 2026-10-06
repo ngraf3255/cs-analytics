@@ -8,12 +8,13 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from .demo_parser import PARSE_SLOT, DemoParseError, DemoParser, extract_player_rounds, extract_rounds, final_score
+from .demo_parser import (
+    CS2_DEMO_MAGIC, PARSE_SLOT, DemoParseError, DemoParser, extract_player_rounds, extract_rounds, final_score,
+)
 from .sharecode import InvalidShareCode, decode
 from .storage.base import PARSE_VERSION, UNKNOWN_MATCH_ID, UPLOAD_KEY_PREFIX, NewMatch, Storage
 from .valve import DemoTooLarge, DemoUnavailable, decompress_bz2
 
-CS2_DEMO_MAGIC = b"PBDEMS2\0"
 BZIP2_MAGIC = b"BZh"
 # Dedupe keys (see Storage): the SHA-256 of the decompressed .dem always, plus
 # the Valve match id when the user supplies the match's share code (a hint: it
@@ -143,8 +144,8 @@ def import_uploaded_demo(
         raise UploadRejected("upload_busy", 429)
     try:
         parsed = parser.parse(demo_path)
-    except DemoParseError:
-        raise UploadRejected("demo_parse_failed") from None
+    except DemoParseError as exc:
+        raise UploadRejected(exc.reason) from None
     finally:
         _parse_slot.release()
     if not parsed.rounds:

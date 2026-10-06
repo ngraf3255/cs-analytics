@@ -102,6 +102,22 @@ describe("demo upload", () => {
     expect(screen.getByText("UPLOAD .DEM")).toBeInTheDocument();
   });
 
+  it.each([
+    ["demo_truncated", "That demo file is incomplete"],
+    ["demo_format_unsupported", "Our demo parser can’t read this demo yet"],
+    ["some_future_code", "The demo could not be imported (some_future_code)."],
+  ])("explains a failed job with %s", async (error, text) => {
+    installFakeApi(baseRoutes({
+      [`GET ${JOB}`]: { status: 200, body: { job: job(queued, { status: "failed", error, queue_position: null }) } },
+    }));
+    render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+    pick("broken.dem");
+    await act(() => FakeXHR.last().respond(202, uploadQueued));
+    await advance(POLL_MS);
+    expect(screen.getByRole("status")).toHaveTextContent(text);
+  });
+
   it("explains a full queue (429 upload_queue_full) and lets the user retry", async () => {
     installFakeApi(baseRoutes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
