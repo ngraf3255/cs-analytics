@@ -102,6 +102,20 @@ def test_callback_without_login_state_fails_safely(tmp_path):
     assert client.get("/me").status_code == 401
 
 
+@pytest.mark.parametrize(("next_path", "expected"), [
+    ("/account", "https://csgooner.com/account?steam_login=failed&reason="),
+    ("/#matches", "https://csgooner.com/?steam_login=failed&reason="),
+])
+def test_failed_callback_returns_to_the_page_that_started_sign_in(tmp_path, next_path, expected):
+    client, _ = make_client(tmp_path)
+    client.get("/auth/steam/login", params={"next": next_path})
+    response = client.get("/auth/steam/callback", params={"state": "wrong"})
+    location = response.headers["location"]
+    assert location.startswith(expected)
+    assert location.endswith("#matches") == next_path.endswith("#matches")
+    assert client.get("/me").status_code == 401
+
+
 def test_full_flow_link_sync_report_delete(app_client):
     client, ctx = app_client
     me = client.get("/me").json()

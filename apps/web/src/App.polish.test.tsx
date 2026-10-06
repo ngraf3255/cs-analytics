@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { advance, installFakeApi } from "./test/fakeApi";
 import meFixture from "./test/fixtures/me.json";
@@ -67,6 +67,32 @@ describe("design review polish", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("nav: Account stays reachable", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
+
+  it("home: Account is a menu link (not hidden by the narrow-screen rules)", async () => {
+    installFakeApi(appRoutes());
+    render(<App />);
+    await advance();
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(nav).toHaveClass("main-nav");
+    expect(within(nav).getByRole("link", { name: "Account" })).toHaveAttribute("href", "/account");
+  });
+
+  it("/account: same menu button; Account is current, sections link back home", async () => {
+    window.history.replaceState(null, "", "/account");
+    installFakeApi(appRoutes());
+    render(<App />);
+    await advance();
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(nav).toHaveClass("main-nav");
+    expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-controls", "main-nav");
+    expect(within(nav).getByRole("link", { name: "Account" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "My matches" })).toHaveAttribute("href", "/#matches");
   });
 });
 

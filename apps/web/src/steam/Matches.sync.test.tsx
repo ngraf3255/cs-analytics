@@ -169,7 +169,7 @@ describe("Steam sync", () => {
     render(<Matches me={meFixture as Me} onMeChange={async () => undefined} />);
     await advance();
     expect(syncButton()).toBeDisabled();
-    expect(screen.getByText(/Link your match history above to sync/)).toBeInTheDocument();
+    expect(screen.getByText(/Link match history in/)).toBeInTheDocument();
   });
 
   it("does not claim 'up to date' when the history walk stopped with an error", async () => {

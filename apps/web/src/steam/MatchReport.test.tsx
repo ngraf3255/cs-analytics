@@ -27,7 +27,9 @@ describe("match list and per-round report (real API response shapes)", () => {
     const api = installFakeApi(routes());
     render(<SteamSection />);
     await advance();
-    expect(screen.getByText("SteamID", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("Signed in as", { exact: false })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Account settings" })[0]).toHaveAttribute("href", "/account");
+    expect(screen.queryByRole("form", { name: "Link match history" })).toBeNull();
     const item = screen.getByRole("button", { name: /mirage/i });
     expect(item).toHaveTextContent("10 rounds");
     expect(item).toHaveTextContent("UPLOADED");

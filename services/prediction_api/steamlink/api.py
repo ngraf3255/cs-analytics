@@ -292,8 +292,12 @@ def steam_callback(request: Request, ctx: SteamContext = Depends(_steam)) -> Red
             return_url=settings.openid_return_url, http=ctx.http, now=ctx.clock(),
         )
     except openid.OpenIDError as exc:
+        # Back to the page that started the sign-in (e.g. /account), with the failure flag.
+        path, _, fragment = (login_state.next_path if login_state else "/").partition("#")
+        path = path.split("?", 1)[0] or "/"
+        query = urlencode({"steam_login": "failed", "reason": exc.reason})
         response = RedirectResponse(
-            f"{settings.frontend_url}/?{urlencode({'steam_login': 'failed', 'reason': exc.reason})}", status_code=302
+            f"{settings.frontend_url}{path}?{query}" + (f"#{fragment}" if fragment else ""), status_code=302
         )
         response.delete_cookie(LOGIN_STATE_COOKIE, path="/auth/steam")
         return response

@@ -4,6 +4,7 @@ import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouInMatch } from "./types";
 import { kdText, matchDate, outdatedText, resultText } from "./format";
 import { MatchesSummaryPanel } from "./MatchesSummary";
+import { ACCOUNT_PATH } from "./routes";
 import { weaponName } from "./weapons";
 
 const MATCH_STATUS: Record<string, string> = {
@@ -313,7 +314,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
 
   return (
     <div className="steam-card">
-      <span className="section-kicker">{canSync ? "STEP 3 · IMPORT MATCHES" : "YOUR UPLOADS"}</span>
+      <span className="section-kicker">{canSync ? "IMPORT MATCHES" : "YOUR UPLOADS"}</span>
       <div className="sync-row">
         {canSync && (
           <button className={`submit-button sync-button ${syncJobs ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || !!relink || awaitingShare || syncBusy || me.sync.status === "running"}>
@@ -333,10 +334,10 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
             : syncJobs
               ? syncJobsHint(syncJobs)
               : !canSync ? `Upload a CS2 .dem / .dem.bz2 to get a round-by-round report.${steamAvailable ? " Sign in through Steam to sync matches automatically." : " Steam sync is coming soon."}`
-              : !linked ? "Link your match history above to sync (optional), or upload a CS2 .dem / .dem.bz2 you already have."
-                : awaitingShare ? "Sync starts once you add the share code of a match you played (above). Uploads work now."
-                : relink ? (relink.field === "auth_code" ? "Sync is paused: paste your current Game Authentication Code above." : "Sync is paused: paste a recent share code above (your authentication code is kept).")
-                : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}${me.sync.auto_sync?.active ? " · auto-sync on" : ""}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
+              : !linked ? <>Link match history in <a href={ACCOUNT_PATH}>Account settings</a> to sync, or upload a demo.</>
+                : awaitingShare ? <>Add a share code in <a href={ACCOUNT_PATH}>Account settings</a>.</>
+                : relink ? <>Sync is paused: {relink.field === "auth_code" ? "update your authentication code" : "add a recent share code"} in <a href={ACCOUNT_PATH}>Account settings</a>.</>
+                : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}${me.sync.auto_sync?.active ? " · auto-sync on" : ""}` : "Not synced yet."}
         </span>
       </div>
       {upload?.phase === "uploading" && (
@@ -393,19 +394,18 @@ function EmptyMatches({ linked, relink, awaitingShare, uploading, canSync, steam
                 ? "Sign in through Steam above to import your Competitive, Premier and Wingman matches automatically."
                 : "Automatic import from your Steam match history is coming soon. Uploading demos works now."
               : !linked
-              ? "Optional: link your match history above (step 2), then press Sync matches. We import the match of the share code you give and your newer Competitive, Premier and Wingman matches. No recent match? Link your authentication code now and add a share code after you play."
+              ? <>Optional: link match history in <a href={ACCOUNT_PATH}>Account settings</a>, then press Sync matches.</>
               : relink
-                ? "Sync is paused until you update your codes above."
+                ? <>Sync is paused until you update your codes in <a href={ACCOUNT_PATH}>Account settings</a>.</>
                 : awaitingShare
-                  ? "Your authentication code is saved. Once you play a Competitive, Premier or Wingman match, add its share code above and your matches start coming in from there."
-                : "Press Sync matches above. We import the match you linked with and your newer Competitive, Premier and Wingman matches; each one downloads and parses in the background."}
+                  ? <>Add a share code in <a href={ACCOUNT_PATH}>Account settings</a> after your next match.</>
+                : "Press Sync matches above."}
           </p>
         </div>
         <div className="empty-option">
           <span className="section-kicker">UPLOAD A DEMO</span>
           <p>
-            Any CS2 <code>.dem</code> or <code>.dem.bz2</code>: matches older than 30 days, FACEIT or pro demos. Replays you
-            download in CS2 (<em>Watch → Your Matches</em>) are saved in the game folder under <code>game/csgo/replays</code>.
+            Any <code>.dem</code> / <code>.dem.bz2</code> (older matches, FACEIT, pro).
           </p>
           <label className={`ghost-button empty-upload ${uploading ? "busy" : ""}`} aria-disabled={uploading}>
             <span>CHOOSE A DEMO FILE</span>

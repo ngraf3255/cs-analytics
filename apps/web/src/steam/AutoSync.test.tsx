@@ -5,7 +5,7 @@ import autoOff from "../test/fixtures/auto_sync_off.json";
 import autoOn from "../test/fixtures/auto_sync_on.json";
 import meFixture from "../test/fixtures/me_auto_sync.json";
 import { everyText, timeAgo, timeUntil } from "./format";
-import { SteamAccount } from "./SteamAccount";
+import { AccountSettings } from "./SteamAccount";
 import type { AutoSync, Me } from "./types";
 
 // Captured from the local API (fake Valve, AUTO_SYNC_INTERVAL_SECONDS=120): a user who linked and was
@@ -18,11 +18,11 @@ const withAuto = (patch: Partial<AutoSync>, base: Me = me): Me => ({
 
 function renderAccount(account: Me) {
   const onChange = vi.fn(async () => undefined);
-  render(<SteamAccount me={account} onChange={onChange} onSignedOut={() => undefined} />);
+  render(<AccountSettings me={account} onChange={onChange} onSignedOut={() => undefined} />);
   return onChange;
 }
 
-const toggle = () => screen.getByRole("switch", { name: /Sync new matches automatically/ }) as HTMLInputElement;
+const toggle = () => screen.getByRole("switch", { name: "Auto-sync new matches" }) as HTMLInputElement;
 
 beforeEach(() => {
   vi.spyOn(Date, "now").mockReturnValue(SYNCED + 5 * 60_000);  // five minutes after the automatic sync
@@ -35,8 +35,8 @@ describe("automatic sync in the linked-account area", () => {
     renderAccount(withAuto({ next_at: new Date(SYNCED + 30 * 60_000).toISOString() }));
     expect(screen.getByRole("status")).toHaveTextContent("Last synced 5 min ago, auto-sync on · next check in 25 min");
     expect(toggle()).toBeChecked();
-    expect(screen.getByText(/checks Valve every 2 min/)).toBeInTheDocument();
-    expect(screen.getByText(/automatically in\s+the background \(I can turn that off\)/)).toBeInTheDocument();
+    expect(toggle().closest("label")?.textContent).toBe("Auto-sync new matches");  // one line, the switch says the rest
+    expect(screen.queryByText(/Off: matches only come in/)).toBeNull();
   });
 
   it("turns it off and back on through PUT /steam/auto-sync", async () => {
@@ -74,11 +74,11 @@ describe("automatic sync in the linked-account area", () => {
 
   it("says why it is paused (re-link, server without demo download) and hides the toggle when the server has it off", () => {
     installFakeApi({});
-    const { unmount } = render(<SteamAccount me={withAuto({ active: false, paused_reason: "needs_relink", next_at: null })}
+    const { unmount } = render(<AccountSettings me={withAuto({ active: false, paused_reason: "needs_relink", next_at: null })}
       onChange={async () => undefined} onSignedOut={() => undefined} />);
     expect(screen.getByRole("status")).toHaveTextContent("Last synced 5 min ago, auto-sync paused until you re-link");
     unmount();
-    const r2 = render(<SteamAccount me={withAuto({ active: false, paused_reason: "demo_retrieval_not_configured", next_at: null })}
+    const r2 = render(<AccountSettings me={withAuto({ active: false, paused_reason: "demo_retrieval_not_configured", next_at: null })}
       onChange={async () => undefined} onSignedOut={() => undefined} />);
     expect(screen.getByRole("status")).toHaveTextContent("auto-sync starts once the server can download demos");
     expect(toggle()).toBeInTheDocument();
@@ -91,13 +91,13 @@ describe("automatic sync in the linked-account area", () => {
   it("never synced yet / older API without auto_sync", () => {
     installFakeApi({});
     const never: Me = withAuto({ next_at: new Date(SYNCED).toISOString() }, { ...me, sync: { ...me.sync, last_synced_at: null } });
-    const { unmount } = render(<SteamAccount me={never} onChange={async () => undefined} onSignedOut={() => undefined} />);
+    const { unmount } = render(<AccountSettings me={never} onChange={async () => undefined} onSignedOut={() => undefined} />);
     expect(screen.getByRole("status")).toHaveTextContent("Not synced yet, auto-sync on · next check any minute now");
     unmount();
     const { auto_sync: _drop, last_synced_at: _drop2, ...oldSync } = me.sync;
     renderAccount({ ...me, sync: oldSync });
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.getByText(/Match history linked/)).toBeInTheDocument();
+    expect(screen.getByText(/^Linked/)).toBeInTheDocument();
   });
 });
 
