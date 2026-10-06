@@ -1,5 +1,5 @@
 import { ApiError } from "./errors";
-import type { AutoSync, MatchAccess, MatchesAnalytics, MatchReport, MatchSummary, Me, ServerStatus, SyncResult, SyncState, UploadJob } from "./types";
+import type { AutoSync, MatchAccess, MatchesAnalytics, PeerComparison, MatchReport, MatchSummary, Me, ServerStatus, SyncResult, SyncState, UploadJob } from "./types";
 
 const apiBase = (
   import.meta.env.VITE_API_BASE_URL ||
@@ -171,6 +171,7 @@ export const steamApi = {
   /** Analytics across all the user's matches; registered before /matches/{id} on the server. */
   getMatchesSummary: (recent?: number) => request<MatchesAnalytics>(recent ? `/matches/summary?recent=${recent}` : "/matches/summary"),
   downloadExport,
+  getPeers: () => request<PeerComparison>("/matches/peers"),
   getMatch: (id: string) => request<MatchReport>(`/matches/${encodeURIComponent(id)}`),
 };
 

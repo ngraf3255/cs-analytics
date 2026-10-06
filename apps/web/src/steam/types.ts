@@ -309,3 +309,17 @@ export type ServerStatus = {
   upload?: boolean;
   guest?: boolean;
 };
+
+/** GET /matches/peers: you vs the other players in your own imported matches ("lobby"; no ranks stored). */
+export type PeerGroup = {
+  lines: number; rounds: number; kills_per_round: number | null; kd: number | null; survival_rate: number | null;
+  opening_attempt_rate: number | null; opening_win_rate: number | null; round_win_rate: number | null;
+};
+export type PeerCompare = {
+  matches: number; you: PeerGroup | null; peers: PeerGroup | null;
+  percentiles: { kills_per_round: number | null; kd: number | null };
+};
+export type PeerComparison = {
+  basis: "lobby" | string; min_peer_lines: number; overall: PeerCompare;
+  maps: (PeerCompare & { map_name: string | null })[];
+};
