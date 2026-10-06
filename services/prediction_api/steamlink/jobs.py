@@ -32,8 +32,12 @@ jobs a previous process left behind:
   interrupted one is queued again (partial download removed) unless it has
   already run ``SyncService.max_job_attempts`` times, then a ``parse_failed``
   stub match is stored; queued ones simply stay queued;
-* finished jobs older than a week are deleted, and stray files in the job
-  directory that no active job owns are removed.
+* finished jobs older than ``UPLOAD_JOB_RETENTION_SECONDS`` (default one week)
+  are deleted, and stray files in the job directory that no active job owns
+  are removed (skipping ``.upload`` files modified in the last
+  ``ORPHAN_UPLOAD_GRACE_SECONDS`` and ``.partial`` uploads still being written) (also after each queue drain, so a long-lived process still
+  frees disk without a restart). Demo files and workdirs are removed as soon
+  as a job finishes — success or failure (e.g. ``demo_parse_failed``).
 
 Assumes ONE API process per job directory (Render: one instance, one uvicorn
 worker); with several processes, recovery in one would requeue another's
@@ -58,6 +62,15 @@ logger = logging.getLogger(__name__)
 
 JOB_FILE_SUFFIX = ".upload"
 JOB_WORKDIR_SUFFIX = ".work"
+# ``POST /matches/upload`` streams the body to ``<id>.upload.partial`` and renames it
+# to ``<id>.upload`` only right before the job row is created, so the cleanup sweep
+# never sees an in-flight upload as an orphan ``.upload``.
+JOB_PARTIAL_SUFFIX = ".partial"
+# Cleanup leaves recently modified files alone: an ``.upload`` renamed into place but
+# whose job row is not committed yet, or a ``.partial`` still being written. A
+# ``.partial`` untouched this long belongs to a dead request (client gone, crash).
+ORPHAN_UPLOAD_GRACE_SECONDS = 120
+ORPHAN_PARTIAL_STALE_SECONDS = 15 * 60
 
 
 def default_job_dir() -> str:
@@ -68,16 +81,21 @@ class UploadJobWorker:
     """``ctx``: the API's SteamContext (storage, settings, sync.parser, clock),
     read at use time so tests can swap the parser or settings."""
 
-    def __init__(self, ctx, *, max_attempts: int = 2, retention: timedelta = timedelta(days=7),
+    def __init__(self, ctx, *, max_attempts: int = 2, retention: timedelta | None = None,
                  db_retry_seconds: float = 2.0, db_retries: int = 5):
         self._ctx = ctx
         self.max_attempts = max_attempts
+        # Prefer Settings.upload_job_retention_seconds when retention is not passed (tests pass it).
+        if retention is None:
+            seconds = getattr(getattr(ctx, "settings", None), "upload_job_retention_seconds", None)
+            retention = timedelta(seconds=seconds) if seconds is not None else timedelta(days=7)
         self.retention = retention
         self.db_retry_seconds = db_retry_seconds
         self.db_retries = db_retries
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._recovered = False
+        self._last_cleanup_at = 0.0  # monotonic; cleanup_orphans throttled while draining
 
     # Paths -------------------------------------------------------------------
     @property
@@ -88,6 +106,11 @@ class UploadJobWorker:
 
     def job_file(self, job_id: str) -> str:
         return os.path.join(self.job_dir, job_id + JOB_FILE_SUFFIX)
+
+    def partial_file(self, job_id: str) -> str:
+        """Where an upload is streamed before its job row exists (see JOB_PARTIAL_SUFFIX)."""
+
+        return self.job_file(job_id) + JOB_PARTIAL_SUFFIX
 
     # Thread lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -121,13 +144,19 @@ class UploadJobWorker:
                 if not self._recovered:
                     self.recover()
                     self._recovered = True
+                idle = False
                 with self._lock:
                     job = self._ctx.storage.claim_next_upload_job(self._ctx.clock())
                     if job is None:
                         # Exit under the lock: a concurrent start() either sees this thread
                         # alive before the claim (and its job is claimed here) or starts anew.
                         self._thread = None
-                        return
+                        idle = True
+                if idle:
+                    # Outside the lock: prune finished rows + stray files so a long-lived
+                    # process that rarely restarts still frees disk after each drain.
+                    self.cleanup_orphans()
+                    return
                 failures = 0
             except Exception:  # database unavailable etc.: retry a few times, then stop
                 failures += 1
@@ -150,6 +179,7 @@ class UploadJobWorker:
                 logger.warning("upload job %s: file gone after restart", job.id)
                 storage.update_upload_job(job.id, now, status="failed", stage=None, progress=None,
                                           error="server_restarted", finished_at=now)
+                self._remove_files(job)  # leftover .work from a crashed parse
             elif job.status == "processing":
                 if job.attempts >= self.max_attempts:
                     # The process died while working on this demo more than once: don't loop on it.
@@ -158,18 +188,7 @@ class UploadJobWorker:
                     self._remove_files(job)
                 else:
                     storage.update_upload_job(job.id, now, status="queued", stage=None, progress=None)
-        storage.delete_finished_upload_jobs(now - self.retention)
-        owned = {os.path.basename(job.demo_path) for job in storage.list_active_upload_jobs()}
-        job_dir = self.job_dir
-        for name in os.listdir(job_dir):
-            path = os.path.join(job_dir, name)
-            if name.endswith(JOB_WORKDIR_SUFFIX):
-                shutil.rmtree(path, ignore_errors=True)
-            elif name.endswith(JOB_FILE_SUFFIX) and name not in owned:
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
+        self.cleanup_orphans(force=True)
 
     def _recover_sync_job(self, job, now) -> None:
         if job.status != "processing":
@@ -243,9 +262,83 @@ class UploadJobWorker:
         except Exception:  # e.g. the database went away; recovery fixes the row on the next start
             logger.exception("upload job %s: could not record the result", job.id)
 
+    def cleanup_orphans(self, *, force: bool = False) -> None:
+        """Delete finished job rows past retention and any ``.upload`` / ``.work`` files
+        no active job owns.
+
+        Safe to call while the worker is idle or between jobs. Demo bytes for a
+        finished job are already removed in :meth:`process`'s ``finally`` (success
+        and failure); this catches leftovers after a crash/OOM and prunes DB rows.
+        Throttled by ``Settings.upload_job_cleanup_interval_seconds`` unless
+        ``force`` (startup recovery).
+        """
+
+        settings = getattr(self._ctx, "settings", None)
+        # 0 means "every drain" (documented), so only fall back when the setting is missing.
+        interval = getattr(settings, "upload_job_cleanup_interval_seconds", None)
+        interval = 300.0 if interval is None else float(interval)
+        now_mono = time.monotonic()
+        if not force and (now_mono - self._last_cleanup_at) < interval:
+            return
+        self._last_cleanup_at = now_mono
+        storage, now = self._ctx.storage, self._ctx.clock()
+        try:
+            deleted = storage.delete_finished_upload_jobs(now - self.retention)
+            if deleted:
+                logger.info("upload jobs: pruned %s finished row(s) older than %s", deleted, self.retention)
+            owned = {os.path.basename(job.demo_path) for job in storage.list_active_upload_jobs()}
+        except Exception:
+            logger.exception("upload jobs: cleanup could not list/prune job rows")
+            return
+        job_dir = self.job_dir
+        try:
+            names = os.listdir(job_dir)
+        except OSError:
+            return
+        wall_now = time.time()
+
+        def _age(path: str) -> float:
+            try:
+                return wall_now - os.path.getmtime(path)
+            except OSError:
+                return 0.0
+
+        for name in names:
+            path = os.path.join(job_dir, name)
+            if name.endswith(JOB_PARTIAL_SUFFIX):
+                # An upload still streaming (or about to be renamed): only drop dead ones.
+                if _age(path) >= ORPHAN_PARTIAL_STALE_SECONDS:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+            elif name.endswith(JOB_WORKDIR_SUFFIX):
+                # Workdirs are only live inside process(). On force (startup recovery) every
+                # ``.work`` is stale — even if the job was requeued and still owns its
+                # ``.upload``. Otherwise keep a workdir only when its ``.upload`` is owned
+                # (a job mid-process); idle drains have no such jobs.
+                if not force:
+                    job_id = name[: -len(JOB_WORKDIR_SUFFIX)]
+                    if (job_id + JOB_FILE_SUFFIX) in owned:
+                        continue
+                shutil.rmtree(path, ignore_errors=True)
+            elif name.endswith(JOB_FILE_SUFFIX) and name not in owned:
+                # Grace window: upload_demo renames .partial -> .upload just before it
+                # creates the job row, so a fresh unowned .upload may be about to be owned.
+                if _age(path) < ORPHAN_UPLOAD_GRACE_SECONDS:
+                    continue
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
     @staticmethod
     def _remove_files(job) -> None:
+        """Drop the job's demo file and workdir (success, failure, or recovery give-up)."""
+
         try:
             os.remove(job.demo_path)
         except OSError:
             pass
+        workdir = os.path.join(os.path.dirname(job.demo_path), job.id + JOB_WORKDIR_SUFFIX)
+        shutil.rmtree(workdir, ignore_errors=True)

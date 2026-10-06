@@ -157,6 +157,7 @@ function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promi
   const [busy, setBusy] = useState(false);
   const access = me.match_access;
   const relink = access.linked ? access.needs_relink ?? null : null;
+  const awaitingShare = access.linked && !!access.awaiting_share_code;
 
   async function run(action: () => Promise<unknown>, fallback: string) {
     setBusy(true);
@@ -212,11 +213,20 @@ function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promi
       {access.linked ? (
         <div className="steam-linked">
           <p>
-            Match history linked. Game Authentication Code <code>{access.auth_code_hint}</code>
+            {awaitingShare ? "Game Authentication Code saved" : "Match history linked. Game Authentication Code"}{" "}
+            <code>{access.auth_code_hint}</code>
             {access.updated_at && <> · updated {new Date(access.updated_at).toLocaleString()}</>}
           </p>
           <AutoSyncStatus me={me} onChange={onChange} />
-          {relink ? (
+          {awaitingShare && !relink ? (
+            <>
+              <p className="steam-notice awaiting-share" role="status">
+                Waiting for your first match. After you play a Competitive, Premier or Wingman match, paste its share
+                code below once and we sync from there (automatically, if auto-sync is on).
+              </p>
+              <LinkForm onLinked={linked} linked awaitingShare authHint={access.auth_code_hint} />
+            </>
+          ) : relink ? (
             <>
               <div className="steam-error relink-alert" role="alert">
                 <strong>Re-link needed to keep syncing.</strong> {RELINK_TEXT[relink.reason] ?? RELINK_TEXT.invalid_known_code}
@@ -235,7 +245,13 @@ function SignedIn({ me, onChange, onSignedOut }: { me: Me; onChange: () => Promi
           </p>
         </div>
       ) : (
-        <LinkForm onLinked={linked} linked={false} />
+        <>
+          <p className="steam-muted link-optional">
+            You’re signed in. Linking match history is optional: upload demos below any time, and link whenever you
+            like. No recent match yet? Save just your authentication code and add a share code after you play.
+          </p>
+          <LinkForm onLinked={linked} linked={false} />
+        </>
       )}
       <div className="steam-actions">
         {access.linked && (
@@ -254,6 +270,7 @@ export const AUTO_SYNC_PAUSED_TEXT: Record<string, string> = {
   turned_off: "auto-sync off",
   needs_relink: "auto-sync paused until you re-link",
   not_linked: "auto-sync starts once you link",
+  needs_share_code: "auto-sync starts once you add a share code",
   server_disabled: "auto-sync isn’t available on this server",
   demo_retrieval_not_configured: "auto-sync starts once the server can download demos",
 };
@@ -320,9 +337,11 @@ type LinkFormProps = {
   authHint?: string | null;
   /** The last sync needs new codes: which one to replace. */
   relink?: NeedsRelink | null;
+  /** Auth code saved without a share code yet: this form adds the first one. */
+  awaitingShare?: boolean;
 };
 
-function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
+function LinkForm({ onLinked, linked, authHint, relink, awaitingShare = false }: LinkFormProps) {
   const [authCode, setAuthCode] = useState("");
   const [shareCode, setShareCode] = useState("");
   const [consent, setConsent] = useState(false);
@@ -336,7 +355,10 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
   // The stored auth code can be kept unless it is the one that stopped working.
   const authOptional = linked && relink?.field !== "auth_code";
   const auth = checkAuthCode(authCode, authOptional);
-  const share = checkShareCode(shareCode);
+  // The share code is optional (nobody needs a recent match to link) unless it is the one that
+  // stopped working. Linked users still have to change something (the server says share_code_required).
+  const shareOptional = relink?.field !== "share_code";
+  const share = checkShareCode(shareCode, shareOptional);
   const ids = { auth: "link-auth-hint", share: "link-share-hint" };
 
   useEffect(() => {
@@ -351,12 +373,13 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
     setTouched({ auth: true, share: true });
     setError("");
     setFieldError(null);
-    if (!auth.ok || !share.ok) {
+    const nothingToSave = linked && !auth.value && !share.value;
+    if (!auth.ok || !share.ok || nothingToSave) {
       if (!auth.ok) {
         if (!authCode.trim()) setFieldError({ field: "auth", text: `Paste your Game Authentication Code (${AUTH_CODE_EXAMPLE}).` });
         authRef.current?.focus();
       } else {
-        if (!shareCode.trim()) setFieldError({ field: "share", text: "Paste a recent match sharing code (CSGO-…)." });
+        if (!shareCode.trim()) setFieldError({ field: "share", text: "Paste a match sharing code (CSGO-…)." });
         shareRef.current?.focus();
       }
       return;
@@ -380,10 +403,12 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
     }
   }
 
-  const foundInLink = share.ok && share.value !== shareCode.trim();
+  const foundInLink = share.ok && !!share.value && share.value !== shareCode.trim();
+  const kicker = awaitingShare ? "ADD A MATCH SHARING CODE" : linked ? "UPDATE MATCH-HISTORY CODES" : "STEP 2 · AUTHORIZE MATCH HISTORY (OPTIONAL)";
+  const submitText = linked ? (awaitingShare ? "SAVE SHARE CODE" : "SAVE NEW CODES") : "LINK MATCH HISTORY";
   return (
     <form className="steam-form" onSubmit={submit} noValidate aria-label="Link match history">
-      <span className="section-kicker">{linked ? "UPDATE MATCH-HISTORY CODES" : "STEP 2 · AUTHORIZE MATCH HISTORY"}</span>
+      <span className="section-kicker">{kicker}</span>
       <ol className="steam-steps">
         <li>
           Open Valve’s <a href={AUTH_CODE_URL} target="_blank" rel="noreferrer">Access to Your Match History ↗</a> page
@@ -394,8 +419,9 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
         <li>
           On the same page, copy <em>Your most recently completed match token</em>. That is a <strong>match sharing code</strong>{" "}
           (<code>CSGO-xxxxx-…</code>). Or, in CS2, open <em>Watch → Your Matches</em> and copy the sharing code of one of your
-          last matches. Pasting the whole <code>steam://…</code> share link is fine too. No code yet? Play a Competitive,
-          Premier or Wingman match first.
+          last matches. Pasting the whole <code>steam://…</code> share link is fine too. No code yet (no recent
+          Competitive, Premier or Wingman match)? Leave it empty: we save your authentication code now and you add a
+          share code here after your next match.
         </li>
         <li>
           We import that match and every <em>newer</em> one, not your whole history: Valve’s codes expire after about 30 days.
@@ -420,7 +446,12 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
           : auth.ok && auth.value && <span className="field-hint ok">Looks right.</span>}
       </label>
       <label className="field">
-        <span className="field-label">{relink?.field === "share_code" ? "NEW MATCH SHARING CODE" : "RECENT MATCH SHARING CODE"}</span>
+        <span className="field-label">
+          {relink?.field === "share_code" ? "NEW MATCH SHARING CODE" : "RECENT MATCH SHARING CODE"}
+          {shareOptional && !awaitingShare && (
+            <span className="unit">{linked ? "OPTIONAL · LEAVE EMPTY TO KEEP YOURS" : "OPTIONAL · ADD AFTER YOUR NEXT MATCH"}</span>
+          )}
+        </span>
         <span className="number-wrap">
           <input ref={shareRef} type="text" autoComplete="off" spellCheck={false} name="share_code" placeholder={SHARE_CODE_EXAMPLE} value={shareCode}
             aria-invalid={shareMessage ? true : undefined} aria-describedby={shareMessage ? ids.share : undefined}
@@ -429,7 +460,7 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
         </span>
         {shareMessage
           ? <span id={ids.share} className="field-hint error">{shareMessage}</span>
-          : share.ok && <span className="field-hint ok">{foundInLink ? `Found ${share.value} in the link.` : "Looks right."}</span>}
+          : share.ok && share.value && <span className="field-hint ok">{foundInLink ? `Found ${share.value} in the link.` : "Looks right."}</span>}
       </label>
       <label className="steam-consent">
         <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
@@ -439,7 +470,7 @@ function LinkForm({ onLinked, linked, authHint, relink }: LinkFormProps) {
         </span>
       </label>
       <button className="submit-button" type="submit" disabled={busy || !consent}>
-        <span>{busy ? "CHECKING WITH VALVE" : linked ? "SAVE NEW CODES" : "LINK MATCH HISTORY"}</span><span className="button-arrow">↗</span>
+        <span>{busy ? (share.value ? "CHECKING WITH VALVE" : "SAVING") : submitText}</span><span className="button-arrow">↗</span>
       </button>
       {!consent && !busy && <span className="field-hint">Tick the box above to enable linking.</span>}
       {error && <div className="steam-error" role="alert">{error}</div>}

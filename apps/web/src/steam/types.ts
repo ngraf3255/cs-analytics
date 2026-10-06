@@ -12,6 +12,9 @@ export type MatchAccess = {
   updated_at: string | null;
   /** Older APIs don't send it. */
   needs_relink?: NeedsRelink | null;
+  /** Auth code saved without a share code yet (linked before a recent match): sync starts once one is
+   * added. Older APIs don't send it. */
+  awaiting_share_code?: boolean;
 };
 
 export type SyncStatus = {
@@ -34,7 +37,7 @@ export type AutoSync = {
   enabled: boolean;
   /** It will actually run for this user; else paused_reason says why. */
   active: boolean;
-  paused_reason: "turned_off" | "not_linked" | "needs_relink" | "server_disabled" | "demo_retrieval_not_configured" | string | null;
+  paused_reason: "turned_off" | "not_linked" | "needs_share_code" | "needs_relink" | "server_disabled" | "demo_retrieval_not_configured" | string | null;
   /** How often linked users are synced (null: off on this server). */
   interval_seconds: number | null;
   /** Earliest time of the next automatic sync (null while paused). */

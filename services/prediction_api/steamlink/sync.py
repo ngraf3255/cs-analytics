@@ -103,7 +103,7 @@ class SyncOutcome:
 
 
 class SyncRejected(Exception):
-    """Sync could not start: not_linked | already_running | too_soon."""
+    """Sync could not start: not_linked | needs_share_code | already_running | too_soon."""
 
     def __init__(self, reason: str):
         super().__init__(reason)
@@ -178,6 +178,10 @@ class SyncService:
         access = self.storage.get_match_access(user.id)
         if access is None:
             raise SyncRejected("not_linked")
+        if access.cursor_share_code is None:
+            # Auth code saved without a share code (e.g. linked before their first match):
+            # Valve's history API can only walk forward from a known code.
+            raise SyncRejected("needs_share_code")
         state = self.storage.get_sync_state(user.id, now)
         if state.locked:
             raise SyncRejected("already_running")
@@ -215,7 +219,8 @@ class SyncService:
             access = self.storage.get_match_access(user.id)
             # A sync job for the cursor (any state) means it was handled: imported, a stub, or
             # retried by requeue_sync_jobs above. Cursors moved by skip_known_match are 'owned'.
-            if access is not None and not self.storage.has_sync_job(user.id, access.cursor_share_code):
+            if (access is not None and access.cursor_share_code is not None
+                    and not self.storage.has_sync_job(user.id, access.cursor_share_code)):
                 start = access.cursor_share_code
                 try:
                     known = self.storage.skip_known_match(
@@ -245,6 +250,8 @@ class SyncService:
             access = self.storage.get_match_access(user.id)
             if access is None:
                 return done("error", error="not_linked")
+            if access.cursor_share_code is None:  # codes replaced by an auth-only link meanwhile
+                return done("error", error="needs_share_code")
             try:
                 auth_code = self.cipher.decrypt(user.steam_id, access.auth_code_ciphertext)
             except DecryptionError:

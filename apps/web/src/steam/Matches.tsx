@@ -150,7 +150,8 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
       await loadMatches();
       setSelected(job.match.id);
     } else if (job.status === "failed") {
-      setNotice({ tone: "error", text: messageFor(job.error, "The demo could not be imported.") });
+      // An error code this build doesn't know (newer server): show it rather than a bare "failed".
+      setNotice({ tone: "error", text: messageFor(job.error, job.error ? `The demo could not be imported (${job.error}).` : "The demo could not be imported.") });
     }
   }, [loadMatches]);
 
@@ -306,6 +307,8 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
 
   const linked = me.match_access.linked;
   const relink = linked ? me.match_access.needs_relink ?? null : null;
+  // Auth code saved, no share code yet: nothing to sync from until they add one after a match.
+  const awaitingShare = linked && !relink && !!me.match_access.awaiting_share_code;
   const lastSync = me.sync.last_finished_at ? new Date(me.sync.last_finished_at).toLocaleString() : null;
 
   return (
@@ -313,7 +316,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
       <span className="section-kicker">{canSync ? "STEP 3 · IMPORT MATCHES" : "YOUR UPLOADS"}</span>
       <div className="sync-row">
         {canSync && (
-          <button className={`submit-button sync-button ${syncJobs ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || !!relink || syncBusy || me.sync.status === "running"}>
+          <button className={`submit-button sync-button ${syncJobs ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || !!relink || awaitingShare || syncBusy || me.sync.status === "running"}>
             <span>{syncLabel}</span><span className="button-arrow">↻</span>
           </button>
         )}
@@ -330,7 +333,8 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
             : syncJobs
               ? syncJobsHint(syncJobs)
               : !canSync ? `Upload a CS2 .dem / .dem.bz2 to get a round-by-round report.${steamAvailable ? " Sign in through Steam to sync matches automatically." : " Steam sync is coming soon."}`
-              : !linked ? "Link your match history above to sync, or upload a CS2 .dem / .dem.bz2 you already have."
+              : !linked ? "Link your match history above to sync (optional), or upload a CS2 .dem / .dem.bz2 you already have."
+                : awaitingShare ? "Sync starts once you add the share code of a match you played (above). Uploads work now."
                 : relink ? (relink.field === "auth_code" ? "Sync is paused: paste your current Game Authentication Code above." : "Sync is paused: paste a recent share code above (your authentication code is kept).")
                 : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}${me.sync.auto_sync?.active ? " · auto-sync on" : ""}` : "Not synced yet. You can also upload a CS2 .dem / .dem.bz2."}
         </span>
@@ -345,7 +349,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
       <MatchesSummaryPanel refreshKey={listVersion} />
 
       {matches.length === 0 ? (
-        <EmptyMatches linked={linked} relink={!!relink} uploading={uploading} canSync={canSync} steamAvailable={steamAvailable}
+        <EmptyMatches linked={linked} relink={!!relink} awaitingShare={awaitingShare} uploading={uploading} canSync={canSync} steamAvailable={steamAvailable}
           onFile={(file) => void uploadFile(file)} />
       ) : (
         <ul className="match-list">
@@ -372,11 +376,11 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
 
 /** No matches yet: both ways in, side by side (Leetify-style onboarding: sync forward, upload the rest). */
 type EmptyMatchesProps = {
-  linked: boolean; relink: boolean; uploading: boolean; canSync: boolean; steamAvailable: boolean;
+  linked: boolean; relink: boolean; awaitingShare: boolean; uploading: boolean; canSync: boolean; steamAvailable: boolean;
   onFile: (file: File | undefined) => void;
 };
 
-function EmptyMatches({ linked, relink, uploading, canSync, steamAvailable, onFile }: EmptyMatchesProps) {
+function EmptyMatches({ linked, relink, awaitingShare, uploading, canSync, steamAvailable, onFile }: EmptyMatchesProps) {
   return (
     <div className="empty-matches" aria-label="No matches yet">
       <p className="steam-muted">No imported matches yet.</p>
@@ -389,9 +393,11 @@ function EmptyMatches({ linked, relink, uploading, canSync, steamAvailable, onFi
                 ? "Sign in through Steam above to import your Competitive, Premier and Wingman matches automatically."
                 : "Automatic import from your Steam match history is coming soon. Uploading demos works now."
               : !linked
-              ? "Link your match history above (step 2), then press Sync matches. We import the match of the share code you give and your newer Competitive, Premier and Wingman matches."
+              ? "Optional: link your match history above (step 2), then press Sync matches. We import the match of the share code you give and your newer Competitive, Premier and Wingman matches. No recent match? Link your authentication code now and add a share code after you play."
               : relink
                 ? "Sync is paused until you update your codes above."
+                : awaitingShare
+                  ? "Your authentication code is saved. Once you play a Competitive, Premier or Wingman match, add its share code above and your matches start coming in from there."
                 : "Press Sync matches above. We import the match you linked with and your newer Competitive, Premier and Wingman matches; each one downloads and parses in the background."}
           </p>
         </div>

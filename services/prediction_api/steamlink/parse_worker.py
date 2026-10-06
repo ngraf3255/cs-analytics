@@ -1,7 +1,8 @@
 """Child-process entry point for demo parsing: ``python -m steamlink.parse_worker <demo.dem>``.
 
 Prints the parsed demo as one JSON object on stdout (see
-``demo_parser.parsed_demo_to_json``); exits 2 if the demo can't be parsed.
+``demo_parser.parsed_demo_to_json``); exits 2 if the demo can't be parsed (traceback on stderr, last line
+``DEMO_PARSE_REASON=<reason>``).
 Imports only the parser (not the API, model, or database code) so the child
 stays small; all of its memory goes back to the OS when it exits.
 """
@@ -10,8 +11,12 @@ from __future__ import annotations
 
 import json
 import sys
+import traceback
 
-from .demo_parser import DemoParseError, parse_in_process, parsed_demo_to_json
+from .demo_parser import (
+    WORKER_REASON_PREFIX, DemoParseError, demoparser2_version, inspect_demo_file, parse_in_process,
+    parsed_demo_to_json,
+)
 
 
 def _volunteer_for_oom_kill() -> None:
@@ -36,7 +41,16 @@ def main(argv: list[str]) -> int:
     try:
         demo = parse_in_process(argv[0])
     except DemoParseError as exc:
-        print(f"{exc}: {exc.__cause__!r}", file=sys.stderr)
+        # Full traceback (the parser's native error is the __cause__) for the API's log,
+        # then the file's size / magic bytes and the parser version, then the reason line
+        # the parent reads (WORKER_REASON_PREFIX, last line).
+        traceback.print_exception(exc, file=sys.stderr)
+        try:
+            info = inspect_demo_file(argv[0]).describe()
+        except OSError as os_exc:
+            info = f"unreadable: {os_exc!r}"
+        print(f"demo: {info} demoparser2={demoparser2_version()}", file=sys.stderr)
+        print(f"{WORKER_REASON_PREFIX}{exc.reason}", file=sys.stderr)
         return 2
     sys.stdout.write(json.dumps(parsed_demo_to_json(demo), separators=(",", ":")))
     sys.stdout.flush()

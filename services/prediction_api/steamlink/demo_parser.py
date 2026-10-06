@@ -52,6 +52,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import struct
 import subprocess
 import sys
 import threading
@@ -109,7 +111,110 @@ class ParsedDemo:
 
 
 class DemoParseError(Exception):
-    pass
+    """The demo could not be parsed. ``reason`` is the client-facing error code:
+
+    * ``demo_parse_failed``: anything not classified below;
+    * ``demo_truncated``: the file is cut off (the header points past its end, or the
+      parser hit the end of the file early);
+    * ``demo_format_unsupported``: the parser does not understand the demo's messages,
+      e.g. a demo from a newer CS2 patch or a FACEIT server than the pinned demoparser2
+      knows (``MalformedMessage``, ``EntityNotFound``, ``UnknownDemoCmd``, ...);
+    * ``not_a_cs2_demo``: the parser says it is not a CS2 demo at all;
+    * ``demo_parse_timeout``: the parse took longer than the configured timeout.
+    """
+
+    def __init__(self, message: str = "demo could not be parsed", reason: str = "demo_parse_failed"):
+        super().__init__(message)
+        self.reason = reason
+
+
+DEMO_PARSE_REASONS = ("demo_parse_failed", "demo_truncated", "demo_format_unsupported", "not_a_cs2_demo",
+                      "demo_parse_timeout")
+CS2_DEMO_MAGIC = b"PBDEMS2\0"
+_CS2_HEADER = struct.Struct("<8sii")  # magic, file-info offset, spawn-groups offset
+
+# demoparser2 error names (its Rust ``DemoParserError`` variants, surfaced as ``Exception('<Name>')``)
+# -> DemoParseError reasons. Unlisted names are ``demo_parse_failed``.
+_PARSER_ERROR_REASONS = {
+    "DemoEndsEarly": "demo_truncated",
+    "MalformedMessage": "demo_format_unsupported",
+    "EntityNotFound": "demo_format_unsupported",
+    "UnknownDemoCmd": "demo_format_unsupported",
+    "IllegalPathOp": "demo_format_unsupported",
+    "UnknownPathOP": "demo_format_unsupported",
+    "NoSendTableMessage": "demo_format_unsupported",
+    "ClassMapperNotFoundFirstPass": "demo_format_unsupported",
+    "ClassNotFound": "demo_format_unsupported",
+    "ClsIdOutOfBounds": "demo_format_unsupported",
+    "StringTableNotFound": "demo_format_unsupported",
+    "UnknownEntityHandle": "demo_format_unsupported",
+    "FieldNoDecoder": "demo_format_unsupported",
+    "DecompressionFailure": "demo_format_unsupported",
+    "ImpossibleCmd": "demo_format_unsupported",
+    "Source1DemoError": "not_a_cs2_demo",
+    "UnknownFile": "not_a_cs2_demo",
+}
+_PARSER_ERROR_NAME_RE = re.compile(r"\b(" + "|".join(sorted(_PARSER_ERROR_REASONS, key=len, reverse=True)) + r")\b")
+
+
+def classify_parser_error(text: str) -> str:
+    """The DemoParseError reason for a demoparser2 error message / repr (see ``_PARSER_ERROR_REASONS``)."""
+
+    match = _PARSER_ERROR_NAME_RE.search(text or "")
+    return _PARSER_ERROR_REASONS[match.group(1)] if match else "demo_parse_failed"
+
+
+@dataclass(frozen=True)
+class DemoFileInfo:
+    """What the first bytes of a demo file say, for logs and the pre-parse sanity check."""
+
+    size: int
+    magic: bytes
+    fileinfo_offset: int | None  # CS2 only: where the trailing file-info block starts
+
+    @property
+    def problem(self) -> str | None:
+        """``not_a_cs2_demo`` / ``demo_truncated`` if the file can't be a complete CS2 demo, else None.
+
+        A complete CS2 demo's header points at its file-info block, ~20 bytes before the
+        end of the file. A copy or download that stopped early still has the full header but
+        the offset points past the end. (demoparser2 happily parses such a file up to the cut
+        and returns a partial match, so this has to be checked before parsing.) An offset of
+        0 (recording never finalized) is not rejected: the rounds up to that point are usable.
+        """
+
+        if not self.magic.startswith(CS2_DEMO_MAGIC):
+            # A few bytes of a CS2 header and nothing else is a cut-off file too.
+            return "demo_truncated" if self.magic and CS2_DEMO_MAGIC.startswith(self.magic) else "not_a_cs2_demo"
+        if self.size < _CS2_HEADER.size:
+            return "demo_truncated"
+        if self.fileinfo_offset is not None and self.fileinfo_offset >= self.size:
+            return "demo_truncated"
+        return None
+
+    def describe(self) -> str:
+        return f"size={self.size} magic={self.magic!r} fileinfo_offset={self.fileinfo_offset}"
+
+
+def inspect_demo_file(path: str) -> DemoFileInfo:
+    """Read a demo's header (size, magic bytes, CS2 file-info offset). Raises OSError if unreadable."""
+
+    size = os.path.getsize(path)
+    with open(path, "rb") as fh:
+        head = fh.read(_CS2_HEADER.size)
+    offset = None
+    if len(head) == _CS2_HEADER.size and head.startswith(CS2_DEMO_MAGIC):
+        offset = _CS2_HEADER.unpack(head)[1]
+    return DemoFileInfo(size=size, magic=head[:8], fileinfo_offset=offset)
+
+
+def demoparser2_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("demoparser2")
+    except Exception:  # not installed (tests with a fake parser)
+        return "unknown"
 
 
 class DemoParser(ABC):
@@ -350,6 +455,11 @@ class Demoparser2Parser(DemoParser):
     One ``parse_events`` pass reads all three events (three ``parse_event``
     calls would each re-read the whole demo); only the needed columns are kept.
 
+    Before parsing, the file's header is checked (:class:`DemoFileInfo`): a cut-off
+    file is rejected as ``demo_truncated`` instead of being parsed into a partial match.
+    Parse failures carry a reason (see :class:`DemoParseError`); the worker's full
+    traceback, the file's size / magic bytes and the demoparser2 version are logged.
+
     TODO(verify-live): event/column names below follow demoparser2 0.42 docs and
     must be checked against a current matchmaking demo before production use.
     """
@@ -362,6 +472,14 @@ class Demoparser2Parser(DemoParser):
         self.threads = threads
 
     def parse(self, demo_path: str) -> ParsedDemo:
+        try:
+            info = inspect_demo_file(demo_path)
+        except OSError as exc:
+            raise DemoParseError(f"demo file unreadable: {exc!r}") from exc
+        if info.problem:
+            logger.warning("demo rejected before parsing: %s (%s)", info.problem, info.describe())
+            raise DemoParseError(f"demo rejected before parsing: {info.problem}", info.problem)
+        logger.info("parsing demo (%s, demoparser2=%s)", info.describe(), demoparser2_version())
         if self.isolation == "inprocess":
             return parse_in_process(demo_path)
         return self._parse_in_subprocess(demo_path)
@@ -382,22 +500,48 @@ class Demoparser2Parser(DemoParser):
                 cwd=package_root, check=False,
             )
         except subprocess.TimeoutExpired:
-            logger.warning("demo parse timed out after %ss", self.timeout_seconds)
-            raise DemoParseError("demo parse timed out") from None
+            logger.warning("demo parse timed out after %ss (%s)", self.timeout_seconds, _describe_file(demo_path))
+            raise DemoParseError("demo parse timed out", "demo_parse_timeout") from None
         except OSError as exc:
             raise DemoParseError("demo parser could not be started") from exc
         if done.returncode != 0:
             # -9 (SIGKILL) is usually the kernel OOM killer.
-            logger.warning("demo parse worker exited with %s: %s", done.returncode,
-                           done.stderr.decode("utf-8", "replace")[-500:])
-            raise DemoParseError("demo could not be parsed")
+            stderr = done.stderr.decode("utf-8", "replace")
+            reason = _worker_reason(stderr)
+            logger.warning(
+                "demo parse worker exited with %s (reason=%s, demoparser2=%s, %s):\n%s",
+                done.returncode, reason, demoparser2_version(), _describe_file(demo_path),
+                stderr[-_MAX_LOGGED_STDERR:],
+            )
+            raise DemoParseError(f"demo could not be parsed ({reason})", reason)
         try:
             return parsed_demo_from_json(json.loads(done.stdout))
         except (ValueError, KeyError, TypeError) as exc:
             raise DemoParseError("demo parser returned invalid output") from exc
 
 
+# The worker's last stderr line names the DemoParseError reason for the parent process.
+WORKER_REASON_PREFIX = "DEMO_PARSE_REASON="
+_MAX_LOGGED_STDERR = 8000
+
+
+def _worker_reason(stderr: str) -> str:
+    for line in reversed(stderr.splitlines()):
+        if line.startswith(WORKER_REASON_PREFIX):
+            reason = line[len(WORKER_REASON_PREFIX):].strip()
+            return reason if reason in DEMO_PARSE_REASONS else "demo_parse_failed"
+    return "demo_parse_failed"  # killed (e.g. OOM, -9) before it could say
+
+
+def _describe_file(path: str) -> str:
+    try:
+        return inspect_demo_file(path).describe()
+    except OSError as exc:
+        return f"unreadable: {exc!r}"
+
+
 def parse_in_process(demo_path: str) -> ParsedDemo:
+    header: dict = {}
     try:
         from demoparser2 import DemoParser as _Parser
 
@@ -412,7 +556,10 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
         match_starts = [int(t) for t in _column(frames.pop("begin_new_match", None), "tick")]
         frames.clear()
     except Exception as exc:  # parser raises a variety of native errors
-        raise DemoParseError("demo could not be parsed") from exc
+        detail = f"demo could not be parsed: {exc!r}"
+        if header:  # the header parsed: say which CS2 build recorded the demo
+            detail += f" (patch_version={header.get('patch_version')}, map={header.get('map_name')})"
+        raise DemoParseError(detail, classify_parser_error(repr(exc))) from exc
 
     rounds: list[ParsedRound] = []
     previous_end = -1

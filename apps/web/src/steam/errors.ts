@@ -14,10 +14,13 @@ const MESSAGES: Record<string, string> = {
   auth_code_is_share_code: "That’s a match sharing code (CSGO-…). Put it in the share-code box; the authentication code looks like ABCD-EFGHI-JKLM.",
   share_code_is_auth_code: "That’s your Game Authentication Code. The share-code box needs a code that starts with CSGO-.",
   auth_code_required: "Paste your Game Authentication Code (ABCD-EFGHI-JKLM) from Valve’s page.",
+  share_code_required: "Paste a match sharing code (CSGO-…) or a new Game Authentication Code to update.",
+  needs_share_code:
+    "Your authentication code is saved. Add the share code of a match you played (CSGO-…) above to start syncing.",
   valve_rate_limited: "Valve is rate-limiting requests. Wait a minute and try again.",
   valve_unavailable: "Valve’s match-history service did not respond. Try again shortly.",
   api_unreachable: "Can’t reach the cs-analytics server. If it was idle it may be waking up; try again in a minute.",
-  not_linked: "Link a Game Authentication Code and a recent share code first.",
+  not_linked: "Link your Game Authentication Code first.",
   already_running: "A sync is already running for your account.",
   too_soon: "Wait about 30 seconds between syncs.",
   match_not_found: "That match is no longer available.",
@@ -27,7 +30,12 @@ const MESSAGES: Record<string, string> = {
     "The server’s Steam demo bot could not sign in, so demos can’t be fetched right now. Your next sync retries the match.",
   demo_too_large: "That demo is larger than the server allows.",
   not_a_cs2_demo: "That file isn’t a CS2 demo (.dem or .dem.bz2). CS:GO demos aren’t supported.",
-  demo_parse_failed: "The demo could not be parsed.",
+  demo_parse_failed: "The demo could not be parsed. It may be damaged; if it plays fine in CS2, try again later.",
+  demo_truncated:
+    "That demo file is incomplete (it’s cut off). Let CS2 finish saving it, or copy / download it again, then upload it.",
+  demo_format_unsupported:
+    "Our demo parser can’t read this demo yet: it uses a format from a newer CS2 update or a third-party server (e.g. FACEIT). Try again after the next parser update.",
+  demo_parse_timeout: "The demo took too long to parse. Try again in a few minutes.",
   upload_busy: "The server is parsing another demo. Try again in a minute.",
   upload_queue_full: "The server already has several demos waiting to be parsed. Try again in a few minutes.",
   server_restarted: "The server restarted before it finished your demo. Upload it again.",
