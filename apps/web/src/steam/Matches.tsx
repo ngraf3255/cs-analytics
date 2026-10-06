@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouInMatch } from "./types";
@@ -115,7 +115,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
   const [selected, setSelected] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncJobs, setSyncJobs] = useState<UploadJob[] | null>(null);
-  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: ReactNode } | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [listError, setListError] = useState("");
   const [listVersion, setListVersion] = useState(0);  // bumped per list load: refreshes the summary panel
@@ -293,13 +293,30 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
           const state = await steamApi.getSync();
           const active = (state.jobs ?? []).filter(isJobActive).reverse();
           if (active.length) await followSyncJobs(active, null);
+          else setNotice(null);  // race: job finished before refresh — drop the stale notice
         } catch {
           /* notice already explains; status refresh is best-effort */
         }
         return;
       }
-      if (reason instanceof ApiError && (reason.code === "too_soon" || reason.code === "needs_share_code" || reason.code === "not_linked")) {
-        setNotice({ tone: reason.code === "too_soon" ? "ok" : "error", text: reason.message });
+      if (reason instanceof ApiError && reason.code === "too_soon") {
+        setNotice({ tone: "ok", text: reason.message });
+        void onMeChange();
+        return;
+      }
+      if (reason instanceof ApiError && reason.code === "needs_share_code") {
+        setNotice({
+          tone: "error",
+          text: <>Add a share code in <a href={ACCOUNT_PATH}>Account settings</a> from any match in the last ~30 days.</>,
+        });
+        void onMeChange();
+        return;
+      }
+      if (reason instanceof ApiError && reason.code === "not_linked") {
+        setNotice({
+          tone: "error",
+          text: <>Link your match history in <a href={ACCOUNT_PATH}>Account settings</a> first.</>,
+        });
         void onMeChange();
         return;
       }
