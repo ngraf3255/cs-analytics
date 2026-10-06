@@ -85,6 +85,18 @@ fresh share code after a break of 30+ days). Each `422` names the box to fix:
 `share_code_is_auth_code`, `invalid_share_code` (Valve); plus `consent_required`,
 `429 valve_rate_limited`, `502 valve_unavailable`.
 
+`share_code` is optional: signing in never needs a match, and someone without a
+recent Competitive/Premier/Wingman match has no share code yet. An empty
+`share_code` saves the auth code alone (format-checked only; Valve can't be
+asked without a known share code) and `GET /me` shows
+`match_access.awaiting_share_code: true`; `POST /steam/sync` answers
+`409 needs_share_code` and auto-sync is paused (`paused_reason:
+needs_share_code`) until the user adds a share code after a match (an empty
+`auth_code` then keeps the stored one). While a share code is stored, an empty
+`share_code` keeps it (new auth code only, checked with Valve against it).
+Linked with neither code: `422 share_code_required`. No migration: the
+`cursor_share_code` column stays `NOT NULL` and `""` means "no share code yet".
+
 `GET /me` `match_access.needs_relink` is `{reason, field}` when the last sync
 failed in a way only new codes fix, until the codes are updated:
 `invalid_known_code` -> `share_code` (cursor expired or no longer valid),

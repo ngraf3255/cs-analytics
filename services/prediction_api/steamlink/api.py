@@ -130,20 +130,25 @@ def _needs_relink(ctx: SteamContext, user: User, access) -> dict | None:
 def _match_access_view(ctx: SteamContext, user: User) -> dict:
     access = ctx.storage.get_match_access(user.id)
     if access is None:
-        return {"linked": False, "auth_code_hint": None, "linked_at": None, "updated_at": None, "needs_relink": None}
+        return {"linked": False, "auth_code_hint": None, "linked_at": None, "updated_at": None, "needs_relink": None,
+                "awaiting_share_code": False}
     return {
         "linked": True,
         "auth_code_hint": f"****-*****-{access.auth_code_last4}",
         "linked_at": _iso(access.consented_at),
         "updated_at": _iso(access.updated_at),
         "needs_relink": _needs_relink(ctx, user, access),
+        # Auth code saved, no share code yet (linked before a recent match): sync starts once
+        # the user adds the share code of a match they played.
+        "awaiting_share_code": access.cursor_share_code is None,
     }
 
 
 def _auto_sync_view(ctx: SteamContext, user: User, state=None) -> dict:
     """The user's automatic background sync (steamlink.autosync). ``enabled``: the user's
     toggle; ``active``: it will actually run for them; else ``paused_reason`` says why:
-    turned_off | not_linked | needs_relink | server_disabled | demo_retrieval_not_configured."""
+    turned_off | not_linked | needs_share_code | needs_relink | server_disabled |
+    demo_retrieval_not_configured."""
 
     sched = ctx.auto_sync
     state = state or ctx.storage.get_sync_state(user.id, ctx.clock())
@@ -156,6 +161,8 @@ def _auto_sync_view(ctx: SteamContext, user: User, state=None) -> dict:
         reason = "turned_off"
     elif access is None:
         reason = "not_linked"
+    elif access.cursor_share_code is None:
+        reason = "needs_share_code"
     elif relink_needed(state, access) is not None:
         reason = "needs_relink"
     else:
@@ -230,7 +237,9 @@ class MatchAccessInput(BaseModel):
     # Empty while already linked: keep the stored Game Authentication Code and only replace the
     # share code (Leetify-style: the auth code is given once, a fresh share code when the old one expired).
     auth_code: str = ""
-    share_code: str
+    # Optional: users who haven't played a match recently have no share code yet. Empty saves
+    # the auth code alone (or keeps the stored share code) and sync waits for a share code.
+    share_code: str = ""
     consent: bool
 
 
@@ -373,15 +382,20 @@ def put_match_access(
     """Link (or re-link) match history. Accepts what users paste: the auth code in any case,
     with spaces or without dashes; the share code bare or inside CS2's steam:// share link.
     An empty ``auth_code`` while linked keeps the stored one (share code update only).
+    An empty ``share_code`` saves the auth code without one (nobody needs a recent match to
+    link; sync starts once a share code is added) or, if one is stored, keeps it.
     Each 422 ``detail`` names the field to fix (see the web's LinkForm)."""
 
     if not payload.consent:
         raise HTTPException(status_code=422, detail="consent_required")
-    share_code = extract_share_code(payload.share_code) or payload.share_code.strip()
+    access = ctx.storage.get_match_access(user.id)
+    share_given = bool(payload.share_code.strip())
+    share_code = (extract_share_code(payload.share_code) or payload.share_code.strip()) if share_given else None
     if not payload.auth_code.strip():
-        access = ctx.storage.get_match_access(user.id)
         if access is None:
             raise HTTPException(status_code=422, detail="auth_code_required")
+        if not share_given:
+            raise HTTPException(status_code=422, detail="share_code_required")  # nothing to change
         try:
             auth_code = ctx.cipher.decrypt(user.steam_id, access.auth_code_ciphertext)
         except DecryptionError:
@@ -392,19 +406,24 @@ def put_match_access(
             # e.g. the two codes pasted into each other's box
             detail = "auth_code_is_share_code" if extract_share_code(payload.auth_code) else "invalid_auth_code_format"
             raise HTTPException(status_code=422, detail=detail)
-    if not is_valid_share_code(share_code):
+    if share_code is not None and not is_valid_share_code(share_code):
         detail = ("share_code_is_auth_code" if is_valid_auth_code(normalize_auth_code(payload.share_code))
                   else "invalid_share_code_format")
         raise HTTPException(status_code=422, detail=detail)
-    result = ctx.history.next_share_code(user.steam_id, auth_code, share_code)
-    if result.status == "invalid_auth_code":
-        raise HTTPException(status_code=422, detail="invalid_auth_code")
-    if result.status == "invalid_known_code":
-        raise HTTPException(status_code=422, detail="invalid_share_code")
-    if result.status == "rate_limited":
-        raise HTTPException(status_code=429, detail="valve_rate_limited")
-    if result.status not in ("ok", "no_new_match"):
-        raise HTTPException(status_code=502, detail="valve_unavailable")
+    if share_code is None and access is not None:
+        share_code = access.cursor_share_code  # new auth code only: keep the stored share code (if any)
+    if share_code is not None:
+        # Valve checks both codes together; without any share code there is nothing to check
+        # yet (the first sync after a share code is added does).
+        result = ctx.history.next_share_code(user.steam_id, auth_code, share_code)
+        if result.status == "invalid_auth_code":
+            raise HTTPException(status_code=422, detail="invalid_auth_code")
+        if result.status == "invalid_known_code":
+            raise HTTPException(status_code=422, detail="invalid_share_code")
+        if result.status == "rate_limited":
+            raise HTTPException(status_code=429, detail="valve_rate_limited")
+        if result.status not in ("ok", "no_new_match"):
+            raise HTTPException(status_code=502, detail="valve_unavailable")
     ctx.storage.set_match_access(
         user.id, ciphertext=ctx.cipher.encrypt(user.steam_id, auth_code), last4=auth_code[-4:],
         cursor_share_code=share_code, now=ctx.clock(),
@@ -457,7 +476,7 @@ def post_sync(
     try:
         outcome = ctx.sync.sync(user, max_active=ctx.settings.upload_queue_max, job_file=ctx.jobs.job_file)
     except SyncRejected as exc:
-        status = {"not_linked": 409, "already_running": 409, "too_soon": 429}[exc.reason]
+        status = {"not_linked": 409, "needs_share_code": 409, "already_running": 409, "too_soon": 429}[exc.reason]
         raise HTTPException(status_code=status, detail=exc.reason) from None
     if ctx.auto_sync is not None:
         try:

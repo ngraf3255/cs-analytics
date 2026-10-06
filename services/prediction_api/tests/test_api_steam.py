@@ -260,3 +260,64 @@ def test_sync_status_poll_restarts_a_stopped_worker(app_client):
     client.get("/steam/sync")
     assert ctx.jobs.wait_idle(10)
     assert [job["status"] for job in client.get("/steam/sync").json()["jobs"]] == ["done"] * 3
+
+
+def test_link_without_share_code_then_add_one_after_playing(app_client):
+    """Nobody needs a recent match to link: the auth code can be saved alone and the share
+    code added later (e.g. after the user's first match); sync waits until then."""
+
+    client, ctx = app_client
+    calls = len(ctx.history.calls)
+    response = client.put("/steam/match-access", json={"auth_code": AUTH, "consent": True}, headers=H)
+    assert response.status_code == 200, response.text
+    view = response.json()
+    assert view["linked"] is True and view["awaiting_share_code"] is True
+    assert view["auth_code_hint"] == "****-*****-FG56"
+    assert len(ctx.history.calls) == calls  # no share code: nothing to ask Valve yet
+    access = ctx.storage.get_match_access(ctx.storage.get_or_create_user(STEAM_ID, ctx.clock()).id)
+    assert access.cursor_share_code is None
+    me = client.get("/me").json()
+    assert me["match_access"]["awaiting_share_code"] is True
+    assert me["sync"]["auto_sync"]["paused_reason"] == "needs_share_code"
+    assert me["sync"]["auto_sync"]["active"] is False
+    sync = client.post("/steam/sync", headers=H)
+    assert sync.status_code == 409 and sync.json()["detail"] == "needs_share_code"
+
+    # nothing to change: neither code
+    empty = client.put("/steam/match-access", json={"consent": True}, headers=H)
+    assert empty.status_code == 422 and empty.json()["detail"] == "share_code_required"
+
+    # later: the share code alone, the stored auth code is kept
+    response = client.put("/steam/match-access", json={"share_code": code(0), "consent": True}, headers=H)
+    assert response.status_code == 200, response.text
+    assert response.json()["awaiting_share_code"] is False
+    assert client.get("/me").json()["sync"]["auto_sync"]["paused_reason"] is None
+    ctx.clock.advance(60)
+    sync = client.post("/steam/sync", headers=H)
+    assert sync.status_code == 202 and sync.json()["queued"] == 3
+    assert ctx.jobs.wait_idle(10)
+
+
+def test_new_auth_code_alone_keeps_the_stored_share_code(app_client):
+    client, ctx = app_client
+    body = {"auth_code": AUTH, "share_code": code(1), "consent": True}
+    assert client.put("/steam/match-access", json=body, headers=H).status_code == 200
+    # Valve checks the new auth code together with the stored share code
+    wrong = client.put("/steam/match-access", json={"auth_code": "ZZ12-CDE34-FG56", "consent": True}, headers=H)
+    assert wrong.status_code == 422 and wrong.json()["detail"] == "invalid_auth_code"
+    response = client.put("/steam/match-access", json={"auth_code": AUTH.lower(), "consent": True}, headers=H)
+    assert response.status_code == 200 and response.json()["awaiting_share_code"] is False
+    access = ctx.storage.get_match_access(ctx.storage.get_or_create_user(STEAM_ID, ctx.clock()).id)
+    assert access.cursor_share_code == code(1)
+
+
+@pytest.mark.parametrize("body,detail", [
+    ({"consent": True}, "auth_code_required"),
+    ({"auth_code": "bad", "consent": True}, "invalid_auth_code_format"),
+    ({"auth_code": code(0), "consent": True}, "auth_code_is_share_code"),
+    ({"auth_code": AUTH, "consent": False}, "consent_required"),
+])
+def test_link_without_share_code_validation(app_client, body, detail):
+    client, _ = app_client
+    response = client.put("/steam/match-access", json=body, headers=H)
+    assert response.status_code == 422 and response.json()["detail"] == detail

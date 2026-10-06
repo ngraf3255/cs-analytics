@@ -59,7 +59,7 @@ def env(tmp_path):
         user = storage.get_or_create_user(f"7656119800000{n:04d}", clock())
         if link:
             storage.set_match_access(user.id, ciphertext=cipher.encrypt(user.steam_id, AUTH), last4="FG56",
-                                     cursor_share_code=code(cursor), now=clock())
+                                     cursor_share_code=None if cursor is None else code(cursor), now=clock())
         return user
 
     def state(user):
@@ -109,6 +109,17 @@ def test_tick_syncs_due_linked_users_through_the_sync_button_path(env):
     assert len(env.storage.list_matches(a.id, limit=10, offset=0)) == 5
     assert env.tick(INTERVAL - 100).synced == []
     assert sorted(env.tick(INTERVAL * 0.1 + 200).synced) == ids([a, b])
+
+
+def test_users_without_a_share_code_yet_are_skipped_until_they_add_one(env):
+    a = env.add_user(1)
+    waiting = env.add_user(2, cursor=None)  # auth code saved before their first match
+    assert env.storage.get_match_access(waiting.id).cursor_share_code is None
+    assert env.tick().synced == [a.id]
+    assert set(env.history.users) == {a.steam_id}
+    env.storage.set_match_access(waiting.id, ciphertext=env.cipher.encrypt(waiting.steam_id, AUTH), last4="FG56",
+                                 cursor_share_code=code(0), now=env.clock())
+    assert waiting.id in env.tick().synced
 
 
 def test_recent_manual_sync_is_not_repeated_until_the_interval_passed(env):

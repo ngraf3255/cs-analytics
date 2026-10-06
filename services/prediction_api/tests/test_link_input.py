@@ -160,7 +160,8 @@ def test_disconnect_then_relink(app_client):
     sync_with(ctx, client, "invalid_known_code")
     assert client.delete("/steam/match-access", headers=H).status_code == 204
     me = client.get("/me").json()["match_access"]
-    assert me == {"linked": False, "auth_code_hint": None, "linked_at": None, "updated_at": None, "needs_relink": None}
+    assert me == {"linked": False, "auth_code_hint": None, "linked_at": None, "updated_at": None, "needs_relink": None,
+                  "awaiting_share_code": False}
     assert link(client, auth="", share=code(1)).json()["detail"] == "auth_code_required"  # stored code is gone
     ctx.clock.advance(5)
     response = link(client, share=code(1))

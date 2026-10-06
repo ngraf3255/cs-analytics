@@ -86,11 +86,14 @@ sessions = Table(
     Column("created_at", UTCDateTime, nullable=False),
     Column("expires_at", UTCDateTime, nullable=False),
 )
+NO_CURSOR = ""  # match_access.cursor_share_code before the user gave a share code
 match_access = Table(
     "match_access", metadata,
     Column("user_id", String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
     Column("auth_code_ciphertext", String, nullable=False),
     Column("auth_code_last4", String, nullable=False),
+    # "" (NO_CURSOR): auth code saved, no share code yet (MatchAccess.cursor_share_code None).
+    # Kept NOT NULL so no migration is needed; the storage API maps it to None.
     Column("cursor_share_code", String, nullable=False),
     Column("consented_at", UTCDateTime, nullable=False),
     Column("updated_at", UTCDateTime, nullable=False),
@@ -318,8 +321,9 @@ class SqlStorage(Storage):
 
     # Match-history access ------------------------------------------------
     def set_match_access(self, user_id, *, ciphertext, last4, cursor_share_code, now) -> MatchAccess:
+        cursor_share_code = cursor_share_code or None
         values = dict(auth_code_ciphertext=ciphertext, auth_code_last4=last4,
-                      cursor_share_code=cursor_share_code, consented_at=now, updated_at=now)
+                      cursor_share_code=cursor_share_code or NO_CURSOR, consented_at=now, updated_at=now)
         with self.engine.begin() as conn:
             updated = conn.execute(update(match_access).where(match_access.c.user_id == user_id).values(**values))
             if updated.rowcount == 0:
@@ -333,7 +337,7 @@ class SqlStorage(Storage):
         if not row:
             return None
         return MatchAccess(user_id=row.user_id, auth_code_ciphertext=row.auth_code_ciphertext,
-                           auth_code_last4=row.auth_code_last4, cursor_share_code=row.cursor_share_code,
+                           auth_code_last4=row.auth_code_last4, cursor_share_code=row.cursor_share_code or None,
                            consented_at=row.consented_at, updated_at=row.updated_at)
 
     def delete_match_access(self, user_id: str) -> None:
@@ -406,11 +410,12 @@ class SqlStorage(Storage):
         if relink_errors:
             relinkable = or_(relinkable, ss.last_error.not_in(list(relink_errors)))
         not_running = or_(ss.lock_token.is_(None), ss.lock_expires_at.is_(None), ss.lock_expires_at < now)
+        has_cursor = ma.cursor_share_code != NO_CURSOR  # no share code yet: nothing to walk
         query = (
             select(users, ss.next_auto_sync_at.label("seen_next"))
             .join(match_access, ma.user_id == users.c.id)
             .outerjoin(sync_state, ss.user_id == users.c.id)
-            .where(and_(users.c.auto_sync_enabled == 1, due, relinkable, not_running))
+            .where(and_(users.c.auto_sync_enabled == 1, due, relinkable, not_running, has_cursor))
             .order_by(func.coalesce(ss.next_auto_sync_at, ss.last_finished_at, users.c.created_at), users.c.id)
             .limit(limit)
         )
