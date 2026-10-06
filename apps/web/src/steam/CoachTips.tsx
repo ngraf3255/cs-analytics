@@ -10,7 +10,7 @@ export function CoachTips({ report }: { report: MatchReport }) {
     <section className="coach-tips" aria-label="What to fix">
       <span className="section-kicker">WHAT TO FIX · FROM THIS DEMO</span>
       {tips.length === 0 ? (
-        <p className="steam-muted">Nothing clear stood out in this match. Tips appear when a pattern repeats across several rounds.</p>
+        <p className="steam-muted">Nothing clear stood out.</p>
       ) : (
         <ol className="coach-list">
           {tips.map((tip) => (
@@ -23,7 +23,7 @@ export function CoachTips({ report }: { report: MatchReport }) {
           ))}
         </ol>
       )}
-      <p className="steam-muted coach-note">Rule-based notes from your rounds in this demo (deaths, opening duels, sides, the model’s in-hindsight odds). No positions or utility are recorded, so they can’t say where.</p>
+      <p className="steam-muted coach-note">Rule-based from this demo. Positions and utility aren’t recorded.</p>
     </section>
   );
 }
