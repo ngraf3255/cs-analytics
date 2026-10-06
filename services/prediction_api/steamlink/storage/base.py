@@ -412,6 +412,16 @@ class Storage(ABC):
         (matches the player is not in are absent). One query."""
 
     @abstractmethod
+    def get_match_players(self, match_id: str) -> dict[str, list[PlayerRoundRecord]]:
+        """``{steam id: that player's rounds}`` for every player recorded in a stored match,
+        rounds in order (empty: not recorded). Callers check ownership (``get_match``) first."""
+
+    @abstractmethod
+    def list_players_in_matches(self, user_id: str, steam_ids: list[str]) -> dict[str, dict[str, list[PlayerRoundRecord]]]:
+        """``{match id: {steam id: rounds}}`` for the given players over every match in the
+        user's list (players / matches without records are absent). One query."""
+
+    @abstractmethod
     def list_matches_with_rounds(self, user_id: str) -> list[tuple[MatchRecord, list[RoundRecord]]]:
         """Every match in the user's list (shared matches included, as the user sees
         them; stubs with no rounds too) with its rounds in round order, newest
