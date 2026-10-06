@@ -17,7 +17,7 @@ function appRoutes(extra: Parameters<typeof installFakeApi>[0] = {}) {
   };
 }
 
-const readout = () => screen.getByText("MODEL READOUT").closest(".result-panel") as HTMLElement;
+const readout = () => screen.getByText("READOUT").closest(".result-panel") as HTMLElement;
 
 describe("design review polish", () => {
   beforeEach(() => {
@@ -31,8 +31,8 @@ describe("design review polish", () => {
     render(<App />);
     await advance();
     const panel = readout();
-    expect(within(panel).getByText("Predict to see the odds")).toBeInTheDocument();
-    expect(panel.querySelector(".readout-empty")?.textContent).toBe("Predict to see the odds");
+    expect(within(panel).getByText("Predict")).toBeInTheDocument();
+    expect(panel.querySelector(".readout-empty")?.textContent).toBe("Predict");
     expect(panel).not.toHaveTextContent("NO PREDICTION YET");
     expect(panel.querySelector(".prob-track")).toBeNull();
     expect(panel.querySelector(".probability-card")).toBeNull();
@@ -46,7 +46,7 @@ describe("design review polish", () => {
     fireEvent.click(screen.getByRole("button", { name: /Predict/ }));
     await advance();
     const panel = readout();
-    expect(within(panel).queryByText("Predict to see the odds")).toBeNull();
+    expect(within(panel).queryByText("Predict")).toBeNull();
     expect(panel).toHaveTextContent("Counter-Terrorists");
     expect(panel).toHaveTextContent("64.3%");
     expect(panel.querySelectorAll(".prob-track")).toHaveLength(2);

@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { steamApi } from "./api";
-import { kdText } from "./format";
+import { kdText, mapLabel } from "./format";
 import type { PeerCompare as Compare, PeerComparison, PeerGroup } from "./types";
 import "./peerCompare.css";
 
 const pct = (rate: number | null | undefined) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
 const num = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
-const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 
 type Metric = { key: keyof PeerGroup; label: string; fmt: (v: number | null) => string };
 const METRICS: Metric[] = [

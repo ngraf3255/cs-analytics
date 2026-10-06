@@ -256,6 +256,27 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .page-intro{margin:28px clamp(22px,10vw,160px) 0}
 .page-predict .workspace{margin-top:22px}
 .page-about{margin-top:28px}
-.account-back{display:inline-block;margin-bottom:10px;font:11px 'DM Mono',monospace;color:#89939c}
+.account-back{display:block;width:fit-content;margin-bottom:10px;font:11px 'DM Mono',monospace;color:#89939c}
 .account-back:hover{color:var(--acid)}
 .you-home{margin-bottom:18px}
+
+
+/* Bundle 4: dense labels / soft polish */
+.hero + .steam-section{margin-top:0;border-top:0;padding-top:18px}
+@media(max-width:640px){.hero + .steam-section{padding-top:14px}}
+.hero{padding-bottom:28px}
+@media(max-width:640px){.hero{padding-bottom:22px;padding-top:28px}}
+
+/* Timeline legend tucked behind ⓘ */
+.tl-heading{display:flex;align-items:center;gap:8px}
+.tl-legend-info{position:relative}
+.tl-legend-info > summary{list-style:none;cursor:pointer;font:11px 'DM Mono',monospace;color:#89939c;line-height:1;padding:2px 4px;border:1px solid #2d3740;user-select:none}
+.tl-legend-info > summary::-webkit-details-marker{display:none}
+.tl-legend-info > summary:hover,.tl-legend-info[open] > summary{color:var(--acid);border-color:#6f8646}
+.tl-legend-info .tl-legend{position:absolute;z-index:5;left:0;top:calc(100% + 6px);min-width:220px;max-width:min(320px,80vw);padding:10px 12px;background:#0c1117;border:1px solid #2d3740;box-shadow:0 12px 40px #0008;display:grid;gap:6px}
+.tl-legend-info .tl-legend span{display:flex;align-items:center;gap:6px;white-space:nowrap}
+
+/* Lost is never lime-success */
+.wl-chip.lost,.result-lost .wl-chip{color:#ffd3c8!important;background:#6b3a32!important;border-color:#8a4a40!important}
+.you-lost{color:#ff9f8a!important}
+.match-map strong{text-transform:lowercase}

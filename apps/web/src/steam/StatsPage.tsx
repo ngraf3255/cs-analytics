@@ -19,7 +19,7 @@ export function StatsPage() {
   return (
     <section id="stats" className="steam-section account-page" aria-label="Your stats" aria-busy={pending || undefined}>
       <div className="info-intro">
-        <a className="account-back" href="/#matches">← Matches</a>
+        <a className="account-back" href="/">← Home</a>
         <h2>Stats</h2>
       </div>
       {pending ? (

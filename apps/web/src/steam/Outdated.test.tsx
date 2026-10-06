@@ -64,7 +64,7 @@ describe("matches parsed by an older version: re-upload to update", () => {
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Won · mirage · score 13–11 · K-D 29–17/i }));
     await advance();
     expect(screen.queryByText(/Upload this demo again to update it/)).not.toBeInTheDocument();
   });

@@ -46,25 +46,27 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     const { unmount } = render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const tiles = screen.getByLabelText("Your stats");
-    expect(tiles).toHaveTextContent("ROUNDS WON54%");
-    expect(tiles).toHaveTextContent("AS CT / AS T75% / 33%");
+    expect(tiles).toHaveTextContent("WON54%");
+    expect(tiles).toHaveTextContent("CT / T75% / 33%");
     expect(tiles).toHaveTextContent("K/D1.71");
-    expect(tiles).toHaveTextContent("OPENING DUELS100%");
+    expect(tiles).toHaveTextContent("OPENINGS100%");
     expect(screen.queryByRole("region", { name: "Across your matches" })).not.toBeInTheDocument();
-    expect(screen.queryByText("ALL PLAYERS IN THESE DEMOS · MAP SIDES")).not.toBeInTheDocument();
+    expect(screen.queryByText("ALL PLAYERS")).not.toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Your maps" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "More stats" })).toHaveAttribute("href", "/stats");
+    expect(screen.getByRole("button", { name: /Won · mirage · score 13–11 · K-D 29–17/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Stats" })).toHaveAttribute("href", "/stats");
     unmount();
 
     installFakeApi({ "GET /matches/summary": { status: 200, body: summaryPersonal } });
     render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
+    // Bundle 4: home 4-tiles are not re-shown on /stats
+    expect(within(panel()).queryByLabelText("Your stats")).not.toBeInTheDocument();
     expect(rows("Your maps").map(cells)).toEqual([["mirage", "1 (1–0)", "24", "54%", "75% (9/12)", "33% (4/12)", "1.71"]]);
-    expect(panel()).toHaveTextContent("ALL PLAYERS IN THESE DEMOS · MAP SIDES");
+    expect(panel()).toHaveTextContent("ALL PLAYERS");
     const all = within(panel()).getByLabelText("Previous matches summary");
     expect(all).toHaveTextContent("MATCHES3");
-    expect(all).toHaveTextContent("CT / T ROUNDS60% / 40%");
+    expect(all).toHaveTextContent("CT / T60% / 40%");
     expect(within(panel()).queryByRole("table", { name: "Your recent matches" })).not.toBeInTheDocument();
   });
 
@@ -96,7 +98,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     expect(within(panel()).queryByLabelText("Your stats")).not.toBeInTheDocument();
-    expect(panel()).not.toHaveTextContent("ALL PLAYERS IN THESE DEMOS");
+    expect(panel()).not.toHaveTextContent("ALL PLAYERS");
     expect(panel()).not.toHaveTextContent("your own team isn’t tracked yet");
     expect(within(panel()).getByLabelText("Previous matches summary")).toBeInTheDocument();
   });
@@ -109,14 +111,14 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     expect(screen.getByText("Yesterday")).toBeInTheDocument();  // FACEIT imported Oct 5 vs today Oct 6
     expect(screen.getByText(day(SYNCED_MIRAGE.played_at!, { month: "short", day: "numeric" }))).toBeInTheDocument();
     expect(screen.queryByText(/Added /)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Won · mirage · score 13–11 · K-D 29–17/i })).toBeInTheDocument();
   });
 
   it("report: your result, side and every round you played highlighted (won / lost, kills, opening duels)", async () => {
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Won · mirage · score 13–11 · K-D 29–17/i }));
     await advance();
     expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
     expect(screen.queryByLabelText("Match summary")).not.toBeInTheDocument();
@@ -160,7 +162,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Won · mirage · score 13–11 · K-D 29–17/i }));
     await advance();
     expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
     expect(screen.queryByLabelText("Match summary")).not.toBeInTheDocument();

@@ -92,7 +92,7 @@ describe("match list UX", () => {
 
     expect(screen.getByText("3 MATCHES")).toBeInTheDocument();
     // Personal match: W chip + your-side score + K-D metric
-    const won = screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i });
+    const won = screen.getByRole("button", { name: /Won · mirage · score 13–11 · K-D 29–17/i });
     expect(within(won).getByText("W")).toBeInTheDocument();
     expect(within(won).getByText("13–11")).toBeInTheDocument();
     expect(within(won).getByText("· 29–17")).toBeInTheDocument();
@@ -278,7 +278,7 @@ describe("match list UX", () => {
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
 
-    const row = screen.getByRole("button", { name: /Lost · rush 001 · 0–1 · 0–1/i });
+    const row = screen.getByRole("button", { name: /Lost · rush 001 · score 0–1 · K-D 0–1/i });
     expect(within(row).getByText("L")).toBeInTheDocument();
     expect(within(row).getByText("0–1")).toBeInTheDocument();
     // Bold primary is the first strong; K-D is in small — ensure we did not show 0–2.

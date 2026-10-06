@@ -10,7 +10,19 @@ export function RoundTimeline({ rounds }: { rounds: RoundReport[] }) {
   let you = 0, them = 0;
   return (
     <div className="round-timeline-wrap">
-      <span className="section-kicker">ROUND TIMELINE</span>
+      <div className="tl-heading">
+        <span className="section-kicker">TIMELINE</span>
+        <details className="tl-legend-info">
+          <summary aria-label="Timeline legend">ⓘ</summary>
+          <div className="report-legend tl-legend">
+            <span><i className="legend tl-ct" /> CT won</span>
+            <span><i className="legend tl-t" /> T won</span>
+            <span><i className="tl-dot" /> First kill (side colour)</span>
+            {tracked && <span><i className="legend your-win" /> Underline: your team won</span>}
+            {tracked && <span><i className="tl-dot you" /> You got / gave up the first kill</span>}
+          </div>
+        </details>
+      </div>
       <ol className="round-timeline" aria-label="Round timeline">
         {rounds.map((round, i) => {
           const mine = round.you;
@@ -38,13 +50,6 @@ export function RoundTimeline({ rounds }: { rounds: RoundReport[] }) {
           );
         })}
       </ol>
-      <div className="report-legend tl-legend">
-        <span><i className="legend tl-ct" /> CT won</span>
-        <span><i className="legend tl-t" /> T won</span>
-        <span><i className="tl-dot" /> First kill (side colour)</span>
-        {tracked && <span><i className="legend your-win" /> Underline: your team won</span>}
-        {tracked && <span><i className="tl-dot you" /> You got / gave up the first kill</span>}
-      </div>
     </div>
   );
 }
@@ -79,7 +84,7 @@ export function OpeningDuels({ report }: { report: MatchReport }) {
   const myDeaths = report.rounds.filter((r) => r.you?.opening_death);
   return (
     <div className="opening-duels">
-      <span className="section-kicker">OPENING DUELS · THIS MATCH</span>
+      <span className="section-kicker">OPENING DUELS</span>
       <dl className="report-header summary-tiles" aria-label="Opening duels">
         {mine && (
           <div>

@@ -30,7 +30,7 @@ describe("/account", () => {
       "GET /me": () => new Promise(() => undefined),
     });
     render(<AccountPage />);
-    expect(screen.getByRole("heading", { name: "Account settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Account" })).toBeInTheDocument();
     expect(screen.getByLabelText("Loading your account")).toBeInTheDocument();
   });
 

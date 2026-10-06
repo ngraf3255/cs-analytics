@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { steamApi } from "./api";
-import { kdText } from "./format";
+import { kdText, mapLabel } from "./format";
 import type { YouAnalytics } from "./types";
 
 type TrendMatch = YouAnalytics["recent_form"]["matches"][number];
@@ -10,7 +10,6 @@ export const TREND_MATCHES = 50;
 /** Rolling average length for the trend lines. */
 const ROLL = 5;
 
-const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 
 /** Your form over time: round win % and K/D per match (oldest → newest) with a 5-match rolling
  * average. Uses GET /matches/summary?recent=50, whose per-match list is the player's own rounds. */

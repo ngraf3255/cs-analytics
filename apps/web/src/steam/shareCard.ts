@@ -1,5 +1,5 @@
 import type { MatchReport, YouAnalytics } from "./types";
-import { kdText, matchDate, resultText } from "./format";
+import { kdText, mapLabel, matchDate, resultText } from "./format";
 
 /** What a share image shows: a title, a big headline, up to four stat tiles and a footer line. */
 export type ShareCard = {
@@ -12,7 +12,6 @@ export type ShareCard = {
   fileName: string;
 };
 
-const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 const pct = (rate: number | null | undefined) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 

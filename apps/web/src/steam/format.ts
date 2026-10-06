@@ -66,3 +66,9 @@ export function timeUntil(iso: string, now = Date.now()): string {
 export function everyText(seconds: number): string {
   return `every ${span(seconds * 1000)}`;
 }
+
+/** Strip de_ / underscores; always lowercase for dense scan lines. */
+export function mapLabel(map: string | null | undefined): string {
+  if (!map) return "Unknown map";
+  return map.replace(/^de_/i, "").replaceAll("_", " ").toLowerCase();
+}

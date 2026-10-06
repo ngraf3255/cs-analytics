@@ -13,7 +13,7 @@ export function RoleBreakdown({ roles }: { roles: NonNullable<YouAnalytics["role
   const baseline = roles.baseline_opening_attempt_rate;
   return (
     <div className="role-breakdown">
-      <span className="section-kicker">YOUR ROLE BY SIDE · OPENING DUELS</span>
+      <span className="section-kicker">ROLE BY SIDE</span>
       <dl className="report-header summary-tiles" aria-label="Your role by side">
         <RoleTile side="CT" role={roles.ct} baseline={baseline} min={roles.min_rounds} />
         <RoleTile side="T" role={roles.t} baseline={baseline} min={roles.min_rounds} />
