@@ -157,21 +157,31 @@ click **Revoke My Steam Web API Key**, register a new one, and update `.env`.
 
 ## Environment variables
 
-Copy [`deploy/homelab/.env.example`](../deploy/homelab/.env.example). Steam
-features turn on when **both** `DATABASE_URL` and `TOKEN_ENCRYPTION_KEYS` are
-set; the API then refuses to start if `SESSION_SECRET`, `PUBLIC_API_URL`,
-`FRONTEND_URL`, or `STEAM_WEB_API_KEY` is missing.
+Copy [`deploy/homelab/.env.example`](../deploy/homelab/.env.example). Two
+feature levels (`services/prediction_api/steamlink/config.py`):
+
+- **Demo upload + match reports**: `DATABASE_URL` + `SESSION_SECRET` (32+ chars).
+  No Steam key needed for the upload pipeline itself, but uploads require a
+  Steam sign-in: anonymous guest sessions (`POST /auth/guest`) are **off by
+  default** (`GUEST_UPLOADS=false`). Only set `GUEST_UPLOADS=true` if you want
+  public anonymous uploads.
+- **Steam sign-in + sync**: additionally `TOKEN_ENCRYPTION_KEYS` +
+  `STEAM_WEB_API_KEY`; then `PUBLIC_API_URL` and `FRONTEND_URL` are required.
+  `STEAM_WEB_API_KEY` without `TOKEN_ENCRYPTION_KEYS` refuses to start.
+
+`curl -sS http://127.0.0.1:8000/steam/status` shows what is on:
+`{"enabled": <steam>, "steam": …, "upload": …, "guest": …}`. Startup logs a
+line naming what is off and why.
 
 ### Turning Steam on
 
 On `counterstrike` Steam is currently **off on purpose**: `STEAM_WEB_API_KEY`
-and `TOKEN_ENCRYPTION_KEYS` are both empty in `deploy/homelab/.env`.
-`steamlink/config.py` enables Steam as soon as `DATABASE_URL` +
-`TOKEN_ENCRYPTION_KEYS` are set, and then refuses to start without
-`STEAM_WEB_API_KEY`. So setting the Fernet key alone (without the Steam key)
-crash-loops the API; leave both empty until you have the Steam key. With both
-empty the API runs normally (health, uploads) and `/steam/status` reports
-disabled.
+is empty in `deploy/homelab/.env`. With `DATABASE_URL` + `SESSION_SECRET` set the
+API starts without Steam: `/steam/status` reports `"steam": false`, and the site
+shows Connect Steam as "coming soon". Because guest uploads are off by default,
+nobody can upload until Steam is on (`"upload": false`); with `GUEST_UPLOADS=true`
+it would run upload-only for guests (`"upload": true, "guest": true`). Setting `TOKEN_ENCRYPTION_KEYS` early is
+harmless now (it no longer crash-loops without the Steam key).
 
 To enable:
 
@@ -181,7 +191,9 @@ To enable:
 3. Restart:
    `docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d`
    (or `/opt/cs-analytics/deploy/deploy.sh`), then check
-   `curl -sS http://127.0.0.1:8000/steam/status` shows `"enabled": true`.
+   `curl -sS http://127.0.0.1:8000/steam/status` shows `"enabled": true` (and
+   `"steam": true`, `"upload": true`, `"guest": false`). Steam-signed-in users
+   can upload `.dem` files.
 
 Auto-deploy only redeploys when `main` moves, so `.env` changes always need
 this manual restart.
@@ -191,7 +203,8 @@ this manual restart.
 | `POSTGRES_*` | Compose-only; builds `DATABASE_URL` for the api service |
 | `DATABASE_URL` | `postgresql://csgooners:…@db:5432/csgooners` (compose) or `…@127.0.0.1:5432/…` (systemd) |
 | `TOKEN_ENCRYPTION_KEYS` | Fernet key(s), newest first. `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `SESSION_SECRET` | ≥ 32 random chars |
+| `SESSION_SECRET` | ≥ 32 random chars (needed for uploads too; shorter/missing leaves uploads off) |
+| `GUEST_UPLOADS` | default `false`: uploads require a Steam sign-in. `true` opens anonymous guest sessions (`POST /auth/guest`) that can upload without Steam — public, so leave off |
 | `STEAM_WEB_API_KEY` | https://steamcommunity.com/dev/apikey, domain `csgooner.com` (step-by-step: [Steam Web API key](#steam-web-api-key)) |
 | `PUBLIC_API_URL` | `https://api-site.csgooner.com` (OpenID realm + return URL; must match the public hostname exactly) |
 | `FRONTEND_URL` | `https://csgooner.com` (redirect after Steam login) |
@@ -201,6 +214,8 @@ this manual restart.
 | `STEAM_BOT_REFRESH_TOKEN` | optional; without it, sync stops at `demo_retrieval_not_configured` (uploads still work) |
 | `UPLOAD_MAX_BYTES` | **`100000000` (~100 MB) for Tunnel (Option A default)**; raise to `1073741824` only on Caddy/nginx grey-cloud fallback |
 | `UPLOAD_JOB_DIR` | durable disk path (compose volume `/var/lib/csa/upload-jobs`) |
+| `UPLOAD_JOB_RETENTION_SECONDS` | `604800` (7d) default; how long finished upload/sync *job rows* are kept. Demo `.upload` / `.work` files are deleted as soon as a job finishes (success **or** failure, including `demo_parse_failed` / MalformedMessage). |
+| `UPLOAD_JOB_CLEANUP_INTERVAL_SECONDS` | `300` default; orphan/retention sweep after each queue drain (throttled; `0` = every drain). Startup recovery always sweeps. |
 | `AUTO_SYNC_INTERVAL_SECONDS` | `1800` default; `0` disables background sync |
 
 Full optional knobs: [`docs/deploy-render.md`](deploy-render.md) env table
@@ -376,6 +391,35 @@ cat /var/lib/cs-analytics-autodeploy/deployed-sha # last good deploy
 
 Don't hand-edit tracked files on the VM: the next deploy resets them. Keep
 local config in `deploy/homelab/.env` (ignored).
+
+
+## Upload job disk use (small VM)
+
+The API keeps received demos only while a job is queued or processing under
+`UPLOAD_JOB_DIR` (`csa-upload-jobs` volume → `/var/lib/csa/upload-jobs`):
+
+| When | What is deleted |
+| --- | --- |
+| Job finishes (imported **or** failed parse) | that job's `<id>.upload` and `<id>.work` |
+| HTTP reject before queue (`not_a_cs2_demo`, `demo_too_large`, `upload_queue_full`) | the partial body file |
+| Startup recovery / each queue drain | finished job rows older than `UPLOAD_JOB_RETENTION_SECONDS`; stray `.upload` / `.work` no active job owns (unowned `.upload` younger than 2 min and in-flight `<id>.upload.partial` are skipped; `.partial` untouched for 15 min is removed) |
+
+Caps that bound peak disk for demos:
+
+- `UPLOAD_MAX_BYTES` (Tunnel default **100 MB**) × `UPLOAD_QUEUE_MAX` (default **3**)
+- `DEMO_MAX_DOWNLOAD_BYTES` / `DEMO_MAX_DECOMPRESSED_BYTES` for sync downloads and `.bz2` inflate
+
+Compose also caps container logs (`json-file`, **10 MB × 3 files** per service) so
+repeated parse failures cannot fill the VM with Docker logs. Host `cloudflared`
+is outside compose — if its journal grows, use `journalctl` vacuum on the host.
+
+Check usage on the VM:
+
+```sh
+docker system df
+docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env exec api \
+  du -sh /var/lib/csa/upload-jobs
+```
 
 ## Postgres backups
 

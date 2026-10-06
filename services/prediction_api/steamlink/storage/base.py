@@ -31,7 +31,9 @@ class MatchAccess:
     user_id: str
     auth_code_ciphertext: str
     auth_code_last4: str
-    cursor_share_code: str
+    # The last processed match sharing code. None: the auth code is saved but the user has
+    # not given a share code yet (e.g. no recent match): sync waits until they add one.
+    cursor_share_code: str | None
     consented_at: datetime
     updated_at: datetime
 
@@ -218,8 +220,9 @@ class Storage(ABC):
     # Match-history access ------------------------------------------------
     @abstractmethod
     def set_match_access(
-        self, user_id: str, *, ciphertext: str, last4: str, cursor_share_code: str, now: datetime
-    ) -> MatchAccess: ...
+        self, user_id: str, *, ciphertext: str, last4: str, cursor_share_code: str | None, now: datetime
+    ) -> MatchAccess:
+        """``cursor_share_code=None``: save the auth code only (no share code yet)."""
 
     @abstractmethod
     def get_match_access(self, user_id: str) -> MatchAccess | None: ...

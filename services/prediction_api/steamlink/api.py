@@ -1,7 +1,10 @@
-"""FastAPI routes for Steam sign-in, match-history access, sync and reports.
+"""FastAPI routes for accounts (Steam or guest), demo upload, match reports and Steam sync.
 
-All routes except ``GET /steam/status`` return 503 ``steam_sync_disabled``
-unless DATABASE_URL and TOKEN_ENCRYPTION_KEYS are configured.
+Two feature levels (see steamlink.config): with DATABASE_URL + SESSION_SECRET the
+account, upload and report routes work (guests via ``POST /auth/guest`` only with GUEST_UPLOADS=true; off by default); Steam
+sign-in, match-history linking and sync additionally need TOKEN_ENCRYPTION_KEYS +
+STEAM_WEB_API_KEY. A route whose feature is off returns 503 ``steam_sync_disabled``
+(``GET /steam/status`` says which features are on).
 State-changing routes require the ``X-Requested-With: csa`` header (forces a
 CORS preflight) and, if an Origin header is sent, an allowed origin.
 """
@@ -16,7 +19,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
 from . import openid
@@ -45,19 +48,46 @@ class SteamContext:
     settings: Settings
     storage: Storage
     signer: CookieSigner
-    cipher: AuthCodeCipher
-    history: MatchHistoryClient
+    cipher: AuthCodeCipher | None  # None: Steam off (no TOKEN_ENCRYPTION_KEYS / STEAM_WEB_API_KEY)
+    history: MatchHistoryClient | None
     sync: SyncService
     scorer: RoundScorer
     http: httpx.Client
     clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
     jobs: "UploadJobWorker | None" = None  # set by register()
-    auto_sync: "AutoSyncScheduler | None" = None  # set by register()
+    auto_sync: "AutoSyncScheduler | None" = None  # set by register() when Steam is on
+
+    @property
+    def steam_enabled(self) -> bool:
+        return self.cipher is not None and self.history is not None and self.settings.steam_enabled
+
+    @property
+    def guest_uploads_enabled(self) -> bool:
+        return self.settings.guest_uploads_enabled
+
+
+GUEST_PREFIX = "guest:"  # users.steam_id of a guest account (never a real SteamID64)
+
+
+def is_guest(user: User) -> bool:
+    return user.steam_id.startswith(GUEST_PREFIX)
+
+
+def _steam_id(user: User) -> str | None:
+    """The user's SteamID64 for the personal ("you") analytics; None for guests."""
+    return None if is_guest(user) else user.steam_id
 
 
 def _ctx(request: Request) -> SteamContext:
     ctx = getattr(request.app.state, "steam", None)
     if ctx is None:
+        raise HTTPException(status_code=503, detail="steam_sync_disabled")
+    return ctx
+
+
+def _steam(ctx: SteamContext = Depends(_ctx)) -> SteamContext:
+    """Steam-only routes (sign-in, match history, sync): 503 while Steam is not configured."""
+    if not ctx.steam_enabled:
         raise HTTPException(status_code=503, detail="steam_sync_disabled")
     return ctx
 
@@ -80,6 +110,13 @@ def _current_user(request: Request, ctx: SteamContext = Depends(_ctx)) -> User:
     return user
 
 
+def _steam_user(user: User = Depends(_current_user), ctx: SteamContext = Depends(_steam)) -> User:
+    """A Steam-signed-in user on a server with Steam on (guests get 403 steam_sign_in_required)."""
+    if is_guest(user):
+        raise HTTPException(status_code=403, detail="steam_sign_in_required")
+    return user
+
+
 def _iso(value: datetime | None) -> str | None:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if value else None
 
@@ -93,20 +130,25 @@ def _needs_relink(ctx: SteamContext, user: User, access) -> dict | None:
 def _match_access_view(ctx: SteamContext, user: User) -> dict:
     access = ctx.storage.get_match_access(user.id)
     if access is None:
-        return {"linked": False, "auth_code_hint": None, "linked_at": None, "updated_at": None, "needs_relink": None}
+        return {"linked": False, "auth_code_hint": None, "linked_at": None, "updated_at": None, "needs_relink": None,
+                "awaiting_share_code": False}
     return {
         "linked": True,
         "auth_code_hint": f"****-*****-{access.auth_code_last4}",
         "linked_at": _iso(access.consented_at),
         "updated_at": _iso(access.updated_at),
         "needs_relink": _needs_relink(ctx, user, access),
+        # Auth code saved, no share code yet (linked before a recent match): sync starts once
+        # the user adds the share code of a match they played.
+        "awaiting_share_code": access.cursor_share_code is None,
     }
 
 
 def _auto_sync_view(ctx: SteamContext, user: User, state=None) -> dict:
     """The user's automatic background sync (steamlink.autosync). ``enabled``: the user's
     toggle; ``active``: it will actually run for them; else ``paused_reason`` says why:
-    turned_off | not_linked | needs_relink | server_disabled | demo_retrieval_not_configured."""
+    turned_off | not_linked | needs_share_code | needs_relink | server_disabled |
+    demo_retrieval_not_configured."""
 
     sched = ctx.auto_sync
     state = state or ctx.storage.get_sync_state(user.id, ctx.clock())
@@ -119,6 +161,8 @@ def _auto_sync_view(ctx: SteamContext, user: User, state=None) -> dict:
         reason = "turned_off"
     elif access is None:
         reason = "not_linked"
+    elif access.cursor_share_code is None:
+        reason = "needs_share_code"
     elif relink_needed(state, access) is not None:
         reason = "needs_relink"
     else:
@@ -193,7 +237,9 @@ class MatchAccessInput(BaseModel):
     # Empty while already linked: keep the stored Game Authentication Code and only replace the
     # share code (Leetify-style: the auth code is given once, a fresh share code when the old one expired).
     auth_code: str = ""
-    share_code: str
+    # Optional: users who haven't played a match recently have no share code yet. Empty saves
+    # the auth code alone (or keeps the stored share code) and sync waits for a share code.
+    share_code: str = ""
     consent: bool
 
 
@@ -202,18 +248,24 @@ router = APIRouter()
 
 @router.get("/steam/status")
 def steam_status(request: Request) -> dict:
+    """Which features this server has on. ``enabled``: Steam sign-in + sync (kept for older
+    web builds); ``upload``: demo upload + match reports for signed-in users; ``guest``:
+    ``POST /auth/guest`` works (upload without Steam)."""
+
     ctx = getattr(request.app.state, "steam", None)
     if ctx is None:
-        return {"enabled": False}
+        return {"enabled": False, "steam": False, "upload": False, "guest": False}
     sched = ctx.auto_sync
-    return {"enabled": True, "auto_sync": {
+    steam = ctx.steam_enabled
+    guest = ctx.guest_uploads_enabled
+    return {"enabled": steam, "steam": steam, "upload": steam or guest, "guest": guest, "auto_sync": {
         "enabled": sched is not None and sched.enabled, "available": sched is not None and sched.available,
         "interval_seconds": sched.interval_seconds if sched is not None and sched.enabled else None,
     }}
 
 
 @router.get("/auth/steam/login")
-def steam_login(next: str | None = None, ctx: SteamContext = Depends(_ctx)) -> RedirectResponse:
+def steam_login(next: str | None = None, ctx: SteamContext = Depends(_steam)) -> RedirectResponse:
     login_state, cookie = ctx.signer.new_login_state(next)
     url = openid.build_login_url(
         return_url=ctx.settings.openid_return_url, realm=ctx.settings.openid_realm, state=login_state.state
@@ -227,7 +279,7 @@ def steam_login(next: str | None = None, ctx: SteamContext = Depends(_ctx)) -> R
 
 
 @router.get("/auth/steam/callback")
-def steam_callback(request: Request, ctx: SteamContext = Depends(_ctx)) -> RedirectResponse:
+def steam_callback(request: Request, ctx: SteamContext = Depends(_steam)) -> RedirectResponse:
     settings = ctx.settings
     login_state = ctx.signer.read_login_state(
         request.cookies.get(LOGIN_STATE_COOKIE), settings.login_state_ttl_seconds
@@ -260,6 +312,36 @@ def steam_callback(request: Request, ctx: SteamContext = Depends(_ctx)) -> Redir
     return response
 
 
+@router.post("/auth/guest", dependencies=[Depends(_csrf)])
+def guest_login(request: Request, ctx: SteamContext = Depends(_ctx)) -> dict:
+    """Start a guest session: upload demos and view their reports without Steam. The
+    account lives as long as its session cookie (SESSION_TTL_SECONDS) on this browser.
+    Already signed in (Steam or guest): keeps that session. 503 when GUEST_UPLOADS is off."""
+
+    if not ctx.guest_uploads_enabled:
+        raise HTTPException(status_code=503, detail="guest_uploads_disabled")
+    settings = ctx.settings
+    token_hash = ctx.signer.session_token_hash(request.cookies.get(settings.session_cookie_name),
+                                               settings.session_ttl_seconds)
+    existing = ctx.storage.get_session_user(token_hash, ctx.clock()) if token_hash else None
+    if existing is not None:
+        return me(existing, ctx)
+
+    import uuid
+
+    now = ctx.clock()
+    user = ctx.storage.get_or_create_user(GUEST_PREFIX + uuid.uuid4().hex, now)
+    cookie, token_hash = ctx.signer.new_session_cookie()
+    ctx.storage.create_session(token_hash, user.id, now, now + timedelta(seconds=settings.session_ttl_seconds))
+    response = JSONResponse(me(user, ctx))
+    response.set_cookie(
+        settings.session_cookie_name, cookie, max_age=settings.session_ttl_seconds, path="/",
+        domain=settings.session_cookie_domain, secure=settings.session_cookie_secure, httponly=True,
+        samesite=settings.session_cookie_samesite,
+    )
+    return response
+
+
 @router.post("/auth/logout", status_code=204, dependencies=[Depends(_csrf)])
 def logout(request: Request, ctx: SteamContext = Depends(_ctx)) -> Response:
     token_hash = ctx.signer.session_token_hash(
@@ -274,8 +356,11 @@ def logout(request: Request, ctx: SteamContext = Depends(_ctx)) -> Response:
 
 @router.get("/me")
 def me(user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
+    guest = is_guest(user)
     return {
-        "steam_id": user.steam_id,
+        "steam_id": None if guest else user.steam_id,
+        # "guest": a browser-only account from POST /auth/guest (upload + reports, no Steam)
+        "account": "guest" if guest else "steam",
         "created_at": _iso(user.created_at),
         "match_access": _match_access_view(ctx, user),
         "sync": _sync_view(ctx, user),
@@ -292,20 +377,25 @@ def delete_me(user: User = Depends(_current_user), ctx: SteamContext = Depends(_
 
 @router.put("/steam/match-access", dependencies=[Depends(_csrf)])
 def put_match_access(
-    payload: MatchAccessInput, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)
+    payload: MatchAccessInput, user: User = Depends(_steam_user), ctx: SteamContext = Depends(_steam)
 ) -> dict:
     """Link (or re-link) match history. Accepts what users paste: the auth code in any case,
     with spaces or without dashes; the share code bare or inside CS2's steam:// share link.
     An empty ``auth_code`` while linked keeps the stored one (share code update only).
+    An empty ``share_code`` saves the auth code without one (nobody needs a recent match to
+    link; sync starts once a share code is added) or, if one is stored, keeps it.
     Each 422 ``detail`` names the field to fix (see the web's LinkForm)."""
 
     if not payload.consent:
         raise HTTPException(status_code=422, detail="consent_required")
-    share_code = extract_share_code(payload.share_code) or payload.share_code.strip()
+    access = ctx.storage.get_match_access(user.id)
+    share_given = bool(payload.share_code.strip())
+    share_code = (extract_share_code(payload.share_code) or payload.share_code.strip()) if share_given else None
     if not payload.auth_code.strip():
-        access = ctx.storage.get_match_access(user.id)
         if access is None:
             raise HTTPException(status_code=422, detail="auth_code_required")
+        if not share_given:
+            raise HTTPException(status_code=422, detail="share_code_required")  # nothing to change
         try:
             auth_code = ctx.cipher.decrypt(user.steam_id, access.auth_code_ciphertext)
         except DecryptionError:
@@ -316,19 +406,24 @@ def put_match_access(
             # e.g. the two codes pasted into each other's box
             detail = "auth_code_is_share_code" if extract_share_code(payload.auth_code) else "invalid_auth_code_format"
             raise HTTPException(status_code=422, detail=detail)
-    if not is_valid_share_code(share_code):
+    if share_code is not None and not is_valid_share_code(share_code):
         detail = ("share_code_is_auth_code" if is_valid_auth_code(normalize_auth_code(payload.share_code))
                   else "invalid_share_code_format")
         raise HTTPException(status_code=422, detail=detail)
-    result = ctx.history.next_share_code(user.steam_id, auth_code, share_code)
-    if result.status == "invalid_auth_code":
-        raise HTTPException(status_code=422, detail="invalid_auth_code")
-    if result.status == "invalid_known_code":
-        raise HTTPException(status_code=422, detail="invalid_share_code")
-    if result.status == "rate_limited":
-        raise HTTPException(status_code=429, detail="valve_rate_limited")
-    if result.status not in ("ok", "no_new_match"):
-        raise HTTPException(status_code=502, detail="valve_unavailable")
+    if share_code is None and access is not None:
+        share_code = access.cursor_share_code  # new auth code only: keep the stored share code (if any)
+    if share_code is not None:
+        # Valve checks both codes together; without any share code there is nothing to check
+        # yet (the first sync after a share code is added does).
+        result = ctx.history.next_share_code(user.steam_id, auth_code, share_code)
+        if result.status == "invalid_auth_code":
+            raise HTTPException(status_code=422, detail="invalid_auth_code")
+        if result.status == "invalid_known_code":
+            raise HTTPException(status_code=422, detail="invalid_share_code")
+        if result.status == "rate_limited":
+            raise HTTPException(status_code=429, detail="valve_rate_limited")
+        if result.status not in ("ok", "no_new_match"):
+            raise HTTPException(status_code=502, detail="valve_unavailable")
     ctx.storage.set_match_access(
         user.id, ciphertext=ctx.cipher.encrypt(user.steam_id, auth_code), last4=auth_code[-4:],
         cursor_share_code=share_code, now=ctx.clock(),
@@ -337,14 +432,14 @@ def put_match_access(
 
 
 @router.delete("/steam/match-access", status_code=204, dependencies=[Depends(_csrf)])
-def delete_match_access(user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> Response:
+def delete_match_access(user: User = Depends(_steam_user), ctx: SteamContext = Depends(_steam)) -> Response:
     ctx.storage.delete_match_access(user.id)
     return Response(status_code=204)
 
 
 @router.put("/steam/auto-sync", dependencies=[Depends(_csrf)])
 def put_auto_sync(
-    payload: AutoSyncInput, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
+    payload: AutoSyncInput, user: User = Depends(_steam_user), ctx: SteamContext = Depends(_steam),
 ) -> dict:
     """Turn automatic background sync on or off for the signed-in user (on by default).
     Returns the new ``auto_sync`` view (as in ``GET /steam/sync``)."""
@@ -356,7 +451,7 @@ def put_auto_sync(
 
 
 @router.get("/steam/sync")
-def get_sync(user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
+def get_sync(user: User = Depends(_steam_user), ctx: SteamContext = Depends(_steam)) -> dict:
     """Sync status plus the user's recent sync jobs (newest first): the UI polls this
     while matches download / parse in the background, and after a reload."""
 
@@ -368,7 +463,7 @@ def get_sync(user: User = Depends(_current_user), ctx: SteamContext = Depends(_c
 
 @router.post("/steam/sync", dependencies=[Depends(_csrf)])
 def post_sync(
-    response: Response, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx),
+    response: Response, user: User = Depends(_steam_user), ctx: SteamContext = Depends(_steam),
 ) -> dict:
     """Walk the share-code history from the cursor and queue one background job per
     new match (known matches are skipped without a download). Answers quickly:
@@ -381,7 +476,7 @@ def post_sync(
     try:
         outcome = ctx.sync.sync(user, max_active=ctx.settings.upload_queue_max, job_file=ctx.jobs.job_file)
     except SyncRejected as exc:
-        status = {"not_linked": 409, "already_running": 409, "too_soon": 429}[exc.reason]
+        status = {"not_linked": 409, "needs_share_code": 409, "already_running": 409, "too_soon": 429}[exc.reason]
         raise HTTPException(status_code=status, detail=exc.reason) from None
     if ctx.auto_sync is not None:
         try:
@@ -480,10 +575,13 @@ async def upload_demo(
 
     job_id = uuid.uuid4().hex
     raw_path = ctx.jobs.job_file(job_id)
+    # Stream to .partial; it becomes the job's .upload only right before the job row is
+    # created, so the worker's orphan sweep cannot delete an in-flight upload.
+    partial_path = ctx.jobs.partial_file(job_id)
     queued = False
     try:
         written, head, hasher = 0, b"", hashlib.sha256()
-        with open(raw_path, "wb") as out:
+        with open(partial_path, "wb") as out:
             async for chunk in request.stream():
                 written += len(chunk)
                 if written > limit:
@@ -527,15 +625,17 @@ async def upload_demo(
         job = UploadJob(id=job_id, user_id=user.id, status="queued", demo_path=raw_path, size_bytes=written,
                         created_at=now, updated_at=now, share_code=share_code, demo_sha256=digest,
                         match_created=True if known is not None and known[1] else None)
+        os.replace(partial_path, raw_path)
         if not ctx.storage.create_upload_job(job, max_active=settings.upload_queue_max):
             raise HTTPException(status_code=429, detail="upload_queue_full")
         queued = True
     finally:
         if not queued:
-            try:
-                os.remove(raw_path)
-            except OSError:
-                pass
+            for path in (partial_path, raw_path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
     ctx.jobs.start()
     response.status_code = 202
     return {"job": _job_view(ctx, ctx.storage.get_upload_job(user.id, job_id) or job)}
@@ -576,7 +676,7 @@ def matches_summary(
     conversion and recent form (last ``recent`` matches vs the ones before).
     Registered before ``/matches/{match_id}`` so "summary" is not taken for an id."""
 
-    summary = build_user_summary(ctx.storage, ctx.scorer, user.id, steam_id=user.steam_id, recent=recent)
+    summary = build_user_summary(ctx.storage, ctx.scorer, user.id, steam_id=_steam_id(user), recent=recent)
     summary["model"]["note"] = MODEL_NOTE
     return summary
 
@@ -594,7 +694,7 @@ def export_csv(table: str, user: User = Depends(_current_user), ctx: SteamContex
     columns, rows = tableau_export.TABLES[table]
     stamp = ctx.clock().astimezone(timezone.utc).strftime("%Y%m%d")
     return StreamingResponse(
-        tableau_export.csv_chunks(columns, rows(ctx.storage, ctx.scorer, user.id, user.steam_id)),
+        tableau_export.csv_chunks(columns, rows(ctx.storage, ctx.scorer, user.id, _steam_id(user))),
         media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="cs2-{table}-{stamp}.csv"',
@@ -606,7 +706,7 @@ def export_csv(table: str, user: User = Depends(_current_user), ctx: SteamContex
 
 @router.get("/matches/{match_id}")
 def match_report(match_id: str, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
-    report = build_match_report(ctx.storage, ctx.scorer, user.id, match_id, steam_id=user.steam_id)
+    report = build_match_report(ctx.storage, ctx.scorer, user.id, match_id, steam_id=_steam_id(user))
     if report is None:
         raise HTTPException(status_code=404, detail="match_not_found")
     return report
@@ -704,19 +804,23 @@ def build_demo_locator(settings: Settings):
 
 
 def build_steam_context(settings: Settings, scorer: RoundScorer) -> SteamContext:
-    """Build production wiring. Creating the engine does not open a DB connection."""
+    """Build production wiring (needs ``settings.demo_upload_enabled``). The Steam pieces
+    (auth-code cipher, Valve match-history client) are only built when ``settings.steam_enabled``;
+    without them the upload / report routes work and the Steam routes answer 503.
+    Creating the engine does not open a DB connection."""
 
     from .demo_parser import Demoparser2Parser
     from .storage.sql import SqlStorage, make_engine
-    from .valve import DemoFetcher, SteamWebMatchHistoryClient
+    from .valve import DemoFetcher, SteamWebMatchHistoryClient, UnconfiguredDemoLocator
 
     http = httpx.Client(timeout=settings.http_timeout_seconds, follow_redirects=False)
     storage = SqlStorage(make_engine(settings.database_url))
-    cipher = AuthCodeCipher(settings.token_encryption_keys)
-    history = SteamWebMatchHistoryClient(settings.steam_web_api_key, http)
+    cipher = AuthCodeCipher(settings.token_encryption_keys) if settings.steam_enabled else None
+    history = SteamWebMatchHistoryClient(settings.steam_web_api_key, http) if settings.steam_enabled else None
     clock = lambda: datetime.now(timezone.utc)  # noqa: E731
     sync = SyncService(
-        storage=storage, history=history, locator=build_demo_locator(settings),
+        storage=storage, history=history,
+        locator=build_demo_locator(settings) if settings.steam_enabled else UnconfiguredDemoLocator(),
         fetcher=DemoFetcher(http, max_download_bytes=settings.demo_max_download_bytes,
                             max_decompressed_bytes=settings.demo_max_decompressed_bytes),
         parser=Demoparser2Parser(isolation=settings.demo_parse_isolation,
@@ -734,7 +838,7 @@ def build_steam_context(settings: Settings, scorer: RoundScorer) -> SteamContext
 def register(app: FastAPI, ctx: SteamContext | None) -> None:
     if ctx is not None and ctx.jobs is None:
         ctx.jobs = UploadJobWorker(ctx)
-    if ctx is not None and ctx.auto_sync is None:
+    if ctx is not None and ctx.auto_sync is None and ctx.steam_enabled:
         ctx.auto_sync = AutoSyncScheduler(ctx)
     app.state.steam = ctx
     app.include_router(router)

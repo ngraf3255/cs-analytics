@@ -1,5 +1,8 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { COMMON_WEAPONS, PRESETS, TIME_CHIPS, type Preset, type RoundInputs, initialInputs, remember, validSeconds } from "./roundForm";
+import "./roundForm.css";
 import { SteamSection } from "./steam/SteamSection";
+import { weaponName } from "./steam/weapons";
 
 type Options = {
   maps: string[];
@@ -14,15 +17,22 @@ type Prediction = {
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "/api" : "https://api-site.csgooner.com")).replace(/\/$/, "");
 
+const mapLabel = (map: string) => map.replace(/^de_/, "").replaceAll("_", " ");
+/** After the first prediction, edits re-predict on their own after this pause. */
+const AUTO_PREDICT_MS = 350;
+
 function App() {
   const [options, setOptions] = useState<Options | null>(null);
   const [mapName, setMapName] = useState("");
-  const [side, setSide] = useState("ct");
+  const [side, setSide] = useState<"ct" | "t">("ct");
   const [seconds, setSeconds] = useState("15.0");
   const [weapon, setWeapon] = useState("");
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [activePreset, setActivePreset] = useState<string | null>(null);
+  // Set once the user has predicted: from then on every edit updates the readout by itself.
+  const [live, setLive] = useState(false);
 
   useEffect(() => {
     fetch(`${apiBase}/options`)
@@ -32,8 +42,11 @@ function App() {
       })
       .then((data) => {
         setOptions(data);
-        setMapName(data.maps[0] ?? "");
-        setWeapon(data.weapons[0] ?? "");
+        const start = initialInputs(data.maps, data.weapons);
+        setMapName(start.mapName);
+        setSide(start.side);
+        setSeconds(start.seconds);
+        setWeapon(start.weapon);
       })
       .catch(() => setError("Prediction service is unavailable. Please try again shortly."));
   }, []);
@@ -43,33 +56,73 @@ function App() {
     return prediction.predicted_winner === "ct" ? "Counter-Terrorists" : "Terrorists";
   }, [prediction]);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const weaponGroups = useMemo(() => {
+    const all = options?.weapons ?? [];
+    const common = COMMON_WEAPONS.filter((w) => all.includes(w));
+    return { common, rest: all.filter((w) => !common.includes(w)) };
+  }, [options]);
+  const presets = useMemo(() => PRESETS.filter((p) => options?.weapons.includes(p.weapon)), [options]);
+
+  const requestId = useRef(0);
+  const lastSent = useRef("");
+  const predict = useCallback(async (inputs: RoundInputs) => {
+    if (!inputs.mapName || !inputs.weapon || !validSeconds(inputs.seconds)) return;
+    lastSent.current = JSON.stringify(inputs);
+    const id = ++requestId.current;
     setLoading(true);
     setError("");
-    setPrediction(null);
+    remember(inputs);
     try {
       const response = await fetch(`${apiBase}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          map_name: mapName,
-          opening_kill_side: side,
-          opening_kill_seconds: Number(seconds),
-          opening_weapon: weapon,
+          map_name: inputs.mapName,
+          opening_kill_side: inputs.side,
+          opening_kill_seconds: Number(inputs.seconds),
+          opening_weapon: inputs.weapon,
         }),
       });
       const body = await response.json();
       if (!response.ok) {
         throw new Error(typeof body.detail === "string" ? body.detail : "Prediction failed. Check the inputs and try again.");
       }
-      setPrediction(body as Prediction);
+      if (id === requestId.current) setPrediction(body as Prediction);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not reach the prediction service.");
+      if (id === requestId.current) {
+        setPrediction(null);
+        setError(reason instanceof Error ? reason.message : "Could not reach the prediction service.");
+      }
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
+  }, []);
+
+  // Live mode: re-predict shortly after any edit (the last request wins).
+  useEffect(() => {
+    if (!live) return;
+    const inputs = { mapName, side, seconds, weapon };
+    if (JSON.stringify(inputs) === lastSent.current) return;  // e.g. just submitted
+    const timer = setTimeout(() => void predict(inputs), AUTO_PREDICT_MS);
+    return () => clearTimeout(timer);
+  }, [live, mapName, side, seconds, weapon, predict]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLive(true);
+    void predict({ mapName, side, seconds, weapon });
   }
+
+  function applyPreset(preset: Preset) {
+    setActivePreset(preset.id);
+    setSide(preset.side);
+    setSeconds(String(preset.seconds));
+    setWeapon(preset.weapon);
+    setLive(true);  // the live effect predicts with the preset's values
+  }
+
+  // Any manual edit means the inputs no longer match a preset.
+  const edit = <T,>(set: (value: T) => void) => (value: T) => { setActivePreset(null); set(value); };
 
   const ready = Boolean(options?.maps.length && options?.weapons.length);
   const ctPercent = prediction ? prediction.probabilities.ct * 100 : 50;
@@ -111,11 +164,25 @@ function App() {
               <span className="step-count">01 <i>—</i> 04</span>
             </div>
             <form onSubmit={submit}>
+              {presets.length > 0 && (
+                <div className="field preset-field" role="group" aria-label="Quick presets">
+                  <span className="field-label">QUICK START <span className="unit">ONE TAP · KEEPS YOUR MAP</span></span>
+                  <div className="preset-row">
+                    {presets.map((preset) => (
+                      <button type="button" key={preset.id} className={`chip preset-chip ${activePreset === preset.id ? "selected" : ""}`}
+                        aria-pressed={activePreset === preset.id} onClick={() => applyPreset(preset)} disabled={!ready}>
+                        <strong>{preset.label}</strong><span>{preset.detail}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <label className="field">
                 <span className="field-label"><span className="field-number">01</span> MAP</span>
                 <span className="select-wrap">
-                  <select value={mapName} onChange={(event) => setMapName(event.target.value)} disabled={!ready} required>
-                    {options?.maps.map((map) => <option value={map} key={map}>{map.replace(/^de_/, "").replaceAll("_", " ")}</option>)}
+                  <select value={mapName} onChange={(event) => setMapName(event.target.value)} disabled={!ready} required aria-label="Map">
+                    {options?.maps.map((map) => <option value={map} key={map}>{mapLabel(map)}</option>)}
                   </select><span className="chevron">⌄</span>
                 </span>
               </label>
@@ -123,10 +190,10 @@ function App() {
               <fieldset className="field side-field">
                 <legend className="field-label"><span className="field-number">02</span> OPENING KILL SIDE</legend>
                 <div className="side-options">
-                  <button type="button" className={`side-option ct-option ${side === "ct" ? "selected" : ""}`} onClick={() => setSide("ct")} aria-pressed={side === "ct"}>
+                  <button type="button" className={`side-option ct-option ${side === "ct" ? "selected" : ""}`} onClick={() => edit(setSide)("ct")} aria-pressed={side === "ct"}>
                     <span className="side-symbol ct-symbol">C</span><span>Counter-Terrorists</span><span className="radio-dot" />
                   </button>
-                  <button type="button" className={`side-option t-option ${side === "t" ? "selected" : ""}`} onClick={() => setSide("t")} aria-pressed={side === "t"}>
+                  <button type="button" className={`side-option t-option ${side === "t" ? "selected" : ""}`} onClick={() => edit(setSide)("t")} aria-pressed={side === "t"}>
                     <span className="side-symbol t-symbol">T</span><span>Terrorists</span><span className="radio-dot" />
                   </button>
                 </div>
@@ -134,22 +201,35 @@ function App() {
 
               <label className="field">
                 <span className="field-label"><span className="field-number">03</span> OPENING KILL TIME <span className="unit">SECONDS INTO ROUND</span></span>
-                <span className="number-wrap"><input type="number" min="0" max="120" step="0.1" value={seconds} onChange={(event) => setSeconds(event.target.value)} required /><span className="number-unit">SEC</span></span>
+                <span className="number-wrap"><input type="number" inputMode="decimal" min="0" max="120" step="0.1" value={seconds} onChange={(event) => edit(setSeconds)(event.target.value)} required aria-label="Opening kill time in seconds" /><span className="number-unit">SEC</span></span>
               </label>
+              <div className="time-chips" role="group" aria-label="Common opening kill times">
+                {TIME_CHIPS.map((value) => (
+                  <button type="button" key={value} className={`chip ${Number(seconds) === value ? "selected" : ""}`}
+                    aria-pressed={Number(seconds) === value} onClick={() => edit(setSeconds)(String(value))}>{value}s</button>
+                ))}
+              </div>
 
               <label className="field">
                 <span className="field-label"><span className="field-number">04</span> OPENING WEAPON</span>
                 <span className="select-wrap">
-                  <select value={weapon} onChange={(event) => setWeapon(event.target.value)} disabled={!ready} required>
-                    {options?.weapons.map((item) => <option value={item} key={item}>{item.toUpperCase()}</option>)}
+                  <select value={weapon} onChange={(event) => edit(setWeapon)(event.target.value)} disabled={!ready} required aria-label="Opening weapon">
+                    {weaponGroups.common.length > 0 && (
+                      <optgroup label="Common">
+                        {weaponGroups.common.map((item) => <option value={item} key={item}>{weaponName(item)}</option>)}
+                      </optgroup>
+                    )}
+                    <optgroup label={weaponGroups.common.length ? "All weapons" : "Weapons"}>
+                      {weaponGroups.rest.map((item) => <option value={item} key={item}>{weaponName(item)}</option>)}
+                    </optgroup>
                   </select><span className="chevron">⌄</span>
                 </span>
               </label>
 
               <button className="submit-button" type="submit" disabled={!ready || loading}>
-                <span>{loading ? "READING THE ROUND" : "PREDICT ROUND WINNER"}</span><span className="button-arrow">↗</span>
+                <span>{loading ? "READING THE ROUND" : live ? "UPDATE PREDICTION" : "PREDICT ROUND WINNER"}</span><span className="button-arrow">↗</span>
               </button>
-              <p className="form-note"><span>✳</span> Based on professional CS2 round data</p>
+              <p className="form-note"><span>✳</span> {live ? "Live: the readout updates as you change the round" : "Based on professional CS2 round data"}</p>
             </form>
           </div>
 

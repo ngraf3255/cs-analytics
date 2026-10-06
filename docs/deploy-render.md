@@ -109,6 +109,8 @@ free instances have no shell. On a paid plan, move it to
 | `SYNC_JOB_MAX_ATTEMPTS` | default | 5 runs of a sync job whose demo isn't ready / download failed, then an `unavailable` stub |
 | `UPLOAD_MAX_BYTES` | `1073741824` | request-body cap for `POST /matches/upload` |
 | `UPLOAD_QUEUE_MAX` / `UPLOAD_JOB_DIR` | defaults | 3 queued-or-running jobs (uploads + sync downloads, all users) / `<tmp>/csa-upload-jobs` (must be disk, not tmpfs) |
+| `UPLOAD_JOB_RETENTION_SECONDS` | `604800` | finished job *row* TTL; demo files are removed when the job finishes (success or failure) |
+| `UPLOAD_JOB_CLEANUP_INTERVAL_SECONDS` | `300` | orphan sweep throttle after each queue drain (`0` = every drain) |
 | `SESSION_COOKIE_DOMAIN` | not set | host-only cookie on `api.csgooner.com` is same-site with `csgooner.com`, so not needed |
 | `SESSION_COOKIE_SAMESITE` | not set (`lax`) | only `none` if the API must stay on `onrender.com` |
 | `DEMO_MAX_DOWNLOAD_BYTES` / `DEMO_MAX_DECOMPRESSED_BYTES` | defaults | 300 MiB `.bz2` / 1 GiB `.dem` |

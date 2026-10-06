@@ -98,11 +98,20 @@ describe("match list and per-round report (real API response shapes)", () => {
     expect(screen.queryByText("STEP 3 · IMPORT MATCHES")).not.toBeInTheDocument();
   });
 
-  it("renders nothing when the deployment has Steam features disabled", async () => {
-    installFakeApi(routes({ "GET /steam/status": { status: 200, body: { enabled: false } } }));
-    const { container } = render(<SteamSection />);
+  it("shows a coming-soon empty state (no sign-in, no upload) when the deployment has Steam features disabled", async () => {
+    const api = installFakeApi(routes({ "GET /steam/status": { status: 200, body: { enabled: false } } }));
+    render(<SteamSection />);
     await advance();
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByText("Match reports are on the way")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Sign in through Steam/ })).toBeNull();
+    expect(api.count("GET /me")).toBe(0);
+  });
+
+  it("says the match service is offline when GET /steam/status can't be reached", async () => {
+    installFakeApi({ "GET /steam/status": { status: 0 } });
+    render(<SteamSection />);
+    await advance();
+    expect(screen.getByText("Can’t reach the match service")).toBeInTheDocument();
   });
 
   it("blames our server, not Valve, when the API itself cannot be reached", async () => {
