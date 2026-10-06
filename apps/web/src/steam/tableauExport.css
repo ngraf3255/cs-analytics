@@ -11,3 +11,13 @@
 .export-menu-item:disabled{opacity:.5;cursor:not-allowed}
 .export-menu-item.export-guide{color:var(--acid);border-top:1px solid #27313a;margin-top:2px;padding-top:10px;font-size:10px;text-decoration:none}
 .export-status{position:absolute;top:calc(100% + 4px);right:0;z-index:4;min-width:200px;max-width:min(320px,70vw);white-space:normal}
+
+.tableau-export-page{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.export-page-actions{display:flex;flex-wrap:wrap;gap:8px}
+.export-guide-link{font:11px 'DM Mono',monospace;color:var(--acid);text-decoration:underline;text-underline-offset:2px}
+.home-tile-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.export-page-card .steam-muted{margin:8px 0 14px}
+.account-avatar{width:32px;height:32px;border:1px solid #6f8646;background:#151f25;color:var(--acid);
+  display:grid;place-items:center;font:700 13px 'Barlow Condensed',sans-serif;letter-spacing:.04em}
+.account-avatar:hover,.account-avatar:focus-visible{border-color:var(--acid);outline:none;box-shadow:0 0 0 1px var(--acid)}
+.topbar .account-avatar{flex:none;margin-left:8px}

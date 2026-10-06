@@ -2,47 +2,38 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { advance, installFakeApi } from "../test/fakeApi";
 import exportRounds from "../test/fixtures/export_rounds_personal.csv?raw";
-import matchesPersonal from "../test/fixtures/matches_personal.json";
 import meFixture from "../test/fixtures/me_personal.json";
-import summaryPersonal from "../test/fixtures/summary_personal.json";
 import { downloadExport } from "./api";
-import { Matches } from "./Matches";
+import { ExportPage } from "./ExportPage";
+import { TableauExport } from "./TableauExport";
 import type { Me } from "./types";
 
-// export_rounds_personal.csv: a real GET /matches/export/rounds.csv of the local API (SQLite,
-// 2026-10-05) for SteamID 76561198157151718 (FACEIT de_mirage upload they're in + 3 synced matches).
 const me = meFixture as Me;
 const MATCHES_CSV = "match_id,map_name\r\nabc,de_mirage\r\n";
 
 function routes(extra: Parameters<typeof installFakeApi>[0] = {}) {
   return {
-    "GET /matches?limit=50&offset=0": { status: 200, body: matchesPersonal },
-    "GET /matches/summary": { status: 200, body: summaryPersonal },
-    "GET /matches/upload?limit=5": { status: 200, body: { jobs: [] } },
-    "GET /steam/sync": { status: 200, body: { ...me.sync, jobs: [] } },
+    "GET /steam/status": { status: 200, body: { steam: true, upload: true, guest: true } },
+    "GET /me": { status: 200, body: me },
     "GET /matches/export/rounds.csv": { status: 200, body: exportRounds },
     "GET /matches/export/matches.csv": { status: 200, body: MATCHES_CSV },
     ...extra,
   };
 }
 
-// jsdom's Blob has no .text()
 const blobText = (blob: Blob) => new Promise<string>((resolve) => {
   const reader = new FileReader();
   reader.onload = () => resolve(String(reader.result));
   reader.readAsText(blob);
 });
 const group = () => screen.getByRole("group", { name: "Export for Tableau" });
-const openMenu = () => {
-  fireEvent.click(within(group()).getByRole("button", { name: "Export menu" }));
-  return within(group()).getByRole("menu", { name: "Export for Tableau" });
-};
 
 let saved: { href: string; download: string }[];
 let blobs: Blob[];
 
 beforeEach(() => {
   vi.useFakeTimers();
+  window.history.replaceState(null, "", "/account/export");
   saved = [];
   blobs = [];
   let n = 0;
@@ -54,21 +45,19 @@ beforeEach(() => {
     saved.push({ href: this.href, download: this.download });
   });
 });
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
+});
 
-describe("Export for Tableau (GET /matches/export/*.csv)", () => {
-  it("is a ⋮ in the summary heading; downloads rounds CSV with the session cookie", async () => {
+describe("Export for Tableau (/account/export)", () => {
+  it("page layout: downloads rounds CSV with the session cookie", async () => {
     const api = installFakeApi(routes());
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    render(<ExportPage />);
     await advance();
-    const panel = screen.getByRole("region", { name: "Across your matches" });
-    expect(within(panel).getByRole("group", { name: "Export for Tableau" })).toBeInTheDocument();
-    expect(group()).not.toHaveTextContent("EXPORT FOR TABLEAU");
+    expect(screen.queryByText("EXPORT FOR TABLEAU")).not.toBeInTheDocument();
     expect(group()).not.toHaveTextContent(/ROUNDS ·|MATCHES ·/);
-    expect(within(group()).queryByRole("button", { name: "Rounds CSV" })).toBeNull();
-
-    const menu = openMenu();
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Rounds CSV" }));
+    fireEvent.click(within(group()).getByRole("button", { name: "Rounds CSV" }));
     await advance();
     expect(api.count("GET /matches/export/rounds.csv")).toBe(1);
     const init = api.fetchMock.mock.calls.find(([url]) => String(url).endsWith("/matches/export/rounds.csv"))?.[1];
@@ -77,7 +66,7 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     expect(saved[0].download).toMatch(/^cs2-rounds-\d{8}\.csv$/);
     expect(saved[0].href).toBe("blob:test/1");
     const reading = blobText(blobs[0]);
-    await advance(10);  // FileReader runs on the (fake) timers
+    await advance(10);
     const text = await reading;
     const [header, first] = text.split("\r\n");
     expect(header.split(",").slice(0, 4)).toEqual(["match_id", "map_name", "match_date", "match_day"]);
@@ -89,29 +78,28 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test/1");
   });
 
-  it("downloads the matches CSV too, and disables the trigger while preparing", async () => {
+  it("downloads the matches CSV too, and disables actions while preparing", async () => {
     let release: () => void = () => undefined;
     const api = installFakeApi(routes({
       "GET /matches/export/matches.csv": () => new Promise((resolve) => { release = () => resolve({ status: 200, body: MATCHES_CSV }); }),
     }));
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    render(<ExportPage />);
     await advance();
-    fireEvent.click(within(openMenu()).getByRole("menuitem", { name: "Matches CSV" }));
+    fireEvent.click(within(group()).getByRole("button", { name: "Matches CSV" }));
     await advance();
-    expect(within(group()).getByRole("button", { name: "Export menu" })).toBeDisabled();
-    expect(within(group()).queryByRole("menu")).toBeNull();
+    expect(within(group()).getByRole("button", { name: "Rounds CSV" })).toBeDisabled();
     release();
     await advance();
     expect(api.count("GET /matches/export/matches.csv")).toBe(1);
     expect(saved.map((s) => s.download)).toEqual([expect.stringMatching(/^cs2-matches-\d{8}\.csv$/)]);
-    expect(within(group()).getByRole("button", { name: "Export menu" })).toBeEnabled();
+    expect(within(group()).getByRole("button", { name: "Matches CSV" })).toBeEnabled();
   });
 
   it("shows the API's error (e.g. signed out) and saves nothing", async () => {
     installFakeApi(routes({ "GET /matches/export/rounds.csv": { status: 401, body: { detail: "not_authenticated" } } }));
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    render(<ExportPage />);
     await advance();
-    fireEvent.click(within(openMenu()).getByRole("menuitem", { name: "Rounds CSV" }));
+    fireEvent.click(within(group()).getByRole("button", { name: "Rounds CSV" }));
     await advance();
     expect(saved).toEqual([]);
     expect(within(group()).getByRole("status")).toHaveTextContent("Export failed. Sign in to continue.");
@@ -124,25 +112,13 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     await expect(downloadExport("matches", new Date("2026-10-05T23:30:00Z"))).resolves.toBe("cs2-matches-20261005.csv");
   });
 
-  it("is not shown when there is nothing to export", async () => {
-    installFakeApi(routes({
-      "GET /matches?limit=50&offset=0": { status: 200, body: { matches: [], limit: 50, offset: 0 } },
-      "GET /matches/summary": { status: 200, body: { ...summaryPersonal, totals: { ...summaryPersonal.totals, matches: 0, imported_matches: 0 } } },
-    }));
-    render(<Matches me={me} onMeChange={async () => undefined} />);
-    await advance();
-    expect(screen.queryByRole("group", { name: "Export for Tableau" })).toBeNull();
-  });
-
-  it("menu lists CSV actions + quiet Tableau help; Download both fetches both files", async () => {
+  it("menu layout: ⋮ still works for embeds; Download both fetches both files", async () => {
     const api = installFakeApi(routes());
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    render(<TableauExport layout="menu" />);
     await advance();
-    expect(group()).not.toHaveTextContent(/row/);
-    const menu = openMenu();
+    fireEvent.click(within(group()).getByRole("button", { name: "Export menu" }));
+    const menu = within(group()).getByRole("menu", { name: "Export for Tableau" });
     expect(within(menu).getByRole("menuitem", { name: "Rounds CSV" })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: "Matches CSV" })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: "Download both" })).toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: /Tableau help/ })).toHaveAttribute("href", expect.stringContaining("tableau/README.md"));
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Download both" }));
     await advance();
@@ -153,11 +129,11 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     expect(within(group()).getByRole("status")).toHaveTextContent(/Downloaded cs2-rounds-\d{8}\.csv and cs2-matches-\d{8}\.csv\./);
   });
 
-  it("closes the menu on Escape", async () => {
+  it("menu closes on Escape", async () => {
     installFakeApi(routes());
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    render(<TableauExport layout="menu" />);
     await advance();
-    openMenu();
+    fireEvent.click(within(group()).getByRole("button", { name: "Export menu" }));
     expect(within(group()).getByRole("menu")).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(within(group()).queryByRole("menu")).toBeNull();

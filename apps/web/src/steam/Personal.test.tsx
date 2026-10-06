@@ -9,6 +9,7 @@ import summaryFixture from "../test/fixtures/summary.json";
 import summaryNotInDemos from "../test/fixtures/summary_not_in_demos.json";
 import summaryPersonal from "../test/fixtures/summary_personal.json";
 import { Matches } from "./Matches";
+import { MatchesSummaryPanel } from "./MatchesSummary";
 import type { Me } from "./types";
 
 // Fixtures: real responses of the local API (SQLite, 2026-10-05) for SteamID 76561198157151718, a
@@ -40,48 +41,64 @@ const rows = (name: string) => within(within(panel()).getByRole("table", { name 
 describe("personal analytics: the signed-in player's own side each round", () => {
   beforeEach(() => { vi.useFakeTimers(); });
 
-  it("summary: your round win rate as CT / T, K/D, opening duels, maps (no duplicate recent-matches table), above the all-player numbers", async () => {
+  it("home: your four tiles + list chips; maps / all-players live on /stats", async () => {
     installFakeApi(routes());
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    const { unmount } = render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    const tiles = within(panel()).getByLabelText("Your stats");
+    const tiles = screen.getByLabelText("Your stats");
     expect(tiles).toHaveTextContent("ROUNDS WON54%");
     expect(tiles).toHaveTextContent("AS CT / AS T75% / 33%");
     expect(tiles).toHaveTextContent("K/D1.71");
     expect(tiles).toHaveTextContent("OPENING DUELS100%");
-    expect(panel()).not.toHaveTextContent("Your last 1 match");
-    expect(rows("Your maps").map(cells)).toEqual([["mirage", "1 (1–0)", "24", "54%", "75% (9/12)", "33% (4/12)", "1.71"]]);
-    expect(within(panel()).queryByRole("table", { name: "Your recent matches" })).not.toBeInTheDocument();
-    expect(panel()).not.toHaveTextContent("Not in your stats");
-    // Collapsed row carries W/L · your-side score · K-D (no duplicate recent-matches table).
+    expect(screen.queryByRole("region", { name: "Across your matches" })).not.toBeInTheDocument();
+    expect(screen.queryByText("ALL PLAYERS IN THESE DEMOS · MAP SIDES")).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Your maps" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Won · mirage · 13–11 · 29–17/i })).toBeInTheDocument();
-    // The all-player numbers stay, labelled, below the personal ones.
+    expect(screen.getByRole("link", { name: "More stats" })).toHaveAttribute("href", "/stats");
+    unmount();
+
+    installFakeApi({ "GET /matches/summary": { status: 200, body: summaryPersonal } });
+    render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
+    await advance();
+    expect(rows("Your maps").map(cells)).toEqual([["mirage", "1 (1–0)", "24", "54%", "75% (9/12)", "33% (4/12)", "1.71"]]);
     expect(panel()).toHaveTextContent("ALL PLAYERS IN THESE DEMOS · MAP SIDES");
     const all = within(panel()).getByLabelText("Previous matches summary");
-    expect(all).toHaveTextContent("MATCHES3");  // FACEIT: 24 rounds, the knife round left out
+    expect(all).toHaveTextContent("MATCHES3");
     expect(all).toHaveTextContent("CT / T ROUNDS60% / 40%");
-    const you = within(panel()).getByLabelText("Your stats");
-    expect(you.compareDocumentPosition(all) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(panel()).not.toHaveTextContent("“You” uses the side");
-    expect(panel()).not.toHaveTextContent("your own team isn’t tracked yet");
+    expect(within(panel()).queryByRole("table", { name: "Your recent matches" })).not.toBeInTheDocument();
   });
 
-  it("summary: a player in none of their demos gets a note, and the all-player numbers", async () => {
+  it("home: player in none of their demos — no your tiles; /stats still shows all-players", async () => {
     installFakeApi(routes({ "GET /matches/summary": { status: 200, body: summaryNotInDemos } }));
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    const { unmount } = render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+    expect(screen.queryByLabelText("Your stats")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Across your matches" })).not.toBeInTheDocument();
+    unmount();
+
+    installFakeApi({ "GET /matches/summary": { status: 200, body: summaryNotInDemos } });
+    render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     expect(within(panel()).queryByLabelText("Your stats")).not.toBeInTheDocument();
     expect(panel()).not.toHaveTextContent("aren’t in any of these demos");
     expect(within(panel()).getByLabelText("Previous matches summary")).toHaveTextContent("MATCHES2");
   });
 
-  it("summary from an older API (no 'you'): no personal section, the old note", async () => {
+  it("older API (no 'you'): home has no your tiles; /stats has all-players without YOU kicker", async () => {
     installFakeApi(routes({ "GET /matches/summary": { status: 200, body: summaryFixture } }));
-    render(<Matches me={me} onMeChange={async () => undefined} />);
+    const { unmount } = render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+    expect(screen.queryByLabelText("Your stats")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Across your matches" })).not.toBeInTheDocument();
+    unmount();
+
+    installFakeApi({ "GET /matches/summary": { status: 200, body: summaryFixture } });
+    render(<MatchesSummaryPanel variant="stats" refreshKey={1} />);
     await advance();
     expect(within(panel()).queryByLabelText("Your stats")).not.toBeInTheDocument();
     expect(panel()).not.toHaveTextContent("ALL PLAYERS IN THESE DEMOS");
     expect(panel()).not.toHaveTextContent("your own team isn’t tracked yet");
+    expect(within(panel()).getByLabelText("Previous matches summary")).toBeInTheDocument();
   });
 
   it("match list: date groups when the list spans days; no Added essays on rows", async () => {

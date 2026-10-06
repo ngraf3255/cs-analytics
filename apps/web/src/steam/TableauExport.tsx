@@ -12,9 +12,13 @@ const TABLES: { table: ExportTable; label: string }[] = [
   { table: "matches", label: "Matches CSV" },
 ];
 
-/** Compact ⋮ menu: download rounds / matches CSV for Tableau (GET /matches/export/{table}.csv).
- * Columns are documented in tableau/README.md. The open UI stays empty until the menu opens. */
-export function TableauExport(_counts: Counts = {}) {
+type Props = Counts & {
+  /** ``menu`` (default): compact ⋮. ``page``: plain action list for ``/account/export``. */
+  layout?: "menu" | "page";
+};
+
+/** Download rounds / matches CSV for Tableau (GET /matches/export/{table}.csv). */
+export function TableauExport({ layout = "menu" }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<ExportTable | "both" | null>(null);
   const [status, setStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -22,7 +26,7 @@ export function TableauExport(_counts: Counts = {}) {
   const menuId = useId();
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || layout !== "menu") return;
     const onPointer = (event: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
     };
@@ -35,7 +39,7 @@ export function TableauExport(_counts: Counts = {}) {
       document.removeEventListener("mousedown", onPointer);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, layout]);
 
   async function download(tables: ExportTable[], key: ExportTable | "both") {
     setBusy(key);
@@ -54,6 +58,44 @@ export function TableauExport(_counts: Counts = {}) {
     } finally {
       setBusy(null);
     }
+  }
+
+  const statusEl = status && (
+    <span className={status.tone === "ok" ? "steam-notice export-status" : "steam-error export-status"} role="status">
+      {status.text}
+    </span>
+  );
+
+  if (layout === "page") {
+    return (
+      <div className="tableau-export tableau-export-page" role="group" aria-label="Export for Tableau">
+        <div className="export-page-actions">
+          {TABLES.map(({ table, label }) => (
+            <button
+              key={table}
+              type="button"
+              className="ghost-button"
+              disabled={busy !== null}
+              onClick={() => void download([table], table)}
+            >
+              {busy === table ? "Preparing…" : label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="ghost-button"
+            disabled={busy !== null}
+            onClick={() => void download(["rounds", "matches"], "both")}
+          >
+            {busy === "both" ? "Preparing…" : "Download both"}
+          </button>
+        </div>
+        <a className="export-guide-link" href={GUIDE_URL} target="_blank" rel="noreferrer">
+          Tableau help ↗
+        </a>
+        {statusEl}
+      </div>
+    );
   }
 
   return (
@@ -105,11 +147,7 @@ export function TableauExport(_counts: Counts = {}) {
           </a>
         </div>
       )}
-      {status && (
-        <span className={status.tone === "ok" ? "steam-notice export-status" : "steam-error export-status"} role="status">
-          {status.text}
-        </span>
-      )}
+      {statusEl}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { installFakeApi } from "../test/fakeApi";
 import meFixture from "../test/fixtures/me.json";
 import { AccountPage } from "./AccountPage";
-import { isAccountPath } from "./routes";
+import { isAccountExportPath, isAccountPath, pageFromPath } from "./routes";
 import type { Me } from "./types";
 
 const LINKED: Me = { ...(meFixture as Me), match_access: { linked: true, auth_code_hint: "****-*****-FG56", linked_at: "2026-10-05T07:31:00Z", updated_at: "2026-10-05T07:31:00Z", needs_relink: null, awaiting_share_code: true } };
@@ -17,6 +17,11 @@ describe("/account", () => {
     expect(isAccountPath("/account/")).toBe(true);
     expect(isAccountPath("/")).toBe(false);
     expect(isAccountPath("/accounts")).toBe(false);
+    expect(isAccountExportPath("/account/export")).toBe(true);
+    expect(pageFromPath("/predict")).toBe("predict");
+    expect(pageFromPath("/stats")).toBe("stats");
+    expect(pageFromPath("/about")).toBe("about");
+    expect(pageFromPath("/account/export")).toBe("export");
   });
 
   it("while status / session load: shows the page heading and a placeholder, not a blank page", () => {
@@ -40,7 +45,7 @@ describe("/account", () => {
     expect(header).toHaveTextContent("MEMBER SINCE");
     expect(header).toHaveTextContent("Waiting for a share code");
     const nav = screen.getByRole("navigation", { name: "Account sections" });
-    expect([...nav.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(["#match-history", "#session", "#your-data"]);
+    expect([...nav.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(["#match-history", "#session", "/account/export", "#your-data"]);
     for (const name of ["Steam match history", "Signed in on this browser", "Delete account"]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }

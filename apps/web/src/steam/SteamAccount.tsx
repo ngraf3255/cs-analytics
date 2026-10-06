@@ -6,7 +6,7 @@ import {
   AUTH_CODE_EXAMPLE, AUTH_CODE_URL, SHARE_CODE_EXAMPLE,
   checkAuthCode, checkShareCode, errorField,
 } from "./linkInput";
-import { ACCOUNT_PATH } from "./routes";
+import { ACCOUNT_EXPORT_PATH, ACCOUNT_PATH } from "./routes";
 import type { AutoSync, Me } from "./types";
 
 type Props = {
@@ -19,6 +19,8 @@ type Props = {
   onSignedOut: () => void;
   /** A guest session was started (with the demo the user picked, to upload right away). */
   onGuest?: (me: Me, file?: File) => void;
+  /** Home landing: hide the SteamID / Account card (header avatar → /account). Still show relink. */
+  homeChrome?: boolean;
 };
 
 function errorText(reason: unknown, fallback: string) {
@@ -32,7 +34,7 @@ export const RELINK_TEXT: Record<string, string> = {
   credentials_unreadable: "Paste your Game Authentication Code again.",
 };
 
-export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onGuest }: Props) {
+export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onGuest, homeChrome = false }: Props) {
   if (!me) {
     return (
       <div className={`account-options ${guest ? "two" : ""}`}>
@@ -56,6 +58,7 @@ export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onG
     );
   }
   if (me.account === "guest") return <GuestAccount steam={steam} onSignedOut={onSignedOut} />;
+  if (homeChrome) return <RelinkBanner me={me} />;
   return <SignedInSummary me={me} />;
 }
 
@@ -136,8 +139,20 @@ function GuestAccount({ steam, onSignedOut }: { steam: boolean; onSignedOut: () 
   );
 }
 
-/** Signed in, main matches page: who you are plus a link to Account settings. No forms here;
- * when sync is blocked (re-link / first share code) it says so and links to the form. */
+/** Home: only surface sync blockers; SteamID / Account live under the header avatar. */
+function RelinkBanner({ me }: { me: Me }) {
+  const access = me.match_access;
+  const relink = access.linked ? access.needs_relink ?? null : null;
+  if (!relink) return null;
+  return (
+    <div className="steam-error relink-alert" role="alert">
+      <strong>Sync paused.</strong> {RELINK_TEXT[relink.reason] ?? RELINK_TEXT.invalid_known_code}{" "}
+      <a href={ACCOUNT_PATH}>Re-link in Account settings</a>
+    </div>
+  );
+}
+
+/** Non-home contexts that still want the SteamID card (e.g. older embeds). */
 function SignedInSummary({ me }: { me: Me }) {
   const access = me.match_access;
   const relink = access.linked ? access.needs_relink ?? null : null;
@@ -243,6 +258,7 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
       <nav className="profile-nav" aria-label="Account sections">
         <a href="#match-history">History</a>
         <a href="#session">Session</a>
+        <a href={ACCOUNT_EXPORT_PATH}>Export</a>
         <a href="#your-data">Delete</a>
       </nav>
 

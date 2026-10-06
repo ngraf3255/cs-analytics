@@ -20,7 +20,11 @@ function appRoutes(extra: Parameters<typeof installFakeApi>[0] = {}) {
 const readout = () => screen.getByText("MODEL READOUT").closest(".result-panel") as HTMLElement;
 
 describe("design review polish", () => {
-  beforeEach(() => { vi.useFakeTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "/predict");
+  });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
 
   it("readout: a real empty state before any prediction (no 50/50 bars, no dashes)", async () => {
     installFakeApi(appRoutes());
@@ -48,7 +52,8 @@ describe("design review polish", () => {
     expect(panel.querySelectorAll(".prob-track")).toHaveLength(2);
   });
 
-  it("nav: a menu button keeps every link (incl. My matches) reachable and closes on use / Escape", async () => {
+  it("nav: a menu button keeps every link reachable and closes on use / Escape", async () => {
+    window.history.replaceState(null, "", "/");
     installFakeApi(appRoutes());
     render(<App />);
     await advance();
@@ -56,12 +61,12 @@ describe("design review polish", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveAttribute("aria-controls", "main-nav");
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(within(nav).getByRole("link", { name: "My matches" })).toHaveAttribute("href", "#matches");
+    expect(within(nav).getByRole("link", { name: "Matches" })).toHaveAttribute("href", "/");
 
     fireEvent.click(toggle);
     expect(screen.getByRole("button", { name: "Close menu" })).toHaveAttribute("aria-expanded", "true");
     expect(document.querySelector(".topbar")).toHaveClass("menu-open");
-    fireEvent.click(within(nav).getByRole("link", { name: "My matches" }));
+    fireEvent.click(within(nav).getByRole("link", { name: "Matches" }));
     expect(document.querySelector(".topbar")).not.toHaveClass("menu-open");
 
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
@@ -81,9 +86,12 @@ describe("nav: Account stays reachable", () => {
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     expect(nav).toHaveClass("main-nav");
     expect(within(nav).getByRole("link", { name: "Account" })).toHaveAttribute("href", "/account");
+    expect(within(nav).getByRole("link", { name: "Predictor" })).toHaveAttribute("href", "/predict");
+    expect(within(nav).getByRole("link", { name: "Stats" })).toHaveAttribute("href", "/stats");
+    expect(within(nav).getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
   });
 
-  it("/account: same menu button; Account is current, sections link back home", async () => {
+  it("/account: same menu button; Account is current, sections link to pages", async () => {
     window.history.replaceState(null, "", "/account");
     installFakeApi(appRoutes());
     render(<App />);
@@ -92,7 +100,7 @@ describe("nav: Account stays reachable", () => {
     expect(nav).toHaveClass("main-nav");
     expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-controls", "main-nav");
     expect(within(nav).getByRole("link", { name: "Account" })).toHaveAttribute("aria-current", "page");
-    expect(within(nav).getByRole("link", { name: "My matches" })).toHaveAttribute("href", "/#matches");
+    expect(within(nav).getByRole("link", { name: "Matches" })).toHaveAttribute("href", "/");
   });
 });
 
@@ -114,10 +122,8 @@ describe("matches teaser", () => {
     const teaser = screen.getByRole("figure", { name: "Sample match report" });
     expect(teaser).toHaveTextContent("SAMPLE REPORT");
     expect(teaser).not.toHaveTextContent(/what you get/i);
-    // decorative sample: it must not look like (or be read out as) the user's real data
     expect(teaser.querySelector(".teaser-report")).toHaveAttribute("aria-hidden", "true");
     expect(screen.queryByRole("table")).toBeNull();
-    // Sign in through Steam is still the way in
     expect(screen.getByRole("link", { name: /Sign in through Steam/ })).toBeInTheDocument();
   });
 

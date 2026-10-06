@@ -293,7 +293,7 @@ describe("main matches page once signed in", () => {
     expect(within(alert).getByRole("link", { name: /Re-link in Account settings/ })).toHaveAttribute("href", "/account");
   });
 
-  it("shows only who is signed in and a link to Account settings: no codes form, no account buttons", async () => {
+  it("non-home: who is signed in + Account settings; homeChrome: no SteamID card", async () => {
     const { SteamAccount } = await import("./SteamAccount");
     for (const me of [unlinked, awaiting, relinkShare, linked]) {
       const { unmount } = render(<SteamAccount me={me} onChange={async () => undefined} onSignedOut={() => undefined} />);
@@ -303,5 +303,9 @@ describe("main matches page once signed in", () => {
       if (me !== relinkShare) expect(screen.queryByRole("alert")).toBeNull();
       unmount();
     }
+    const { unmount } = render(<SteamAccount me={linked} homeChrome onChange={async () => undefined} onSignedOut={() => undefined} />);
+    expect(screen.queryByText("Signed in as", { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Account settings" })).not.toBeInTheDocument();
+    unmount();
   });
 });

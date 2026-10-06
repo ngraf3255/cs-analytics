@@ -7,7 +7,7 @@ import { ShareButton } from "./ShareButton";
 import { profileCard } from "./shareCard";
 import { PeerCompare } from "./PeerCompare";
 import { RoleBreakdown } from "./RoleBreakdown";
-import { TableauExport } from "./TableauExport";
+import { STATS_PATH } from "./routes";
 import type { MatchesAnalytics, YouAnalytics } from "./types";
 import { weaponName } from "./weapons";
 
@@ -15,12 +15,37 @@ const pct = (rate: number | null | undefined) => (rate == null ? "—" : `${Math
 const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : word.endsWith("ch") ? "es" : "s"}`;
 
-
-
-/** The signed-in player's own numbers (their side each round, from the demo). */
-function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number }) {
+/** Four home tiles (and Share). Deeper tables / lobbies live on /stats. */
+function YouHomeTiles({ you }: { you: YouAnalytics }) {
   if (you.matches === 0) return null;
   const duels = you.opening_duels;
+  return (
+    <div className="you-section you-home">
+      <dl className="report-header summary-tiles you-tiles" aria-label="Your stats">
+        <div>
+          <dt>ROUNDS WON</dt><dd>{pct(you.win_rate)}</dd>
+        </div>
+        <div>
+          <dt>AS CT / AS T</dt><dd>{pct(you.sides.ct.win_rate)} / {pct(you.sides.t.win_rate)}</dd>
+        </div>
+        <div>
+          <dt>K/D</dt><dd>{kdText(you.kd)}</dd>
+        </div>
+        <div>
+          <dt>OPENING DUELS</dt><dd>{pct(duels.win_rate)}</dd>
+        </div>
+      </dl>
+      <div className="report-actions home-tile-actions">
+        <ShareButton card={() => profileCard(you)} label="Share my numbers" />
+        <a className="ghost-button" href={STATS_PATH}>More stats</a>
+      </div>
+    </div>
+  );
+}
+
+/** Lobby compare, roles, your maps, all-players / calibration — the /stats page body. */
+function YouStatsSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number }) {
+  if (you.matches === 0) return null;
   const hasDuels = you.maps.some((m) => m.opening_attempt_rate !== undefined);
   return (
     <div className="you-section">
@@ -36,7 +61,7 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
           <dt>K/D</dt><dd>{kdText(you.kd)}</dd>
         </div>
         <div>
-          <dt>OPENING DUELS</dt><dd>{pct(duels.win_rate)}</dd>
+          <dt>OPENING DUELS</dt><dd>{pct(you.opening_duels.win_rate)}</dd>
         </div>
       </dl>
       <div className="report-actions"><ShareButton card={() => profileCard(you)} label="Share my numbers" /></div>
@@ -68,59 +93,11 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
   );
 }
 
-/** Compact analytics across all the user's previous matches (GET /matches/summary), shown above
- * the match list. ``refreshKey`` changes whenever the list is (re)loaded, e.g. after an import. */
-/** Cover the match list window so collapsed rows can join W/L · you–them · K-D. */
-const LIST_RECENT = 50;
-
-type MatchesSummaryPanelProps = {
-  refreshKey: number;
-  /** Personal recent_form rows for MatchList collapsed chips (id → bits). */
-  onPersonalMatches?: (matches: YouAnalytics["recent_form"]["matches"]) => void;
-};
-
-export function MatchesSummaryPanel({ refreshKey, onPersonalMatches }: MatchesSummaryPanelProps) {
-  const [summary, setSummary] = useState<MatchesAnalytics | null>(null);
-  const [error, setError] = useState("");
-  const [unsupported, setUnsupported] = useState(false);
-
-  useEffect(() => {
-    if (refreshKey < 1) return;  // wait for the match list: one request per list load
-    let cancelled = false;
-    steamApi.getMatchesSummary(LIST_RECENT)
-      .then((body) => {
-        if (cancelled) return;
-        setSummary(body);
-        setError("");
-        onPersonalMatches?.(body.you?.recent_form.matches ?? []);
-      })
-      .catch((reason) => {
-        if (cancelled) return;
-        onPersonalMatches?.([]);
-        // An older API has no summary route (it answers 404 match_not_found): show nothing.
-        if (reason instanceof ApiError && reason.status === 404) setUnsupported(true);
-        else setError(reason instanceof ApiError ? reason.message : "");
-      });
-    return () => { cancelled = true; };
-  }, [refreshKey, onPersonalMatches]);
-
-  if (unsupported) return null;
-  if (!summary) {
-    return error ? <p className="steam-muted">Analytics across your matches couldn’t be loaded. {error}</p> : null;
-  }
+function AllPlayersSection({ summary }: { summary: MatchesAnalytics }) {
   const { totals, prediction, sides, opening_kills: opening, maps } = summary;
-  if (totals.matches === 0) return null;  // the list below says there is nothing yet
-  if (totals.imported_matches === 0) {
-    return <p className="steam-muted">None of your matches could be analysed yet. Upload their demos to see stats across matches.</p>;
-  }
   const calibration = prediction.calibration.filter((bin) => bin.rounds > 0);
   return (
-    <section className="summary-panel" aria-label="Across your matches">
-      <div className="summary-heading">
-        <span className="section-kicker">ACROSS YOUR MATCHES</span>
-        <TableauExport matches={totals.imported_matches} rounds={totals.rounds} personalMatches={summary.you?.matches} />
-      </div>
-      {summary.you && <YouSection you={summary.you} refreshKey={refreshKey} />}
+    <>
       {summary.you && <span className="section-kicker all-players-kicker">ALL PLAYERS IN THESE DEMOS · MAP SIDES</span>}
       <dl className="report-header summary-tiles" aria-label="Previous matches summary">
         <div>
@@ -187,6 +164,72 @@ export function MatchesSummaryPanel({ refreshKey, onPersonalMatches }: MatchesSu
           </table>
         )}
       </details>
+    </>
+  );
+}
+
+/** Cover the match list window so collapsed rows can join W/L · you–them · K-D. */
+const LIST_RECENT = 50;
+
+type MatchesSummaryPanelProps = {
+  refreshKey: number;
+  /** Personal recent_form rows for MatchList collapsed chips (id → bits). */
+  onPersonalMatches?: (matches: YouAnalytics["recent_form"]["matches"]) => void;
+  /**
+   * ``home`` — four tiles + Share only (signed-in landing).
+   * ``stats`` — full analytics for ``/stats`` (no Tableau export; that lives on ``/account/export``).
+   */
+  variant?: "home" | "stats";
+};
+
+export function MatchesSummaryPanel({ refreshKey, onPersonalMatches, variant = "stats" }: MatchesSummaryPanelProps) {
+  const [summary, setSummary] = useState<MatchesAnalytics | null>(null);
+  const [error, setError] = useState("");
+  const [unsupported, setUnsupported] = useState(false);
+
+  useEffect(() => {
+    if (refreshKey < 1) return;  // wait for the match list: one request per list load
+    let cancelled = false;
+    steamApi.getMatchesSummary(LIST_RECENT)
+      .then((body) => {
+        if (cancelled) return;
+        setSummary(body);
+        setError("");
+        onPersonalMatches?.(body.you?.recent_form.matches ?? []);
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        onPersonalMatches?.([]);
+        // An older API has no summary route (it answers 404 match_not_found): show nothing.
+        if (reason instanceof ApiError && reason.status === 404) setUnsupported(true);
+        else setError(reason instanceof ApiError ? reason.message : "");
+      });
+    return () => { cancelled = true; };
+  }, [refreshKey, onPersonalMatches]);
+
+  if (unsupported) return null;
+  if (!summary) {
+    if (variant === "home") return null;
+    return error ? <p className="steam-muted">Analytics across your matches couldn’t be loaded. {error}</p> : null;
+  }
+  const { totals } = summary;
+  if (totals.matches === 0) return null;  // the list below says there is nothing yet
+  if (totals.imported_matches === 0) {
+    if (variant === "home") return null;
+    return <p className="steam-muted">None of your matches could be analysed yet. Upload their demos to see stats across matches.</p>;
+  }
+
+  if (variant === "home") {
+    return summary.you ? <YouHomeTiles you={summary.you} /> : null;
+  }
+
+  return (
+    <section className="summary-panel" aria-label="Across your matches">
+      <div className="summary-heading">
+        <span className="section-kicker">ACROSS YOUR MATCHES</span>
+      </div>
+      {summary.you && <YouStatsSection you={summary.you} refreshKey={refreshKey} />}
+      <AllPlayersSection summary={summary} />
     </section>
   );
 }
