@@ -15,15 +15,21 @@ export function AccountPage() {
     if (failure) window.history.replaceState(null, "", window.location.pathname);
   }, [failure]);
 
-  if (loading || (enabled && !checked)) return null;
+  const pending = loading || (enabled && !checked);
 
   return (
-    <section id="account" className="steam-section account-page" aria-label="Account settings">
+    <section id="account" className="steam-section account-page" aria-label="Account settings" aria-busy={pending || undefined}>
       <div className="info-intro">
         <a className="account-back" href="/#matches">← Your rounds</a>
         <h2>Account settings</h2>
       </div>
-      {!enabled ? (
+      {pending ? (
+        // Status + session still loading (the API can take a moment to wake): keep the page's shape
+        // instead of a blank screen.
+        <div className="steam-card account-loading" aria-label="Loading your account">
+          <span /><span /><span />
+        </div>
+      ) : !enabled ? (
         <div className="steam-card" role="status">
           <p>{reachable ? "Accounts aren’t switched on yet." : "Can’t reach the match service. Refresh in a minute."}</p>
         </div>

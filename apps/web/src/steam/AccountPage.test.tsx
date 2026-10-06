@@ -19,6 +19,16 @@ describe("/account", () => {
     expect(isAccountPath("/accounts")).toBe(false);
   });
 
+  it("while status / session load: shows the page heading and a placeholder, not a blank page", () => {
+    installFakeApi({
+      "GET /steam/status": () => new Promise(() => undefined),
+      "GET /me": () => new Promise(() => undefined),
+    });
+    render(<AccountPage />);
+    expect(screen.getByRole("heading", { name: "Account settings" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Loading your account")).toBeInTheDocument();
+  });
+
   it("signed out: offers Steam sign-in that comes back to /account", async () => {
     installFakeApi({
       "GET /steam/status": { status: 200, body: { steam: true, upload: true } },

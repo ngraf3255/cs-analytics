@@ -6,10 +6,19 @@
     <meta name="theme-color" content="#090d12" />
     <meta name="description" content="Explore CS2 round outcomes with a match prediction model trained on professional rounds." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" as="image" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Paint the dark page and the brand bar before the app bundle runs (no blank / white flash). -->
+    <style>
+      html,body{margin:0;background:#090d12;color:#f2f3f0}
+      .boot-bar{height:78px;border-bottom:1px solid #202830;display:flex;align-items:center;gap:11px;padding:0 clamp(22px,6.2vw,100px);
+        font:800 20px/1 'Barlow Condensed',sans-serif;letter-spacing:.055em;max-width:1600px;margin:0 auto;box-sizing:border-box}
+      .boot-bar img{width:28px;height:28px}
+      .boot-bar span{font-weight:500;color:#b9c1c8}
+    </style>
     <title>CS Gooner - Round Predictor</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot-bar" aria-hidden="true"><img src="/favicon.svg" alt="" />CS <span>GOONER</span></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

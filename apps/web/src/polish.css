@@ -87,3 +87,19 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .hero{min-height:0;padding-top:48px;padding-bottom:36px}
 .hero h1{margin-top:0}
 @media(max-width:640px){.hero{padding-top:36px}}
+
+/* Design must-fixes (live review). Matches section: same side inset as the hero / model copy
+   on phones (14px looked flush against the cards). */
+@media(max-width:640px){.steam-section{margin-left:22px;margin-right:22px}}
+/* A report grid sized itself to its widest child (the round table's min-width), so the header
+   tiles ran past the card and "(sides at the end)" was clipped: one shrinkable column, tables
+   scroll inside it, and long tile notes wrap. */
+.match-report{grid-template-columns:minmax(0,1fr)}
+.report-header>div{min-width:0}
+.report-header small{overflow-wrap:anywhere}
+/* /account: the top bar's border already separates the page; no second rule above "← Your rounds". */
+.steam-section.account-page{border-top:0;padding-top:0;margin-top:40px}
+@media(max-width:640px){.steam-section.account-page{margin-top:28px}}
+.account-loading{display:grid;gap:10px}
+.account-loading span{display:block;height:12px;background:#151c23;border-radius:2px}
+.account-loading span:nth-child(1){width:40%}.account-loading span:nth-child(2){width:75%}.account-loading span:nth-child(3){width:55%;height:40px}
