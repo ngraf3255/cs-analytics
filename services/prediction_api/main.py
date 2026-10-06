@@ -77,8 +77,18 @@ class PredictionInput(BaseModel):
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, object]:
+    # parse_version / demoparser2 help Homelab confirm the deployed API image without
+    # shelling into the container (Rush recovery is PARSE_VERSION 4).
+    from steamlink.demo_parser import demoparser2_version
+    from steamlink.storage.base import PARSE_VERSION, STATS_PARSE_VERSION
+
+    return {
+        "status": "ok",
+        "parse_version": PARSE_VERSION,
+        "stats_parse_version": STATS_PARSE_VERSION,
+        "demoparser2": demoparser2_version(),
+    }
 
 
 @app.get("/options")

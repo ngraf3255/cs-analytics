@@ -165,14 +165,21 @@ class MatchRecord:
     def outdated_reason(self) -> str | None:
         """Why an imported match's stored rounds are older than the current parser, or None:
         ``players_not_recorded`` (parsed before per-player rounds: no personal stats) or
-        ``parser_updated`` (e.g. warmup / knife rounds may still be counted). The demo is
-        not kept on the server, so re-uploading it is the way to refresh the match."""
+        ``parser_updated`` (e.g. warmup / knife rounds may still be counted; or a
+        ``parse_degraded`` match still below ``PARSE_VERSION``, e.g. pre-#42 Rush thin
+        rounds). The demo is not kept on the server, so re-uploading it is the way to
+        refresh the match."""
 
         if self.status != "imported":
             return None
         if not self.players_recorded:
             return "players_not_recorded"
         if self.parse_version < STATS_PARSE_VERSION:
+            return "parser_updated"
+        # Keep STATS_PARSE_VERSION at 2 so healthy competitive v2/v3 matches are not
+        # bannered, but PacketEntities-degraded parses (Rush) still need PARSE_VERSION
+        # recovery — surface OUTDATED so the user knows to re-upload.
+        if self.status_reason == "parse_degraded" and self.parse_version < PARSE_VERSION:
             return "parser_updated"
         return None
 

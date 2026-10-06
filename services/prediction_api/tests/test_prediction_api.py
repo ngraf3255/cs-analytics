@@ -6,7 +6,14 @@ client = TestClient(main.app)
 
 
 def test_health():
-    assert client.get("/health").json() == {"status": "ok"}
+    from steamlink.demo_parser import demoparser2_version
+    from steamlink.storage.base import PARSE_VERSION, STATS_PARSE_VERSION
+
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    assert body["parse_version"] == PARSE_VERSION
+    assert body["stats_parse_version"] == STATS_PARSE_VERSION
+    assert body["demoparser2"] == demoparser2_version()
 
 
 def test_options_lists_model_vocabulary():
