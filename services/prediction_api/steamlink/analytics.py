@@ -184,7 +184,39 @@ class _Mine:
             "kills": self.kills, "deaths": self.deaths, "kd": self.kd(),
             "kills_per_round": round(self.kills / self.rounds, 2) if self.rounds else None,
             "survived": self.survived, "survival_rate": _rate(self.survived, self.rounds),
+            **self.duels_view(),
         }
+
+    def duels_view(self) -> dict:
+        taken = self.opening_kills + self.opening_deaths
+        return {
+            "opening_kills": self.opening_kills, "opening_deaths": self.opening_deaths,
+            # Each round has one opening kill and one opening death among 10 players, so the
+            # lobby average is exactly 0.2 duels per player-round (ROLE_BASELINE).
+            "opening_attempt_rate": _rate(taken, self.rounds),
+            "opening_win_rate": _rate(self.opening_kills, taken),
+        }
+
+
+# Opening duels per player-round in a 5v5 (2 of 10 players take part in each round's first duel).
+ROLE_BASELINE = 0.2
+# Minimum rounds on a side before a role is suggested.
+ROLE_MIN_ROUNDS = 20
+
+
+def role_view(tally: "_Mine") -> dict:
+    """Per-side role from opening-duel involvement vs the 5v5 average (data-backed, no positions):
+    ``entry`` takes the first duel well above average, ``support`` well below, else ``balanced``;
+    ``null`` with fewer than ROLE_MIN_ROUNDS rounds on the side."""
+
+    duels = tally.duels_view()
+    rate = duels["opening_attempt_rate"]
+    role = None
+    if tally.rounds >= ROLE_MIN_ROUNDS and rate is not None:
+        role = "entry" if rate >= ROLE_BASELINE * 1.4 else "support" if rate <= ROLE_BASELINE * 0.6 else "balanced"
+    return {"rounds": tally.rounds, "role": role, "kd": tally.kd(),
+            "kills_per_round": round(tally.kills / tally.rounds, 2) if tally.rounds else None,
+            "survival_rate": _rate(tally.survived, tally.rounds), **duels}
 
 
 def _player_match(match: MatchRecord, rounds: list[RoundRecord], mine: list[PlayerRoundRecord]):
@@ -219,6 +251,7 @@ def build_player_summary(imported: list[tuple[MatchRecord, list[RoundRecord]]],
     """The ``you`` section of ``GET /matches/summary``: ``imported`` newest first."""
 
     total, with_winner_total = _Mine(), {"ct": 0, "t": 0}
+    by_side = {side: _Mine() for side in SIDES}
     per_map: dict = defaultdict(lambda: [_Mine(), {"ct": 0, "t": 0}])
     per_match: list = []
     without_you = unknown = 0
@@ -231,6 +264,10 @@ def build_player_summary(imported: list[tuple[MatchRecord, list[RoundRecord]]],
                 unknown += 1
             continue
         tally, with_winner, result = _player_match(match, rounds, mine)
+        winners = {r.round_number: r.winner_side for r in rounds}
+        for record in mine:
+            if record.side in SIDES:
+                by_side[record.side].add_round(record, winners.get(record.round_number))
         total.merge(tally)
         entry = per_map[match.map_name]
         entry[0].merge(tally)
@@ -270,6 +307,8 @@ def build_player_summary(imported: list[tuple[MatchRecord, list[RoundRecord]]],
             "round_win_rate_after_opening_kill": _rate(total.won_after_opening_kill, total.opening_kills),
             "round_win_rate_after_opening_death": _rate(total.won_after_opening_death, total.opening_deaths),
         },
+        "roles": {"baseline_opening_attempt_rate": ROLE_BASELINE, "min_rounds": ROLE_MIN_ROUNDS,
+                  **{side: role_view(by_side[side]) for side in SIDES}},
         "maps": [
             {"map_name": map_name, **tally.view(), "sides": sides(tally, with_winner)}
             for map_name, (tally, with_winner) in sorted(
