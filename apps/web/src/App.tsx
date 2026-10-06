@@ -9,6 +9,7 @@ import {
   type AppPage, pageFromPath,
 } from "./steam/routes";
 import { ModelCard, WhyThisRound, confidenceLabel } from "./ModelCard";
+import { GuestHero } from "./steam/GuestHero";
 import { SteamSection } from "./steam/SteamSection";
 import { useMe, useSteamStatus } from "./steam/hooks";
 import { weaponName } from "./steam/weapons";
@@ -48,9 +49,15 @@ function App() {
   );
 }
 
-/** Signed-in home: Sync/Upload · 4 tiles · match list. Guest: short hero + sign-in / teaser. */
+/** Home: guest hero · predictor (primary) · Sync/Upload · 4 tiles · match list. */
 function HomeMain() {
-  return <SteamSection showGuestHero />;
+  return (
+    <>
+      <GuestHero />
+      <PredictorWorkspace />
+      <SteamSection />
+    </>
+  );
 }
 
 function SiteFooter() {
@@ -67,7 +74,7 @@ function SiteFooter() {
 
 function PredictPage() {
   return (
-    <section className="page-predict" aria-label="Round winner predictor">
+    <section className="page-predict">
       <div className="info-intro page-intro">
         <a className="account-back" href="/">← Home</a>
         <h2>Predictor</h2>

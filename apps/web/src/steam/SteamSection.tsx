@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useHashScroll, useMe, useSteamStatus } from "./hooks";
 import { Matches } from "./Matches";
 import { MatchesTeaser } from "./MatchesTeaser";
-import { PREDICT_PATH } from "./routes";
 import { SteamAccount } from "./SteamAccount";
 
 function loginFailureReason(): string | null {
@@ -10,12 +9,7 @@ function loginFailureReason(): string | null {
   return params.get("steam_login") === "failed" ? params.get("reason") || "unknown" : null;
 }
 
-type Props = {
-  /** Guest landing: short hero above sign-in (signed-in home skips it). */
-  showGuestHero?: boolean;
-};
-
-export function SteamSection({ showGuestHero = false }: Props) {
+export function SteamSection() {
   const { steam, upload, guest, reachable, enabled, loading } = useSteamStatus();
   const { me, setMe, error, refresh } = useMe(enabled);
   const failure = loginFailureReason();
@@ -39,14 +33,6 @@ export function SteamSection({ showGuestHero = false }: Props) {
   const signedInSteam = Boolean(me && !isGuest);
   return (
     <>
-      {showGuestHero && !me && (
-        <section className="hero">
-          <div className="hero-copy">
-            <h1>Every round<br />has a <em>turning point.</em></h1>
-          </div>
-          <div className="hero-grid" aria-hidden="true" />
-        </section>
-      )}
       <section id="matches" className="steam-section" aria-label="Your CS2 matches">
         <div className="info-intro">
           <h2>{signedInSteam ? "Matches" : "Your rounds"}</h2>
@@ -84,7 +70,7 @@ function ComingSoon({ reachable }: { reachable: boolean }) {
           ? "Soon you’ll be able to connect Steam or upload a CS2 demo and see how the model rated every round of your matches."
           : "The match-report server didn’t answer. It may be waking up or restarting; refresh in a minute."}
       </p>
-      <a className="ghost-button empty-state-cta" href={PREDICT_PATH}>TRY THE ROUND PREDICTOR →</a>
+      <a className="ghost-button empty-state-cta" href="/#predictor">TRY THE ROUND PREDICTOR →</a>
     </div>
   );
 }

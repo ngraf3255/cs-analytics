@@ -262,10 +262,13 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 
 
 /* Bundle 4: dense labels / soft polish */
-.hero + .steam-section{margin-top:0;border-top:0;padding-top:18px}
-@media(max-width:640px){.hero + .steam-section{padding-top:14px}}
 .hero{padding-bottom:28px}
 @media(max-width:640px){.hero{padding-bottom:22px;padding-top:28px}}
+/* Predictor restored on home: hero → workspace → matches */
+.hero + .workspace{margin-top:22px}
+@media(max-width:640px){.hero + .workspace{margin-top:14px}}
+.workspace + .steam-section{margin-top:48px}
+@media(max-width:640px){.workspace + .steam-section{margin-top:36px}}
 
 /* Timeline legend tucked behind ⓘ */
 .tl-heading{display:flex;align-items:center;gap:8px}
