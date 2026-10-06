@@ -144,7 +144,7 @@ describe("match list UX", () => {
         status_reason: "parse_degraded",
         degraded: {
           reason: "packet_ents_skipped",
-          detail: "Many PacketEntities skips — team/position stats may be thin.",
+          detail: "PacketEntities skips — positions thin; Rush may omit round_end (recovered from officially-ended).",
         },
       }],
       limit: 50,
@@ -161,7 +161,7 @@ describe("match list UX", () => {
     expect(tag).toBeInTheDocument();
     expect(tag).toHaveAttribute(
       "title",
-      "Many PacketEntities skips — team/position stats may be thin.",
+      "PacketEntities skips — positions thin; Rush may omit round_end (recovered from officially-ended).",
     );
     expect(within(row).queryByText("NOT IMPORTED")).not.toBeInTheDocument();
   });

@@ -43,6 +43,15 @@ Feature definitions match the training data (``data/rounds.parquet`` /
 what the parse extracts changes, it is bumped and matches parsed before are
 flagged so a re-upload of the same demo re-parses and replaces them.
 
+Rush-mode demos (``rush_001``): Valve often omits most ``round_end`` events and
+PacketEntities soft-skips (#22) strip ``team_num`` from early deaths/spawns. The parse
+still keeps every observed ``player_death``; when ``round_officially_ended`` outnumbers
+``round_end``, rounds are taken from freeze-end → officially-ended windows and the winner
+from the observed score delta on those events (not invented). Missing death sides are
+recovered from the same SteamID's later observed ``team_num`` in the demo. Incomplete
+final rounds with no ``round_officially_ended``, positions, and maps outside the model
+remain thin / unscored — see vendor/wheels/README.md.
+
 Match date: none is extracted. Checked on 4 real CS2 demos (Valve MM, FACEIT,
 HLTV/ESL, the demoparser2 SourceTV fixture) with demoparser2 0.42: the header has
 map, server name, build (patch_version) and a format GUID but no time; the
@@ -67,7 +76,7 @@ import subprocess
 import sys
 import threading
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .storage.base import PARSE_VERSION, PlayerRoundRecord, RoundRecord  # noqa: F401 (re-exported)
 
@@ -519,13 +528,13 @@ def final_score(demo: ParsedDemo) -> tuple[int, int] | None:
 PARSE_SLOT = threading.BoundedSemaphore(1)
 
 PARSE_ISOLATION_MODES = ("subprocess", "inprocess")
-_EVENTS = ("round_end", "round_freeze_end", "player_death", "player_spawn", "begin_new_match")
+_EVENTS = ("round_end", "round_freeze_end", "round_officially_ended", "player_death", "player_spawn", "begin_new_match")
 _DEATH_COLUMNS = ("tick", "attacker_team_num", "user_team_num", "weapon", "attacker_team_rounds_total",
                   "user_team_rounds_total", "attacker_steamid", "user_steamid")
 _SPAWN_COLUMNS = ("tick", "user_steamid", "user_team_num")
 _EQUIP_PROPS = ["current_equip_value"]
 _INT_COLUMNS = ("winner", "attacker_team_num", "user_team_num", "attacker_team_rounds_total", "user_team_rounds_total",
-                "current_equip_value")
+                "ct_team_rounds_total", "t_team_rounds_total", "current_equip_value")
 
 
 class Demoparser2Parser(DemoParser):
@@ -657,6 +666,10 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
                 )
         round_end = _rows(frames.pop("round_end", None), ("tick", "winner", "reason"))
         freeze_ticks = sorted(int(t) for t in _column(frames.pop("round_freeze_end", None), "tick"))
+        officially_ended = _rows(
+            frames.pop("round_officially_ended", None),
+            ("tick", "ct_team_rounds_total", "t_team_rounds_total"),
+        )
         deaths = _rows(frames.pop("player_death", None), _DEATH_COLUMNS)
         spawn_rows = _rows(frames.pop("player_spawn", None), _SPAWN_COLUMNS)
         match_starts = [int(t) for t in _column(frames.pop("begin_new_match", None), "tick")]
@@ -669,45 +682,154 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
             detail += f" (patch_version={header.get('patch_version')}, map={header.get('map_name')})"
         raise DemoParseError(detail, classify_parser_error(repr(exc))) from exc
 
-    rounds: list[ParsedRound] = []
-    previous_end = -1
-    for index, row in enumerate(round_end, start=1):
-        end_tick = int(row["tick"])
-        freezes = [t for t in freeze_ticks if previous_end < t <= end_tick]
-        rounds.append(ParsedRound(
-            number=index,
-            freeze_end_tick=freezes[-1] if freezes else None,
-            end_tick=end_tick,
-            winner_side=TEAM_NUM_TO_SIDE.get(row.get("winner")),
-            end_reason=normalize_reason(row.get("reason")),
-        ))
-        previous_end = end_tick
+    rounds = _rounds_from_events(round_end, freeze_ticks, officially_ended)
+    deaths_parsed = [
+        ParsedDeath(
+            tick=int(row["tick"]),
+            attacker_side=TEAM_NUM_TO_SIDE.get(row.get("attacker_team_num")),
+            victim_side=TEAM_NUM_TO_SIDE.get(row.get("user_team_num")),
+            weapon=row.get("weapon"),
+            attacker_score=row.get("attacker_team_rounds_total"),
+            victim_score=row.get("user_team_rounds_total"),
+            attacker_steamid=normalize_steamid(row.get("attacker_steamid")),
+            victim_steamid=normalize_steamid(row.get("user_steamid")),
+        )
+        for row in deaths
+    ]
+    # Spawns may lack team_num under PacketEntities soft-skips; recover before keeping.
+    spawn_sides: list[tuple[int, str, str | None]] = [
+        (int(row["tick"]), steamid, TEAM_NUM_TO_SIDE.get(row.get("user_team_num")))
+        for row in spawn_rows
+        if (steamid := normalize_steamid(row.get("user_steamid")))
+    ]
+    deaths_parsed, spawn_sides = _recover_missing_sides(deaths_parsed, spawn_sides)
+    spawns_parsed = [
+        ParsedSpawn(tick=tick, steamid=steamid, side=side)
+        for tick, steamid, side in spawn_sides
+        if side in ("ct", "t")
+    ]
     return ParsedDemo(
         map_name=header.get("map_name") or None,
         rounds=rounds,
-        deaths=[
-            ParsedDeath(
-                tick=int(row["tick"]),
-                attacker_side=TEAM_NUM_TO_SIDE.get(row.get("attacker_team_num")),
-                victim_side=TEAM_NUM_TO_SIDE.get(row.get("user_team_num")),
-                weapon=row.get("weapon"),
-                attacker_score=row.get("attacker_team_rounds_total"),
-                victim_score=row.get("user_team_rounds_total"),
-                attacker_steamid=normalize_steamid(row.get("attacker_steamid")),
-                victim_steamid=normalize_steamid(row.get("user_steamid")),
-            )
-            for row in deaths
-        ],
-        spawns=[
-            ParsedSpawn(tick=int(row["tick"]), steamid=steamid, side=side)
-            for row in spawn_rows
-            if (steamid := normalize_steamid(row.get("user_steamid")))
-            and (side := TEAM_NUM_TO_SIDE.get(row.get("user_team_num")))
-        ],
+        deaths=deaths_parsed,
+        spawns=spawns_parsed,
         match_start_tick=_last_match_start(match_starts, rounds),
         equipment=equipment,
         packet_ents_skips=packet_ents_skips,
     )
+
+
+
+def _rounds_from_events(
+    round_end: list[dict],
+    freeze_ticks: list[int],
+    officially_ended: list[dict],
+) -> list[ParsedRound]:
+    """Build match rounds from demo events.
+
+    Competitive demos emit one ``round_end`` per round (with winner + reason). Valve Rush
+    often emits ``round_freeze_end`` / ``round_officially_ended`` with score totals but only
+    a sparse ``round_end``. When officially-ended outnumbers ``round_end``, use those
+    windows and take the winner from the observed score delta (or a ``round_end`` inside
+    the window when present). Incomplete trailing freezes without an officially-ended are
+    dropped — no invented final round.
+    """
+
+    ended = sorted(officially_ended, key=lambda r: int(r["tick"]))
+    if not ended or len(round_end) >= len(ended):
+        rounds: list[ParsedRound] = []
+        previous_end = -1
+        for index, row in enumerate(round_end, start=1):
+            end_tick = int(row["tick"])
+            freezes = [t for t in freeze_ticks if previous_end < t <= end_tick]
+            rounds.append(ParsedRound(
+                number=index,
+                freeze_end_tick=freezes[-1] if freezes else None,
+                end_tick=end_tick,
+                winner_side=TEAM_NUM_TO_SIDE.get(row.get("winner")),
+                end_reason=normalize_reason(row.get("reason")),
+            ))
+            previous_end = end_tick
+        return rounds
+
+    rounds = []
+    previous_end = -1
+    prev_ct = prev_t = 0
+    for index, row in enumerate(ended, start=1):
+        end_tick = int(row["tick"])
+        freezes = [t for t in freeze_ticks if previous_end < t <= end_tick]
+        ct = int(row["ct_team_rounds_total"] or 0)
+        t_score = int(row["t_team_rounds_total"] or 0)
+        winner = None
+        if ct == prev_ct + 1 and t_score == prev_t:
+            winner = "ct"
+        elif t_score == prev_t + 1 and ct == prev_ct:
+            winner = "t"
+        end_reason = None
+        # Prefer a real round_end inside the window when Valve emitted one.
+        in_window = [r for r in round_end if previous_end < int(r["tick"]) <= end_tick]
+        if in_window:
+            last = in_window[-1]
+            winner = TEAM_NUM_TO_SIDE.get(last.get("winner")) or winner
+            end_reason = normalize_reason(last.get("reason"))
+        rounds.append(ParsedRound(
+            number=index,
+            freeze_end_tick=freezes[-1] if freezes else None,
+            end_tick=end_tick,
+            winner_side=winner,
+            end_reason=end_reason,
+        ))
+        previous_end = end_tick
+        prev_ct, prev_t = ct, t_score
+    return rounds
+
+
+def _recover_missing_sides(
+    deaths: list[ParsedDeath],
+    spawns: list[tuple[int, str, str | None]],
+) -> tuple[list[ParsedDeath], list[tuple[int, str, str | None]]]:
+    """Fill blank team sides from the same SteamID's other observations in this demo.
+
+    PacketEntities soft-skips leave early ``team_num`` null even though later events for
+    the same player carry a side. Propagating that observed side is recovery, not invention:
+    SteamIDs with no sided observation stay unknown.
+    """
+
+    known: list[tuple[int, str, str]] = []
+    for tick, steamid, side in spawns:
+        if side in ("ct", "t"):
+            known.append((tick, steamid, side))
+    for death in deaths:
+        if death.attacker_steamid and death.attacker_side in ("ct", "t"):
+            known.append((death.tick, death.attacker_steamid, death.attacker_side))
+        if death.victim_steamid and death.victim_side in ("ct", "t"):
+            known.append((death.tick, death.victim_steamid, death.victim_side))
+    known.sort()
+
+    def side_at(steamid: str, tick: int) -> str | None:
+        before = [side for t, sid, side in known if sid == steamid and t <= tick]
+        if before:
+            return before[-1]
+        after = [side for t, sid, side in known if sid == steamid and t > tick]
+        return after[0] if after else None
+
+    fixed_deaths: list[ParsedDeath] = []
+    for death in deaths:
+        attacker = death.attacker_side if death.attacker_side in ("ct", "t") else (
+            side_at(death.attacker_steamid, death.tick) if death.attacker_steamid else None
+        )
+        victim = death.victim_side if death.victim_side in ("ct", "t") else (
+            side_at(death.victim_steamid, death.tick) if death.victim_steamid else None
+        )
+        if (attacker, victim) != (death.attacker_side, death.victim_side):
+            death = replace(death, attacker_side=attacker, victim_side=victim)
+        fixed_deaths.append(death)
+
+    fixed_spawns = [
+        (tick, steamid, side if side in ("ct", "t") else side_at(steamid, tick))
+        for tick, steamid, side in spawns
+    ]
+    return fixed_deaths, fixed_spawns
 
 
 def _equipment(parser, freeze_ticks: list[int]) -> list[ParsedEquip]:
