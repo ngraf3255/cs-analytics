@@ -6,6 +6,8 @@ import { kdText, matchDate, outdatedText, resultText } from "./format";
 import { MatchList, MatchListError, MatchListLoading } from "./MatchList";
 import { MatchesSummaryPanel } from "./MatchesSummary";
 import { ACCOUNT_PATH } from "./routes";
+import { ShareButton } from "./ShareButton";
+import { matchCard } from "./shareCard";
 import { weaponName } from "./weapons";
 
 const sideName = (side: string | null | undefined) => (side === "ct" ? "CT" : side === "t" ? "T" : "—");
@@ -485,6 +487,7 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
         <div><dt>SOURCE</dt><dd>{match.source === "upload" ? "Upload" : "Steam sync"}</dd><small>{match.source === "upload" ? "You uploaded the demo" : "From your match history"}</small></div>
         {you && <YouTile you={you} />}
       </dl>
+      <div className="report-actions"><ShareButton card={() => matchCard(report)} label="Share match" /></div>
       {outdatedText(match) && <div className="outdated-note" role="note">{outdatedText(match)}</div>}
       <div className="calibration-note" role="note">
         <strong>Retrospective estimate, not calibrated for your games.</strong> {report.model.note}
