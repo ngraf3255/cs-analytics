@@ -59,8 +59,9 @@ export function checkAuthCode(text: string, optional = false): FieldCheck {
   return { value, ok: false, hint: `Expected 13 letters and digits as ${AUTH_CODE_EXAMPLE}${letters ? ` (this has ${letters})` : ""}. Copy it from Valve’s page.` };
 }
 
-export function checkShareCode(text: string): FieldCheck {
-  if (!text.trim()) return { value: "", ok: false, hint: null };
+/** ``optional``: an empty box is fine (link the auth code now, add a share code after a match). */
+export function checkShareCode(text: string, optional = false): FieldCheck {
+  if (!text.trim()) return { value: "", ok: optional, hint: null };
   const value = extractShareCode(text) ?? text.trim();
   if (isShareCode(value)) return { value, ok: true, hint: null };
   if (isAuthCode(normalizeAuthCode(text))) return { value, ok: false, hint: "That’s your Game Authentication Code. This box needs a match sharing code that starts with CSGO-." };
@@ -71,6 +72,6 @@ export function checkShareCode(text: string): FieldCheck {
 /** Which box a server error belongs to (shown under that field). */
 export function errorField(code: string): "auth" | "share" | null {
   if (["invalid_auth_code_format", "invalid_auth_code", "auth_code_is_share_code", "auth_code_required", "credentials_unreadable"].includes(code)) return "auth";
-  if (["invalid_share_code_format", "invalid_share_code", "share_code_is_auth_code"].includes(code)) return "share";
+  if (["invalid_share_code_format", "invalid_share_code", "share_code_is_auth_code", "share_code_required"].includes(code)) return "share";
   return null;
 }

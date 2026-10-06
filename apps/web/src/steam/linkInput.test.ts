@@ -39,6 +39,9 @@ describe("pasted match-history codes", () => {
     expect(checkShareCode("ab12-cde34-fg56").hint).toMatch(/That’s your Game Authentication Code/);
     expect(checkShareCode(SHARE.replace("CSGO", "csgo")).hint).toMatch(/case-sensitive/);
     expect(checkShareCode("CSGO-abc").hint).toMatch(/5 groups of 5/);
+    expect(checkShareCode("").ok).toBe(false);
+    expect(checkShareCode("  ", true)).toEqual({ value: "", ok: true, hint: null });  // no recent match yet: link without one
+    expect(checkShareCode("CSGO-abc", true).ok).toBe(false);  // optional, but what is typed must still be valid
   });
 
   it("maps server errors to the box to fix", () => {
@@ -46,6 +49,7 @@ describe("pasted match-history codes", () => {
     expect(errorField("auth_code_is_share_code")).toBe("auth");
     expect(errorField("invalid_share_code")).toBe("share");
     expect(errorField("share_code_is_auth_code")).toBe("share");
+    expect(errorField("share_code_required")).toBe("share");
     expect(errorField("valve_rate_limited")).toBeNull();
   });
 });
