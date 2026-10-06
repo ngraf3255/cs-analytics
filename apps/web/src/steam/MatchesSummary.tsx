@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { steamApi } from "./api";
 import { ApiError, messageFor } from "./errors";
 import { kdText, resultText } from "./format";
+import { FormTrend } from "./FormTrend";
 import { ShareButton } from "./ShareButton";
 import { profileCard } from "./shareCard";
 import { TableauExport } from "./TableauExport";
@@ -35,7 +36,7 @@ function youFormLine(form: YouAnalytics["recent_form"]): string {
 }
 
 /** The signed-in player's own numbers (their side each round, from the demo). */
-function YouSection({ you }: { you: YouAnalytics }) {
+function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number }) {
   const left = [
     you.matches_without_you ? `${plural(you.matches_without_you, "demo")} you’re not in (e.g. pro matches)` : "",
     you.matches_unknown ? `${plural(you.matches_unknown, "match")} imported before per-player stats (upload ${you.matches_unknown === 1 ? "it" : "them"} again to include)` : "",
@@ -73,6 +74,7 @@ function YouSection({ you }: { you: YouAnalytics }) {
       </dl>
       <div className="report-actions"><ShareButton card={() => profileCard(you)} label="Share my numbers" /></div>
       {youFormLine(you.recent_form) && <p className="summary-form">{youFormLine(you.recent_form)}</p>}
+      <FormTrend refreshKey={refreshKey} matchCount={you.matches} />
       <table className="round-table summary-maps" aria-label="Your maps">
         <thead><tr><th>Map</th><th>Matches</th><th>Your rounds</th><th>Won</th><th>As CT</th><th>As T</th><th>K/D</th></tr></thead>
         <tbody>
@@ -148,7 +150,7 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
   return (
     <section className="summary-panel" aria-label="Across your matches">
       <span className="section-kicker">ACROSS YOUR MATCHES</span>
-      {summary.you && <YouSection you={summary.you} />}
+      {summary.you && <YouSection you={summary.you} refreshKey={refreshKey} />}
       {summary.you && <span className="section-kicker all-players-kicker">ALL PLAYERS IN THESE DEMOS · MAP SIDES</span>}
       <dl className="report-header summary-tiles" aria-label="Previous matches summary">
         <div>
