@@ -1,0 +1,22 @@
+diff --git a/src/parser/src/second_pass/entities.rs b/src/parser/src/second_pass/entities.rs
+index abf89a1..062dc8e 100644
+--- a/src/parser/src/second_pass/entities.rs
++++ b/src/parser/src/second_pass/entities.rs
+@@ -53,6 +53,17 @@ enum EntityCmd {
+ 
+ impl<'a> SecondPassParser<'a> {
+     pub fn parse_packet_ents(&mut self, bytes: &[u8], is_fullpacket: bool) -> Result<(), DemoParserError> {
++        // Rush / some newer CS2 demos emit PacketEntities updates demoparser cannot decode
++        // (EntityNotFound / MalformedMessage). Skipping the bad update lets game-event parsing
++        // continue so rounds/deaths still extract. Competitive demos that parse cleanly are
++        // unchanged (this path only runs on Err).
++        match self.parse_packet_ents_inner(bytes, is_fullpacket) {
++            Err(_) => Ok(()),
++            Ok(()) => Ok(()),
++        }
++    }
++
++    fn parse_packet_ents_inner(&mut self, bytes: &[u8], is_fullpacket: bool) -> Result<(), DemoParserError> {
+         if !self.parse_entities {
+             return Ok(());
+         }
