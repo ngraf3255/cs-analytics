@@ -39,6 +39,16 @@ so a rebuild has a different sha256; re-run the verification before swapping it 
 Locally, Noah's Valve Rush GOTV demo (`rush_001`) yields 15 deaths / 1 round_end with
 degraded PacketEntities skips; demoparser fixture still parses cleanly.
 
+**Rush follow-up (Python, PARSE_VERSION 4):** soft-skip still leaves ~9.7k PacketEntities
+skips on Noah's `rush_001` GOTV demo — positions/props stay thin and the match stays
+`parse_degraded`. The API now also reads `round_officially_ended`: when those outnumber
+`round_end`, rounds come from freeze → officially-ended with winners from the observed
+score delta, and blank death/spawn `team_num` is recovered from the same SteamID's later
+observations. Incomplete trailing freezes without officially-ended are dropped. No new
+wheel required for that recovery; a finer per-entity soft-skip (if ever) would be a
+separate demoparser patch + Homelab wheel bump.
+
+
 **Remove** when demoparser2 >= 0.42.1 is on PyPI *and* handles Rush PacketEntities: delete
 this wheel + patch, drop the `--find-links` and both `demoparser2` lines in
 `requirements.txt`, pin the release.

@@ -95,11 +95,15 @@ class PlayerRoundRecord:
 # 1 = rounds + per-player rounds (migration 0007); 2 = warmup / knife rounds before the
 # last begin_new_match left out of ALL numbers and rounds numbered from the match start,
 # players of a round without any player_spawn taken from the next round; 3 = round end
-# reasons, per-player equipment value at freeze end and clutches (match detail).
-PARSE_VERSION = 3
+# reasons, per-player equipment value at freeze end and clutches (match detail);
+# 4 = Rush / thin ``round_end`` recovery via ``round_officially_ended`` + observed score
+# deltas, and death/spawn side recovery from later observed team_num (#22 follow-up).
+PARSE_VERSION = 4
 # Matches parsed at or above this version have correct core stats (rounds, sides, K/D):
 # only older ones are flagged outdated. Versions in between lack only match detail
 # (``MatchRecord.detail_recorded``); a re-upload of the same demo still re-parses them.
+# Keep STATS at 2 so competitive v2/v3 matches are not bannered outdated; re-upload still
+# re-parses when parse_version < PARSE_VERSION (Rush thin-stats refresh).
 STATS_PARSE_VERSION = 2
 DETAIL_PARSE_VERSION = 3
 

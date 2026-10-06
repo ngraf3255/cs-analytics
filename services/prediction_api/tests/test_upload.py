@@ -184,7 +184,7 @@ def test_packet_ents_skips_marks_match_degraded_on_matches_list(up):
     assert match["status_reason"] == "parse_degraded"
     assert match["degraded"] == {
         "reason": "packet_ents_skipped",
-        "detail": "Many PacketEntities skips — team/position stats may be thin.",
+        "detail": "PacketEntities skips — positions thin; Rush may omit round_end (recovered from officially-ended).",
     }
     listed = client.get("/matches").json()["matches"]
     assert len(listed) == 1

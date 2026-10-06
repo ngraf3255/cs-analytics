@@ -43,7 +43,7 @@ function MatchRow({
           </span>
         )}
         {match.degraded && (
-          <span className="source-tag outdated-tag" title={match.degraded.detail ?? "Many PacketEntities skips — team/position stats may be thin."}>
+          <span className="source-tag outdated-tag" title={match.degraded.detail ?? "PacketEntities skips — positions thin; Rush may omit round_end (recovered from officially-ended)."}>
             DEGRADED
           </span>
         )}
