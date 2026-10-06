@@ -5,6 +5,8 @@ import type { Me } from "./types";
 
 export function useSteamStatus() {
   const [enabled, setEnabled] = useState(false);
+  // GET /steam/status answered (false: the API is down or waking up).
+  const [reachable, setReachable] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -12,7 +14,9 @@ export function useSteamStatus() {
     steamApi
       .status()
       .then((body) => {
-        if (!cancelled) setEnabled(Boolean(body.enabled));
+        if (cancelled) return;
+        setEnabled(Boolean(body.enabled));
+        setReachable(true);
       })
       .catch(() => {
         if (!cancelled) setEnabled(false);
@@ -25,7 +29,7 @@ export function useSteamStatus() {
     };
   }, []);
 
-  return { enabled, loading };
+  return { enabled, reachable, loading };
 }
 
 export function useMe(enabled: boolean) {
