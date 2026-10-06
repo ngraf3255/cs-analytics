@@ -20,7 +20,7 @@ jobs:
     name: Build and deploy frontend
     runs-on: ubuntu-latest
     env:
-      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://cs-analytics-cwmo.onrender.com' }}
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://api.csgooner.com' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

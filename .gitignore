@@ -10,3 +10,6 @@ node_modules/
 
 # personal app exports (python/export_app_tableau.py)
 tableau/app/
+
+# Homelab secrets (copy from deploy/homelab/.env.example)
+deploy/homelab/.env

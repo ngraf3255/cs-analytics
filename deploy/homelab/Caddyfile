@@ -1,0 +1,18 @@
+# TLS termination for api.csgooner.com when the VM has public 80/443.
+# Prefer Cloudflare Tunnel (compose profile "tunnel") as the default edge —
+# grey-cloud A records expose the home WAN IP and need DDNS on residential links.
+# Use this Caddy service only as a fallback for large .dem uploads that exceed
+# Cloudflare proxy limits (Free/Pro ~100 MB).
+#
+# If cloudflared runs in compose, point the tunnel at http://api:8000 (not
+# 127.0.0.1). Host-installed cloudflared uses http://127.0.0.1:8000.
+
+api.csgooner.com {
+	encode gzip
+	reverse_proxy api:8000
+
+	# Allow full-length demos (API default UPLOAD_MAX_BYTES = 1 GiB).
+	request_body {
+		max_size 1GB
+	}
+}

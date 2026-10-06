@@ -1,0 +1,18 @@
+# Optional host-side backup when you prefer systemd over the compose sidecar.
+# Install next to the timer:
+#   sudo cp deploy/homelab/cs-analytics-pg-backup.service \
+#            deploy/homelab/cs-analytics-pg-backup.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now cs-analytics-pg-backup.timer
+#
+# Expects compose project running from /opt/cs-analytics and backups on the
+# named volume (or bind-mount) used by db-backup.
+
+[Unit]
+Description=CS Analytics Postgres pg_dump (homelab)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/cs-analytics
+ExecStart=/usr/bin/docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env run --rm --no-deps db-backup /usr/local/bin/backup-pg.sh
