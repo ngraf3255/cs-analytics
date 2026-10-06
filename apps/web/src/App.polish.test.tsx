@@ -4,6 +4,7 @@ import App from "./App";
 import { advance, installFakeApi } from "./test/fakeApi";
 import meFixture from "./test/fixtures/me.json";
 import matchesFixture from "./test/fixtures/matches.json";
+import summaryPersonal from "./test/fixtures/summary_personal.json";
 import { SteamSection } from "./steam/SteamSection";
 
 const OPTIONS = { maps: ["de_mirage"], weapons: ["ak47"], opening_kill_sides: ["ct", "t"] };
@@ -72,6 +73,55 @@ describe("design review polish", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("home restores the round predictor", () => {
+  beforeEach(() => { vi.useFakeTimers(); window.history.replaceState(null, "", "/"); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
+
+  it("signed-out home: predictor + readout sit above matches chrome", async () => {
+    installFakeApi(appRoutes());
+    render(<App />);
+    await advance();
+    const predictor = document.getElementById("predictor") as HTMLElement;
+    expect(predictor).toHaveClass("workspace");
+    expect(within(predictor).getByText("READOUT")).toBeInTheDocument();
+    expect(within(predictor).getByRole("button", { name: /Predict/ })).toBeInTheDocument();
+    const matches = screen.getByRole("region", { name: "Your CS2 matches" });
+    expect(predictor.compareDocumentPosition(matches) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Model / About stay off home
+    expect(screen.queryByText("THE MODEL")).not.toBeInTheDocument();
+    expect(screen.queryByText("HELD-OUT ACCURACY")).not.toBeInTheDocument();
+  });
+
+  it("signed-in home: predictor remains the primary block above matches", async () => {
+    installFakeApi(appRoutes({
+      "GET /steam/status": { status: 200, body: { enabled: true } },
+      "GET /me": { status: 200, body: meFixture },
+      "GET /matches?limit=50&offset=0": { status: 200, body: matchesFixture },
+      "GET /matches/upload?limit=5": { status: 200, body: { jobs: [] } },
+      "GET /steam/sync": { status: 200, body: { ...meFixture.sync, jobs: [] } },
+      "GET /matches/summary": { status: 200, body: summaryPersonal },
+    }));
+    render(<App />);
+    await advance();
+    const predictor = document.getElementById("predictor");
+    expect(predictor).toBeTruthy();
+    expect(predictor!.querySelector(".result-panel")).toBeTruthy();
+    const matches = screen.getByRole("region", { name: "Your CS2 matches" });
+    expect(predictor!.compareDocumentPosition(matches) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Predictor" })).not.toBeInTheDocument(); // page title only on /predict
+  });
+
+  it("/predict still mounts the same workspace", async () => {
+    window.history.replaceState(null, "", "/predict");
+    installFakeApi(appRoutes());
+    render(<App />);
+    await advance();
+    expect(screen.getByRole("heading", { name: "Predictor" })).toBeInTheDocument();
+    expect(document.getElementById("predictor")).toHaveClass("workspace");
+    expect(screen.getByRole("region", { name: "Round winner predictor" })).toHaveAttribute("id", "predictor");
   });
 });
 
