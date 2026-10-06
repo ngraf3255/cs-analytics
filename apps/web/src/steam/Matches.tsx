@@ -283,8 +283,27 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
     try {
       result = await steamApi.postSync();
     } catch (reason) {
-      setNotice({ tone: "error", text: reason instanceof ApiError ? reason.message : "Sync failed." });
       setSyncing(false);
+      // Expected gates from the API (409 not_linked / needs_share_code / already_running, 429 too_soon).
+      if (reason instanceof ApiError && reason.code === "already_running") {
+        // Auto-sync or another tab is mid-run: attach to it instead of looking broken.
+        setNotice({ tone: "ok", text: reason.message });
+        void onMeChange();
+        try {
+          const state = await steamApi.getSync();
+          const active = (state.jobs ?? []).filter(isJobActive).reverse();
+          if (active.length) await followSyncJobs(active, null);
+        } catch {
+          /* notice already explains; status refresh is best-effort */
+        }
+        return;
+      }
+      if (reason instanceof ApiError && (reason.code === "too_soon" || reason.code === "needs_share_code" || reason.code === "not_linked")) {
+        setNotice({ tone: reason.code === "too_soon" ? "ok" : "error", text: reason.message });
+        void onMeChange();
+        return;
+      }
+      setNotice({ tone: "error", text: reason instanceof ApiError ? reason.message : "Sync failed." });
       void onMeChange();
       return;
     }

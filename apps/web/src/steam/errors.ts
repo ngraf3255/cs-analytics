@@ -16,12 +16,12 @@ const MESSAGES: Record<string, string> = {
   auth_code_required: "Paste your Game Authentication Code (ABCD-EFGHI-JKLM) from Valve’s page.",
   share_code_required: "Paste a match sharing code (CSGO-…) or a new Game Authentication Code to update.",
   needs_share_code:
-    "Your authentication code is saved. Add the share code of a match you played (CSGO-…) above to start syncing.",
+    "Add a share code in Account settings after your next match.",
   valve_rate_limited: "Valve is rate-limiting requests. Wait a minute and try again.",
   valve_unavailable: "Valve’s match-history service did not respond. Try again shortly.",
   api_unreachable: "Can’t reach the cs-analytics server. If it was idle it may be waking up; try again in a minute.",
-  not_linked: "Link your Game Authentication Code first.",
-  already_running: "A sync is already running for your account.",
+  not_linked: "Link your match history in Account settings first.",
+  already_running: "A sync is already running.",
   too_soon: "Wait about 30 seconds between syncs.",
   match_not_found: "That match is no longer available.",
   demo_retrieval_not_configured:

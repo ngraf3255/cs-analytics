@@ -114,19 +114,53 @@ describe("Steam sync", () => {
     expect(status).toHaveClass("steam-error");
   });
 
-  it("shows request-level rejections (429 too_soon, 409 already_running)", async () => {
+  it("shows request-level rejections (429 too_soon, 409 already_running / needs_share_code)", async () => {
     installFakeApi(routes({
       "GET /steam/sync": syncState([]),
-      "POST /steam/sync": [{ status: 429, body: { detail: "too_soon" } }, { status: 409, body: { detail: "already_running" } }],
+      "POST /steam/sync": [
+        { status: 429, body: { detail: "too_soon" } },
+        { status: 409, body: { detail: "already_running" } },
+        { status: 409, body: { detail: "needs_share_code" } },
+      ],
     }));
     render(<Matches me={linkedMe} onMeChange={async () => undefined} />);
     await advance();
     fireEvent.click(syncButton());
     await advance();
-    expect(screen.getByRole("status")).toHaveTextContent("Wait about 30 seconds between syncs.");
+    const tooSoon = screen.getByRole("status");
+    expect(tooSoon).toHaveTextContent("Wait about 30 seconds between syncs.");
+    expect(tooSoon).toHaveClass("steam-notice");  // expected gate, not a failure
     fireEvent.click(syncButton());
     await advance();
-    expect(screen.getByRole("status")).toHaveTextContent("A sync is already running for your account.");
+    const running = screen.getByRole("status");
+    expect(running).toHaveTextContent("A sync is already running.");
+    expect(running).toHaveClass("steam-notice");
+    fireEvent.click(syncButton());
+    await advance();
+    const share = screen.getByRole("status");
+    expect(share).toHaveTextContent("Add a share code in Account settings after your next match.");
+    expect(share).toHaveClass("steam-error");
+  });
+
+  it("on 409 already_running attaches to active sync jobs instead of failing", async () => {
+    const running = job(first, { status: "processing", stage: "downloading", progress: 0.4, queue_position: null });
+    installFakeApi(routes({
+      "GET /steam/sync": [
+        syncState([]),  // mount
+        syncState([running]),  // after 409: attach
+        syncState([finalFirst], 0),
+      ],
+      "POST /steam/sync": { status: 409, body: { detail: "already_running" } },
+    }));
+    render(<Matches me={linkedMe} onMeChange={async () => undefined} />);
+    await advance();
+    fireEvent.click(syncButton());
+    await advance();
+    expect(screen.getByRole("status")).toHaveTextContent("A sync is already running.");
+    expect(syncButton()).toHaveTextContent("MATCH 1/1 · DOWNLOADING 40%");
+    expect(syncButton()).toBeDisabled();
+    await advance(POLL_MS);
+    expect(screen.getByRole("status")).toHaveTextContent(/Imported|up to date/i);
   });
 
   it("reports an up-to-date sync and a partial one (sync more)", async () => {
