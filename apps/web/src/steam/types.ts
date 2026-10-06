@@ -101,6 +101,7 @@ export type MatchSummary = {
    * "parser_updated" (e.g. warmup / knife rounds may still be counted). The server doesn't keep
    * demos, so the fix is always to upload the same demo again. Missing from older APIs. */
   outdated?: { reason: "players_not_recorded" | "parser_updated" | string; fix: "reupload" | string } | null;
+  degraded?: { reason: string; detail?: string } | null;
 };
 
 /** A demo being imported in the background: a manual upload (POST /matches/upload) or one match

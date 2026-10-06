@@ -42,6 +42,11 @@ function MatchRow({
             OUTDATED
           </span>
         )}
+        {match.degraded && (
+          <span className="source-tag outdated-tag" title={match.degraded.detail ?? "Parse incomplete (PacketEntities skips)"}>
+            DEGRADED
+          </span>
+        )}
         {!imported && <span className="source-tag stub-tag">NOT IMPORTED</span>}
       </span>
       <span className="match-score" title={imported ? score?.detail : undefined}>
