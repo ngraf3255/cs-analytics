@@ -12,7 +12,7 @@ type Prediction = {
   probabilities: { ct: number; t: number };
 };
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "/api" : "https://api.csgooner.com")).replace(/\/$/, "");
+const apiBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "/api" : "https://api-site.csgooner.com")).replace(/\/$/, "");
 
 function App() {
   const [options, setOptions] = useState<Options | null>(null);

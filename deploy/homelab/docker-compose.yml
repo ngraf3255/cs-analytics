@@ -1,17 +1,16 @@
-# Homelab: FastAPI + Postgres on one Proxmox VM (2 vCPU / 8 GB).
-# Postgres is NOT published on the public internet — only on the compose network
-# (and optionally 127.0.0.1 for local admin). Prefer Cloudflare Tunnel in front
-# of the API (profile "tunnel"); Caddy on the VM (profile "edge") is a fallback
-# when you need grey-cloud DNS for large uploads. See docs/deploy-homelab.md.
+# Homelab: FastAPI + Postgres on one Proxmox VM (4 vCPU / ~6 GB RAM, 5.7 GiB usable).
+# Current VM: counterstrike (192.168.4.54, headless Debian 13).
+# Public API: https://api-site.csgooner.com via Cloudflare Tunnel. cloudflared
+# runs on the HOST as a systemd service (dashboard install script), and its
+# public-hostname service is http://localhost:8000, so the api service MUST stay
+# published on 127.0.0.1:8000. The compose cloudflared sidecar (profile
+# "tunnel") is NOT used. Caddy (profile "edge") is a grey-cloud fallback only.
+# Postgres is never public: compose network + 127.0.0.1 only.
+# See docs/deploy-homelab.md.
 #
-# From the repository root on the VM:
+# From the repository root on the VM (no --profile flags):
 #   cp deploy/homelab/.env.example deploy/homelab/.env   # edit secrets
-#   docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d
-#   docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env --profile tunnel up -d
-#
-# Placeholders (replace before go-live if not using a tunnel):
-#   HOMELAB_PUBLIC_IP  — home WAN IP for Cloudflare A record + DDNS
-#   HOMELAB_VM_LAN_IP  — Proxmox VM LAN IP if you port-forward 443 to this host
+#   docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d --build
 
 name: cs-analytics-homelab
 
@@ -49,14 +48,15 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-csgooners}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-csgooners}
       # Compose overrides keep CORS / public URLs consistent with production.
-      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.csgooner.com}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api-site.csgooner.com}
       FRONTEND_URL: ${FRONTEND_URL:-https://csgooner.com}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://csgooner.com,https://www.csgooner.com,http://localhost:5173,http://127.0.0.1:5173}
       UPLOAD_JOB_DIR: /var/lib/csa/upload-jobs
       PORT: "8000"
     volumes:
       - csa-upload-jobs:/var/lib/csa/upload-jobs
-    # API listens on the VM loopback; Tunnel / Caddy / shared lab proxy fronts HTTPS.
+    # Host cloudflared (systemd) -> http://localhost:8000 reaches the API here.
+    # Keep it on loopback; do not change to 0.0.0.0 / "8000:8000".
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -101,9 +101,10 @@ services:
     networks:
       - csa
 
-  # Recommended default edge: Cloudflare Tunnel (no open 80/443, survives WAN IP churn).
-  # Create a tunnel in the Cloudflare Zero Trust dashboard, set the public hostname
-  # api.csgooner.com → http://api:8000, then put the token in .env and:
+  # NOT USED on counterstrike: cloudflared runs on the host as a systemd service.
+  # Do not start this profile alongside it (it would add a second connector).
+  # Only for a stack without host cloudflared: tunnel public hostname
+  # api-site.csgooner.com -> http://api:8000, token in .env, then:
   #   docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env --profile tunnel up -d
   cloudflared:
     profiles: ["tunnel"]

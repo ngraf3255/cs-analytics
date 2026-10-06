@@ -3,7 +3,8 @@
 #   - venv at /opt/cs-analytics/.venv
 #   - Postgres on localhost (same VM), listening on 127.0.0.1 only
 #   - secrets in /etc/cs-analytics/api.env (mode 0600)
-#   - reverse proxy (Caddy/nginx) or tunnel fronts https://api.csgooner.com → 127.0.0.1:8000
+#   - host cloudflared (tunnel -> http://localhost:8000) or Caddy/nginx fronts
+#     https://api-site.csgooner.com -> 127.0.0.1:8000
 #
 # Install:
 #   sudo cp deploy/homelab/cs-analytics-api.service /etc/systemd/system/
@@ -29,7 +30,7 @@ ExecStartPre=/opt/cs-analytics/.venv/bin/python -m steamlink.migrate --if-config
 ExecStart=/opt/cs-analytics/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips='*'
 Restart=on-failure
 RestartSec=5
-# Demo parse child can use a lot of file-backed memory; leave headroom on 8 GB VM.
+# Demo parse child can use a lot of file-backed memory; leave headroom on the ~6 GB (5.7 GiB usable) VM.
 LimitNOFILE=65535
 
 [Install]

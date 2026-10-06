@@ -49,7 +49,7 @@ class Settings:
     database_url: str | None = None
     token_encryption_keys: list[str] = field(default_factory=list)
     session_secret: str | None = None
-    # Public base URL of this API, e.g. https://api.csgooner.com. Used for the
+    # Public base URL of this API, e.g. https://api-site.csgooner.com. Used for the
     # OpenID realm and the exact return URL.
     public_api_url: str | None = None
     # Where to send the browser after login, e.g. https://csgooner.com.
