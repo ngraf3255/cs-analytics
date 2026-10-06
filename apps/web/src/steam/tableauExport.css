@@ -1,10 +1,13 @@
-/* Export for Tableau: what each file holds (with row counts) before downloading. */
-.export-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
-.export-option{border:1px solid #27313a;background:#0b1015;padding:10px 12px;display:grid;gap:6px;align-content:start}
-.export-option strong{font:700 15px 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.03em}
-.export-option strong small{font:10px 'DM Mono',monospace;color:var(--label-dim);text-transform:none;letter-spacing:0}
-.export-option p{margin:0;font-size:12px;line-height:1.5;color:#9aa4ab}
-.export-option .ghost-button{justify-self:start;min-height:38px}
-.tableau-export-buttons{align-items:center}
-.export-guide{font:11px 'DM Mono',monospace;color:var(--acid);text-decoration:underline;text-underline-offset:2px}
-@media(max-width:640px){.export-option .ghost-button,.tableau-export-buttons .ghost-button{justify-self:stretch;width:100%}}
+/* Export for Tableau: a ⋮ trigger; actions live in the menu only. */
+.tableau-export{position:relative;display:inline-flex;align-items:center;justify-self:end;border-top:0;padding-top:0;gap:0}
+.summary-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:22px}
+.summary-heading .section-kicker{margin:0}
+.export-menu-trigger{width:32px;height:32px;padding:0;border:1px solid transparent;background:transparent;color:#8b969e;font:700 18px/1 'DM Mono',monospace;letter-spacing:0;cursor:pointer;border-radius:2px}
+.export-menu-trigger:hover:not(:disabled),.export-menu-trigger[aria-expanded="true"]{border-color:#3a454f;color:var(--acid);background:#0b1015}
+.export-menu-trigger:disabled{opacity:.55;cursor:progress}
+.export-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:5;min-width:168px;display:grid;gap:0;padding:4px;border:1px solid #27313a;background:#0b1015;box-shadow:0 10px 28px #0008}
+.export-menu-item{display:block;width:100%;text-align:left;border:0;background:transparent;color:#c0c8cd;font:500 11px 'DM Mono',monospace;padding:9px 11px;cursor:pointer;text-decoration:none}
+.export-menu-item:hover:not(:disabled),.export-menu-item:focus-visible{background:#151f25;color:#f1f4ed;outline:none}
+.export-menu-item:disabled{opacity:.5;cursor:not-allowed}
+.export-menu-item.export-guide{color:var(--acid);border-top:1px solid #27313a;margin-top:2px;padding-top:10px;font-size:10px;text-decoration:none}
+.export-status{position:absolute;top:calc(100% + 4px);right:0;z-index:4;min-width:200px;max-width:min(320px,70vw);white-space:normal}
