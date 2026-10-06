@@ -126,7 +126,7 @@ export function MatchListError({ message, onRetry }: { message: string; onRetry:
   return (
     <div className="match-list-error" role="alert">
       <p className="steam-error" style={{ margin: 0 }}>{message}</p>
-      <button type="button" className="ghost-button" onClick={onRetry}>TRY AGAIN</button>
+      <button type="button" className="ghost-button" onClick={onRetry}>Try again</button>
     </div>
   );
 }
