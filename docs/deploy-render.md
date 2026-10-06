@@ -2,7 +2,8 @@
 
 > **Not the chosen baseline.** Live deploy is the homelab VM (API + Postgres
 > together): see [`docs/deploy-homelab.md`](deploy-homelab.md). This page stays
-> as the old Render path / reference.
+> as the old Render path / reference. `api.csgooner.com` below is the Render
+> hostname only. The homelab API is **`api-site.csgooner.com`**.
 
 `render.yaml` is a Render Blueprint for the prediction API
 (`csgooners-prediction-api`) plus a managed PostgreSQL (`csgooners-db`). The

@@ -3,7 +3,8 @@
 #   - venv at /opt/cs-analytics/.venv
 #   - Postgres on localhost (same VM), listening on 127.0.0.1 only
 #   - secrets in /etc/cs-analytics/api.env (mode 0600)
-#   - reverse proxy (Caddy/nginx) or tunnel fronts https://api.csgooner.com → 127.0.0.1:8000
+#   - host cloudflared (tunnel -> http://localhost:8000) or Caddy/nginx fronts
+#     https://api-site.csgooner.com -> 127.0.0.1:8000
 #
 # Install:
 #   sudo cp deploy/homelab/cs-analytics-api.service /etc/systemd/system/

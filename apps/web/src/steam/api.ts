@@ -3,7 +3,7 @@ import type { AutoSync, MatchAccess, MatchesAnalytics, MatchReport, MatchSummary
 
 const apiBase = (
   import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.DEV ? "/api" : "https://api.csgooner.com")
+  (import.meta.env.DEV ? "/api" : "https://api-site.csgooner.com")
 ).replace(/\/$/, "");
 
 async function request<T>(path: string, init: RequestInit = {}, mutating = false): Promise<T> {

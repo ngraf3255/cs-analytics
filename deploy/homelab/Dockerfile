@@ -31,5 +31,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT:-8000}/health" || exit 1
 
 # --proxy-headers + forwarded-allow-ips: trust X-Forwarded-* from Caddy / shared
-# lab proxy / cloudflared on the compose network (api is not published publicly).
+# lab proxy / host cloudflared via the 127.0.0.1:8000 publish (never public).
 CMD ["sh", "-c", "python -m steamlink.migrate --if-configured && exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
