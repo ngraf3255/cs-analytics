@@ -397,7 +397,7 @@ function EmptyMatches({ linked, relink, awaitingShare, uploading, canSync, steam
               : relink
                 ? "Sync is paused until you update your code in Account settings."
                 : awaitingShare
-                  ? "Your authentication code is saved. After your next match, add its share code in Account settings."
+                  ? "Add a share code in Account settings after your next match."
                 : "Press Sync matches above. We import the match you linked with and your newer Competitive, Premier and Wingman matches; each one downloads and parses in the background."}
           </p>
         </div>

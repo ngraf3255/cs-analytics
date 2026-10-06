@@ -22,7 +22,7 @@ function renderAccount(account: Me) {
   return onChange;
 }
 
-const toggle = () => screen.getByRole("switch", { name: /Sync new matches automatically/ }) as HTMLInputElement;
+const toggle = () => screen.getByRole("switch", { name: /Auto-sync new matches/ }) as HTMLInputElement;
 
 beforeEach(() => {
   vi.spyOn(Date, "now").mockReturnValue(SYNCED + 5 * 60_000);  // five minutes after the automatic sync
