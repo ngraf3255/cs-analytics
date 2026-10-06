@@ -28,7 +28,7 @@ describe("round predictor form", () => {
     const calls = api.calls.filter((c) => c.method === "POST" && c.path === "/predict");
     expect(calls).toHaveLength(1);
     expect(calls[0].body).toEqual({ map_name: "de_mirage", opening_kill_side: "ct", opening_kill_seconds: 8, opening_weapon: "awp" });
-    expect(screen.getByText("PREDICTION READY")).toBeInTheDocument();
+    expect(screen.getByText("Winner")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /AWP pick/ })).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -36,7 +36,7 @@ describe("round predictor form", () => {
     const api = installFakeApi(routes());
     render(<App />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /PREDICT ROUND WINNER/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Predict/ }));
     await advance(400);
     expect(api.count("POST /predict")).toBe(1);
     fireEvent.click(screen.getByRole("button", { name: "30s" }));

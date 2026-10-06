@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useHashScroll, useMe, useSteamStatus } from "./hooks";
 import { Matches } from "./Matches";
+import { MatchesTeaser } from "./MatchesTeaser";
 import { SteamAccount } from "./SteamAccount";
 
 function loginFailureReason(): string | null {
@@ -32,8 +33,7 @@ export function SteamSection() {
   return (
     <section id="matches" className="steam-section" aria-label="Your CS2 matches">
       <div className="info-intro">
-        <span className="section-kicker">YOUR MATCHES</span>
-        <h2>Your rounds.<br /><em>Model in hindsight.</em></h2>
+        <h2>Your rounds</h2>
       </div>
       {!enabled ? (
         <ComingSoon reachable={reachable} />
@@ -49,6 +49,8 @@ export function SteamSection() {
               canSync={steam && !isGuest} steamAvailable={steam}
               initialFile={pendingFile} onInitialFile={() => setPendingFile(null)} />
           )}
+          {/* signed out: show what a report looks like, not just a sign-in card */}
+          {!me && <MatchesTeaser />}
         </>
       )}
     </section>
