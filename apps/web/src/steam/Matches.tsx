@@ -6,6 +6,7 @@ import { kdText, matchDate, outdatedText, resultText } from "./format";
 import { MatchList, MatchListError, MatchListLoading } from "./MatchList";
 import { OpeningDuels, RoundTimeline } from "./MatchDetail";
 import { MatchesSummaryPanel } from "./MatchesSummary";
+import { FirstRunSteps, LinkHistoryTip } from "./Onboarding";
 import { ACCOUNT_PATH } from "./routes";
 import { ShareButton } from "./ShareButton";
 import { matchCard } from "./shareCard";
@@ -402,6 +403,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
           {listError && (
             <MatchListError message={listError} onRetry={() => { setListReady(false); void loadMatches(); }} />
           )}
+          {canSync && !linked && <LinkHistoryTip />}
           <MatchList matches={matches} selected={selected} onSelect={setSelected}>
             {(match) => <MatchReportView matchId={match.id} cache={reports.current} />}
           </MatchList>
@@ -421,6 +423,7 @@ function EmptyMatches({ linked, relink, awaitingShare, uploading, canSync, steam
   return (
     <div className="empty-matches" aria-label="No matches yet">
       <p className="steam-muted">No imported matches yet.</p>
+      {canSync && <FirstRunSteps linked={linked} relink={relink} awaitingShare={awaitingShare} />}
       <div className="empty-options">
         <div className={`empty-option ${canSync ? "" : "soft-disabled"}`}>
           <span className="section-kicker">{canSync || steamAvailable ? "SYNC FROM STEAM" : "SYNC FROM STEAM · COMING SOON"}</span>
