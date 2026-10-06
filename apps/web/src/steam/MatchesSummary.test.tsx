@@ -45,7 +45,7 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     expect(tiles).toHaveTextContent("MODEL HIT RATE88%52 of 59 rounds · opening-kill side 86%");
     expect(tiles).toHaveTextContent("BRIER SCORE0.133Lower is better · coin flip 0.25");
     expect(tiles).toHaveTextContent("CT / T ROUNDS56% / 44%CT side won 34 of 61");
-    expect(tiles).toHaveTextContent("OPENING KILL WINS86%Round won by the side with the first kill · CT 90% · T 82%");
+    expect(tiles).toHaveTextContent("OPENING KILL WINS86%CT 90% · T 82%");
     expect(panel()).toHaveTextContent(
       "Last 4 matches: the model’s favourite won 88% of scored rounds. Import more than 10 matches to see a trend.");
 

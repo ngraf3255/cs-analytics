@@ -45,10 +45,10 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const tiles = within(panel()).getByLabelText("Your stats");
-    expect(tiles).toHaveTextContent("ROUNDS WON54%13 of 24 · 1 match: 1 W · 0 L");
+    expect(tiles).toHaveTextContent("ROUNDS WON54%13/24 rounds · 1W 0L");
     expect(tiles).toHaveTextContent("AS CT / AS T75% / 33%CT 9/12 · T 4/12 rounds won");
-    expect(tiles).toHaveTextContent("K/D1.7129 K / 17 D · 1.21 per round · survived 29%");
-    expect(tiles).toHaveTextContent("OPENING DUELS100%Won 4 of 4 · round won 75% after your opening kill, — after dying first");
+    expect(tiles).toHaveTextContent("K/D1.7129 K / 17 D · survived 29%");
+    expect(tiles).toHaveTextContent("OPENING DUELS100%Won 4/4 · rounds 75% after OK · — after OD");
     expect(panel()).toHaveTextContent("Your last 1 match: 1–0, 54% of rounds won, K/D 1.71.");
     expect(rows("Your maps").map(cells)).toEqual([["mirage", "1 (1–0)", "24", "54%", "75% (9/12)", "33% (4/12)", "1.71"]]);
     expect(rows("Your recent matches").map(cells)).toEqual([
@@ -103,7 +103,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     fireEvent.click(screen.getByRole("button", { name: /24 rounds/ }));
     await advance();
     const header = screen.getByLabelText("Match summary");
-    expect(header).toHaveTextContent("YOUWon 13–11Started T, then CT · 29 K / 17 D (K/D 1.71) · won 13 of 24 rounds");
+    expect(header).toHaveTextContent("YOUWon 13–11Started T, then CT · 29 K / 17 D");
     expect(header).toHaveTextContent(`DATE${day(FACEIT.imported_at)}Added (no match date in the demo)`);
     const table = screen.getByRole("table", { name: "Rounds" });
     expect(within(table).getAllByRole("columnheader").map((c) => c.textContent)).toEqual(
