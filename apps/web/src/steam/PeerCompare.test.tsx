@@ -25,6 +25,13 @@ describe("compare to peers (your lobbies)", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("unexpected body (e.g. an older API answering with something else): nothing, no crash", async () => {
+    installFakeApi({ "GET /matches/peers": { status: 200, body: { match: { id: "peers" } } } });
+    const { container } = render(<PeerCompare refreshKey={1} />);
+    await advance();
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("overall percentile and gaps, then per map", async () => {
     installFakeApi({ "GET /matches/peers": { status: 200, body } });
     render(<PeerCompare refreshKey={1} />);

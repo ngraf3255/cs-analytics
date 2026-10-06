@@ -27,9 +27,10 @@ export function PeerCompare({ refreshKey }: { refreshKey: number }) {
   const [data, setData] = useState<PeerComparison | null>(null);
   const [map, setMap] = useState<string>("__all");
 
+  // Older API without /matches/peers (or any unexpected body): render nothing rather than crash the page.
   useEffect(() => {
     let cancelled = false;
-    steamApi.getPeers().then((body) => { if (!cancelled) setData(body); }).catch(() => undefined);
+    steamApi.getPeers().then((body) => { if (!cancelled && body?.overall && Array.isArray(body.maps)) setData(body); }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [refreshKey]);
 
