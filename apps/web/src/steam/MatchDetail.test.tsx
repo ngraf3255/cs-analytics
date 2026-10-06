@@ -27,12 +27,12 @@ describe("round timeline", () => {
 });
 
 describe("opening duels", () => {
-  it("counts this match's first kills from the rounds and says clutch / economy aren't recorded", () => {
+  it("counts this match's first kills from the rounds (no clutch/economy footnote)", () => {
     render(<OpeningDuels report={personal} />);
     const tiles = screen.getByLabelText("Opening duels");
     const you = personal.you as { opening_kills: number; opening_deaths: number };
     expect(tiles).toHaveTextContent(`${you.opening_kills} W · ${you.opening_deaths} L`);
     expect(tiles).toHaveTextContent("FIRST KILL → ROUND");
-    expect(screen.getByText("Clutches and economy aren’t recorded yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/Clutches and economy/)).toBeNull();
   });
 });

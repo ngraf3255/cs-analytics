@@ -76,10 +76,6 @@ export function PeerCompare({ refreshKey }: { refreshKey: number }) {
           })}
         </tbody>
       </table>
-      <p className="steam-muted peer-note">
-        Peers are the other players in your own imported matches. Matchmaking groups similar skill, but ranks aren’t stored, so this isn’t a same-rank comparison.
-        Percentiles need {data.min_peer_lines}+ peer player-matches.
-      </p>
     </section>
   );
 }

@@ -73,7 +73,7 @@ describe("matches parsed by an older version: re-upload to update", () => {
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const panel = screen.getByRole("region", { name: "Across your matches" });
-    expect(within(panel).getByLabelText("Previous matches summary")).toHaveTextContent("MATCHES342 rounds · 40 scored · 1 to re-upload");
+    expect(within(panel).getByLabelText("Previous matches summary")).toHaveTextContent("MATCHES3");
     const note = within(panel).getByRole("note");
     expect(note).toHaveTextContent(/^1 match marked OUTDATED — re-upload that demo\.$/);  // the tag's tooltip explains why
     expect(note).not.toHaveTextContent(/warmup|knife|counted as stored/i);

@@ -63,12 +63,10 @@ describe("demo upload", () => {
 
     await act(() => xhr.respond(202, { job: job(queued, { queue_position: 1 }) }));
     expect(screen.getByText("QUEUED…")).toBeInTheDocument();
-    expect(screen.getByText(/Waiting for 1 other demo to finish first/)).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
 
     await advance(POLL_MS);
     expect(screen.getByText("UNPACKING 42%")).toBeInTheDocument();
-    expect(screen.getByText(/Unpacking the \.bz2 archive on the server/)).toBeInTheDocument();
     await advance(POLL_MS);
     expect(screen.getByText("PARSING…")).toBeInTheDocument();
     await advance(POLL_MS);
@@ -82,7 +80,7 @@ describe("demo upload", () => {
     // the list is reloaded and the new match's report is opened
     expect(screen.getByText("UPLOADED")).toBeInTheDocument();
     expect(api.count(`GET /matches/${MATCH_ID}`)).toBe(1);
-    expect(screen.getByText(/9 of 10 rounds could be scored/)).toBeInTheDocument();
+    expect(screen.queryByText(/rounds could be scored/)).toBeNull();
 
     // no more polling once the job is done
     await advance(POLL_MS * 3);
@@ -158,7 +156,7 @@ describe("demo upload", () => {
     await act(() => FakeXHR.last().respond(200, { job: { ...done, created: false } }));
     await advance();
     expect(screen.getByRole("status")).toHaveTextContent("That demo is already in your matches. Opening its report.");
-    expect(screen.getByText(/9 of 10 rounds could be scored/)).toBeInTheDocument();
+    expect(screen.queryByText(/rounds could be scored/)).toBeNull();
   });
 
   it("resumes following a running parse after a page reload", async () => {

@@ -45,24 +45,24 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const tiles = within(panel()).getByLabelText("Your stats");
-    expect(tiles).toHaveTextContent("ROUNDS WON54%13/24 rounds · 1W 0L");
-    expect(tiles).toHaveTextContent("AS CT / AS T75% / 33%CT 9/12 · T 4/12 rounds won");
-    expect(tiles).toHaveTextContent("K/D1.7129 K / 17 D · survived 29%");
-    expect(tiles).toHaveTextContent("OPENING DUELS100%Won 4/4 · rounds 75% after OK · — after OD");
-    expect(panel()).toHaveTextContent("Your last 1 match: 1–0, 54% of rounds won, K/D 1.71.");
+    expect(tiles).toHaveTextContent("ROUNDS WON54%");
+    expect(tiles).toHaveTextContent("AS CT / AS T75% / 33%");
+    expect(tiles).toHaveTextContent("K/D1.71");
+    expect(tiles).toHaveTextContent("OPENING DUELS100%");
+    expect(panel()).not.toHaveTextContent("Your last 1 match");
     expect(rows("Your maps").map(cells)).toEqual([["mirage", "1 (1–0)", "24", "54%", "75% (9/12)", "33% (4/12)", "1.71"]]);
     expect(rows("Your recent matches").map(cells)).toEqual([
       [`Added ${day(FACEIT.imported_at, { month: "short", day: "numeric" })}`, "mirage", "Won 13–11", "T", "13 of 24", "29 / 17"],
     ]);
-    expect(panel()).toHaveTextContent("Not in your stats: 2 demos you’re not in (e.g. pro matches).");
+    expect(panel()).not.toHaveTextContent("Not in your stats");
     // The all-player numbers stay, labelled, below the personal ones.
     expect(panel()).toHaveTextContent("ALL PLAYERS IN THESE DEMOS · MAP SIDES");
     const all = within(panel()).getByLabelText("Previous matches summary");
-    expect(all).toHaveTextContent("MATCHES342 rounds · 40 scored");  // FACEIT: 24 rounds, the knife round left out
-    expect(all).toHaveTextContent("CT / T ROUNDS60% / 40%CT side won 25 of 42");
+    expect(all).toHaveTextContent("MATCHES3");  // FACEIT: 24 rounds, the knife round left out
+    expect(all).toHaveTextContent("CT / T ROUNDS60% / 40%");
     const you = within(panel()).getByLabelText("Your stats");
     expect(you.compareDocumentPosition(all) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(panel()).toHaveTextContent("“You” uses the side your SteamID played each round (halftime swap included).");
+    expect(panel()).not.toHaveTextContent("“You” uses the side");
     expect(panel()).not.toHaveTextContent("your own team isn’t tracked yet");
   });
 
@@ -71,9 +71,8 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     expect(within(panel()).queryByLabelText("Your stats")).not.toBeInTheDocument();
-    expect(panel()).toHaveTextContent(
-      "You (SteamID 76561198000000001) aren’t in any of these demos yet, so there are no personal stats. Left out: 2 demos you’re not in (e.g. pro matches). The numbers below cover all players.");
-    expect(within(panel()).getByLabelText("Previous matches summary")).toHaveTextContent("MATCHES226 rounds");
+    expect(panel()).not.toHaveTextContent("aren’t in any of these demos");
+    expect(within(panel()).getByLabelText("Previous matches summary")).toHaveTextContent("MATCHES2");
   });
 
   it("summary from an older API (no 'you'): no personal section, the old note", async () => {
@@ -82,7 +81,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     await advance();
     expect(within(panel()).queryByLabelText("Your stats")).not.toBeInTheDocument();
     expect(panel()).not.toHaveTextContent("ALL PLAYERS IN THESE DEMOS");
-    expect(panel()).toHaveTextContent("your own team isn’t tracked yet");
+    expect(panel()).not.toHaveTextContent("your own team isn’t tracked yet");
   });
 
   it("match list: played date when Valve gave one, else 'Added' + the import date", async () => {
@@ -103,7 +102,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     fireEvent.click(screen.getByRole("button", { name: /24 rounds/ }));
     await advance();
     const header = screen.getByLabelText("Match summary");
-    expect(header).toHaveTextContent("YOUWon 13–11Started T, then CT · 29 K / 17 D");
+    expect(header).toHaveTextContent("YOUWon 13–1129 K / 17 D");
     expect(header).toHaveTextContent(`DATE${day(FACEIT.imported_at)}Added (no match date in the demo)`);
     const table = screen.getByRole("table", { name: "Rounds" });
     expect(within(table).getAllByRole("columnheader").map((c) => c.textContent)).toEqual(
@@ -129,7 +128,8 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     fireEvent.click(screen.getByRole("button", { name: /10 rounds/ }));
     await advance();
     const header = screen.getByLabelText("Match summary");
-    expect(header).toHaveTextContent("YOUNot in this demoYour SteamID isn’t in this match: the stats cover all players.");
+    expect(header).toHaveTextContent("YOUNot in this demo");
+    expect(header).not.toHaveTextContent("Your SteamID isn’t in this match");
     expect(header).toHaveTextContent(`DATE${day(SYNCED_MIRAGE.played_at!)}Played (from Valve)`);
     const table = screen.getByRole("table", { name: "Rounds" });
     expect(within(table).queryByRole("columnheader", { name: "You" })).not.toBeInTheDocument();

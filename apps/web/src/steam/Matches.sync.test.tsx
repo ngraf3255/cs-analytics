@@ -209,7 +209,7 @@ describe("Steam sync", () => {
     await advance();
     expect(syncButton()).toHaveTextContent("MATCH 1/2 · DOWNLOADING 80%");
     expect(syncButton()).toBeDisabled();
-    expect(screen.getByText(/Downloading the match demo from Valve in the background/)).toBeInTheDocument();
+    expect(syncButton()).toHaveTextContent("DOWNLOADING");
     await advance(POLL_MS);
     await advance(POLL_MS);
     expect(screen.getByRole("status")).toHaveTextContent("Imported 1 new match. 1 match was already in your list.");
@@ -220,7 +220,8 @@ describe("Steam sync", () => {
     render(<Matches me={meFixture as Me} onMeChange={async () => undefined} />);
     await advance();
     expect(syncButton()).toBeDisabled();
-    expect(screen.getByText(/Link match history in/)).toBeInTheDocument();
+    expect(document.querySelector(".sync-meta")).toBeNull();
+    expect(screen.getByText(/Link your match history/)).toBeInTheDocument();
   });
 
   it("does not claim 'up to date' when the history walk stopped with an error", async () => {

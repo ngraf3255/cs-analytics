@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { steamApi } from "./api";
-import { ApiError, messageFor } from "./errors";
+import { ApiError } from "./errors";
 import { kdText, resultText } from "./format";
 import { FormTrend } from "./FormTrend";
 import { ShareButton } from "./ShareButton";
@@ -15,43 +15,11 @@ const pct = (rate: number | null | undefined) => (rate == null ? "—" : `${Math
 const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : word.endsWith("ch") ? "es" : "s"}`;
 
-function formLine(form: MatchesAnalytics["recent_form"]): string {
-  const { recent, earlier, hit_rate_change: change } = form;
-  if (!recent.matches) return "";
-  const last = `Last ${plural(recent.matches, "match")}: the model’s favourite won ${pct(recent.hit_rate)} of scored rounds`;
-  if (change == null) return `${last}. Import more than ${form.window} matches to see a trend.`;
-  const points = Math.round(change * 100);
-  const delta = points === 0 ? "no change" : `${points > 0 ? "+" : "−"}${Math.abs(points)} pts`;
-  return `${last}, vs ${pct(earlier.hit_rate)} over the ${plural(earlier.matches, "match")} before (${delta}).`;
-}
 
-function youFormLine(form: YouAnalytics["recent_form"]): string {
-  const { recent, earlier, win_rate_change: change } = form;
-  if (!recent.matches) return "";
-  const r = recent.results;
-  const record = `${r.won}–${r.lost}${r.tied ? `–${r.tied}` : ""}`;
-  const last = `Your last ${plural(recent.matches, "match")}: ${record}, ${pct(recent.win_rate)} of rounds won, K/D ${kdText(recent.kd)}`;
-  if (change == null) return `${last}.`;
-  const points = Math.round(change * 100);
-  const delta = points === 0 ? "no change" : `${points > 0 ? "+" : "−"}${Math.abs(points)} pts`;
-  return `${last}, vs ${pct(earlier.win_rate)} and K/D ${kdText(earlier.kd)} over the ${plural(earlier.matches, "match")} before (${delta}).`;
-}
 
 /** The signed-in player's own numbers (their side each round, from the demo). */
 function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number }) {
-  const left = [
-    you.matches_without_you ? `${plural(you.matches_without_you, "demo")} you’re not in (e.g. pro matches)` : "",
-    you.matches_unknown ? `${plural(you.matches_unknown, "match")} imported before per-player stats (upload ${you.matches_unknown === 1 ? "it" : "them"} again to include)` : "",
-  ].filter(Boolean);
-  if (you.matches === 0) {
-    return (
-      <p className="steam-muted you-empty">
-        You (SteamID {you.steam_id}) aren’t in any of these demos yet, so there are no personal stats.{" "}
-        {left.length ? `Left out: ${left.join("; ")}. ` : ""}The numbers below cover all players.
-      </p>
-    );
-  }
-  const r = you.results;
+  if (you.matches === 0) return null;
   const duels = you.opening_duels;
   const hasDuels = you.maps.some((m) => m.opening_attempt_rate !== undefined);
   return (
@@ -60,27 +28,18 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
       <dl className="report-header summary-tiles you-tiles" aria-label="Your stats">
         <div>
           <dt>ROUNDS WON</dt><dd>{pct(you.win_rate)}</dd>
-          <small title={`${you.won} of ${you.rounds_with_winner} rounds won over ${plural(you.matches, "match")}: ${r.won} won, ${r.lost} lost${r.tied ? `, ${r.tied} tied` : ""}`}>
-            {you.won}/{you.rounds_with_winner} rounds · {r.won}W {r.lost}L{r.tied ? ` ${r.tied}T` : ""}
-          </small>
         </div>
         <div>
           <dt>AS CT / AS T</dt><dd>{pct(you.sides.ct.win_rate)} / {pct(you.sides.t.win_rate)}</dd>
-          <small>CT {you.sides.ct.won}/{you.sides.ct.rounds} · T {you.sides.t.won}/{you.sides.t.rounds} rounds won</small>
         </div>
         <div>
           <dt>K/D</dt><dd>{kdText(you.kd)}</dd>
-          <small title={`${you.kills_per_round ?? "—"} kills per round`}>{you.kills} K / {you.deaths} D · survived {pct(you.survival_rate)}</small>
         </div>
         <div>
           <dt>OPENING DUELS</dt><dd>{pct(duels.win_rate)}</dd>
-          <small title={`Round won ${pct(duels.round_win_rate_after_opening_kill)} after your opening kill (OK), ${pct(duels.round_win_rate_after_opening_death)} after dying first (OD)`}>
-            Won {duels.won}/{duels.taken} · rounds {pct(duels.round_win_rate_after_opening_kill)} after OK · {pct(duels.round_win_rate_after_opening_death)} after OD
-          </small>
         </div>
       </dl>
       <div className="report-actions"><ShareButton card={() => profileCard(you)} label="Share my numbers" /></div>
-      {youFormLine(you.recent_form) && <p className="summary-form">{youFormLine(you.recent_form)}</p>}
       <FormTrend refreshKey={refreshKey} matchCount={you.matches} />
       {you.matches > 0 && <PeerCompare refreshKey={refreshKey} />}
       {you.roles && <RoleBreakdown roles={you.roles} />}
@@ -124,7 +83,6 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
           </tbody>
         </table>
       )}
-      {left.length > 0 && <p className="steam-muted summary-note">Not in your stats: {left.join("; ")}.</p>}
     </div>
   );
 }
@@ -154,12 +112,11 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
   if (!summary) {
     return error ? <p className="steam-muted">Analytics across your matches couldn’t be loaded. {error}</p> : null;
   }
-  const { totals, prediction, sides, opening_kills: opening, maps, recent_form: form } = summary;
+  const { totals, prediction, sides, opening_kills: opening, maps } = summary;
   if (totals.matches === 0) return null;  // the list below says there is nothing yet
   if (totals.imported_matches === 0) {
     return <p className="steam-muted">None of your matches could be analysed yet. Upload their demos to see stats across matches.</p>;
   }
-  const scored = prediction.scored_rounds > 0;
   const calibration = prediction.calibration.filter((bin) => bin.rounds > 0);
   return (
     <section className="summary-panel" aria-label="Across your matches">
@@ -169,26 +126,18 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
       <dl className="report-header summary-tiles" aria-label="Previous matches summary">
         <div>
           <dt>MATCHES</dt><dd>{totals.imported_matches}</dd>
-          <small>
-            {plural(totals.rounds, "round")} · {totals.scored_rounds} scored{totals.not_imported_matches ? ` · ${totals.not_imported_matches} not imported` : ""}
-            {totals.outdated_matches ? ` · ${totals.outdated_matches} to re-upload` : ""}
-          </small>
         </div>
         <div>
           <dt>MODEL HIT RATE</dt><dd>{pct(prediction.hit_rate)}</dd>
-          <small>{scored ? `${prediction.correct} of ${prediction.scored_rounds} rounds · opening-kill side ${pct(prediction.opening_kill_baseline_hit_rate)}` : "No scorable rounds yet"}</small>
         </div>
         <div>
           <dt>BRIER SCORE</dt><dd>{prediction.brier_score == null ? "—" : prediction.brier_score.toFixed(3)}</dd>
-          <small>Lower is better · coin flip {summary.model.coin_flip_brier_score.toFixed(2)}</small>
         </div>
         <div>
           <dt>CT / T ROUNDS</dt><dd>{pct(sides.ct_win_rate)} / {pct(sides.t_win_rate)}</dd>
-          <small>CT side won {sides.ct_won} of {sides.rounds_with_winner}</small>
         </div>
         <div>
           <dt>OPENING KILL WINS</dt><dd>{pct(opening.conversion_rate)}</dd>
-          <small title="Round won by the side with the first kill">CT {pct(opening.by_side.ct.conversion_rate)} · T {pct(opening.by_side.t.conversion_rate)}</small>
         </div>
       </dl>
       {totals.outdated_matches ? (
@@ -196,7 +145,6 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
           {plural(totals.outdated_matches, "match")} marked OUTDATED — re-upload {totals.outdated_matches === 1 ? "that demo" : "those demos"}.
         </p>
       ) : null}
-      {formLine(form) && <p className="summary-form">{formLine(form)}</p>}
       <table className="round-table summary-maps" aria-label="By map">
         <thead><tr><th>Map</th><th>Matches</th><th>Rounds</th><th>CT side won</th><th>Model hit rate</th><th>Brier</th></tr></thead>
         <tbody>
@@ -239,18 +187,7 @@ export function MatchesSummaryPanel({ refreshKey }: { refreshKey: number }) {
             </tbody>
           </table>
         )}
-        {summary.unscored_reasons.length > 0 && (
-          <p className="steam-muted">
-            Unscored rounds: {summary.unscored_reasons.map((r) => `${r.rounds} × ${messageFor(r.reason, r.reason)}`).join(" ")}
-          </p>
-        )}
       </details>
-      <p className="steam-muted summary-note">
-        {summary.you
-          ? "“You” uses the side your SteamID played each round (halftime swap included). The tiles and tables under “All players” count every round of every match by map side (CT / T), including demos you’re not in."
-          : "CT / T are the map sides of everyone in the match; your own team isn’t tracked yet."}{" "}
-        Model numbers are a retrospective estimate, not calibrated for matchmaking.
-      </p>
       <TableauExport matches={totals.imported_matches} rounds={totals.rounds} personalMatches={summary.you?.matches} />
     </section>
   );

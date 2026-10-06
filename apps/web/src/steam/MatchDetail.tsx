@@ -1,5 +1,4 @@
 import type { MatchReport, RoundReport } from "./types";
-import { weaponName } from "./weapons";
 
 const pct = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
 const sideName = (side: string | null | undefined) => (side === "ct" ? "CT" : side === "t" ? "T" : "—");
@@ -61,13 +60,11 @@ export function OpeningDuels({ report }: { report: MatchReport }) {
   const team: Conv = { rounds: 0, converted: 0 };
   const opp: Conv = { rounds: 0, converted: 0 };
   const times: number[] = [];
-  const weapons = new Map<string, number>();
   for (const r of withKill) {
     const side = r.opening_kill!.side as "ct" | "t";
     const won = r.actual_winner === side;
     by[side].rounds += 1; by[side].converted += Number(won);
     if (r.opening_kill!.seconds != null) times.push(r.opening_kill!.seconds);
-    if (r.opening_kill!.weapon) weapons.set(r.opening_kill!.weapon, (weapons.get(r.opening_kill!.weapon) ?? 0) + 1);
     if (r.you) {
       const ours = side === r.you.side;
       const bucket = ours ? team : opp;
@@ -77,7 +74,6 @@ export function OpeningDuels({ report }: { report: MatchReport }) {
   }
   const sorted = [...times].sort((a, b) => a - b);
   const median = sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)] : null;
-  const top = [...weapons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
   const mine = report.you?.status === "in_match" ? report.you : null;
   const myKills = report.rounds.filter((r) => r.you?.opening_kill);
   const myDeaths = report.rounds.filter((r) => r.you?.opening_death);
@@ -88,29 +84,20 @@ export function OpeningDuels({ report }: { report: MatchReport }) {
         {mine && (
           <div>
             <dt>YOUR TEAM FIRST</dt><dd>{team.rounds} of {team.rounds + opp.rounds}</dd>
-            <small>Won {pct(team.converted, team.rounds)} · {pct(opp.converted, opp.rounds)} when they struck first</small>
           </div>
         )}
         {mine && (
           <div>
             <dt>YOUR DUELS</dt><dd>{myKills.length} W · {myDeaths.length} L</dd>
-            <small>
-              {myKills.length + myDeaths.length
-                ? `Won ${pct(myKills.filter((r) => r.you?.won).length, myKills.length)} after OK · ${pct(myDeaths.filter((r) => r.you?.won).length, myDeaths.length)} after OD`
-                : "You didn’t take an opening duel"}
-            </small>
           </div>
         )}
         <div>
           <dt>FIRST KILL → ROUND</dt><dd>{pct(by.ct.converted + by.t.converted, withKill.length)}</dd>
-          <small>CT {by.ct.converted}/{by.ct.rounds} · T {by.t.converted}/{by.t.rounds} converted</small>
         </div>
         <div>
           <dt>TYPICAL TIMING</dt><dd>{median == null ? "—" : `${median.toFixed(0)}s`}</dd>
-          <small>{top.length ? `Median first kill · ${top.map(([w, n]) => `${weaponName(w)} ×${n}`).join(", ")}` : "Median first kill"}</small>
         </div>
       </dl>
-      <p className="steam-muted detail-note">Clutches and economy aren’t recorded yet.</p>
     </div>
   );
 }

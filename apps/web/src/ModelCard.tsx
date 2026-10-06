@@ -79,7 +79,6 @@ export function WhyThisRound({ inputs, ct, weapons }: { inputs: RoundInputs; ct:
           ))}
         </ul>
       )}
-      <p className="steam-muted why-note">Each line changes one input and asks the same model again. The biggest swing is what this estimate rests on most.</p>
     </details>
   );
 }
@@ -99,10 +98,6 @@ export function ModelCard({ maps }: { maps: string[] }) {
           <dd>{maps.length ? maps.map(mapLabel).join(", ") : "Loading…"}</dd>
         </div>
       </dl>
-      <p className="steam-muted model-card-note">
-        Rounds on other maps show as unscored in your reports; covering a new map needs pro rounds on it to retrain with.
-        It doesn’t see economy, utility, positions or player skill, and it isn’t calibrated for matchmaking.
-      </p>
     </div>
   );
 }

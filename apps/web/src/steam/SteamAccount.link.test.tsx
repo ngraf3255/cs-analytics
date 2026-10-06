@@ -239,10 +239,9 @@ describe("match list empty state and paused sync", () => {
     await advance();
     const empty = screen.getByLabelText("No matches yet");
     expect(empty).toHaveTextContent("SYNC FROM STEAM");
-    expect(empty).toHaveTextContent("Optional: link match history in Account settings");
-    for (const link of within(empty).getAllByRole("link", { name: "Account settings" })) expect(link).toHaveAttribute("href", "/account");
+    expect(within(empty).getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/account");
     expect(empty).toHaveTextContent("UPLOAD A DEMO");
-    expect(empty).toHaveTextContent("Any .dem / .dem.bz2 (older matches, FACEIT, pro).");
+    expect(empty.querySelector(".empty-option p")).toBeNull();
     expect(empty).not.toHaveTextContent(/game\/csgo\/replays|Watch → Your Matches/);
     fireEvent.change(screen.getByLabelText("Choose a demo file to upload"), { target: { files: [new File(["demo"], "match.dem")] } });
     const xhr = FakeXHR.last();
@@ -258,8 +257,8 @@ describe("match list empty state and paused sync", () => {
     render(<Matches me={relinkShare} onMeChange={async () => undefined} />);
     await advance();
     expect(screen.getByRole("button", { name: /SYNC MATCHES/ })).toBeDisabled();
-    expect(screen.getByText(/Sync is paused: add a recent share code in/)).toBeInTheDocument();
-    expect(screen.getByLabelText("No matches yet")).toHaveTextContent("Sync is paused until you update your codes in Account settings.");
+    expect(document.querySelector(".sync-meta")).toBeNull();
+    expect(screen.getByLabelText("No matches yet").querySelector(".empty-option p")).toBeNull();
   });
 
   it("auth code saved without a share code: Sync waits for one, uploads still work", async () => {
@@ -267,8 +266,8 @@ describe("match list empty state and paused sync", () => {
     render(<Matches me={awaiting} onMeChange={async () => undefined} />);
     await advance();
     expect(screen.getByRole("button", { name: /SYNC MATCHES/ })).toBeDisabled();
-    expect(document.querySelector(".sync-meta")?.textContent).toBe("Add a share code in Account settings.");
-    expect(screen.getByLabelText("No matches yet")).toHaveTextContent("Add a share code in Account settings after your next match.");
+    expect(document.querySelector(".sync-meta")).toBeNull();
+    expect(screen.getByLabelText("No matches yet").querySelector(".empty-option p")).toBeNull();
     expect(screen.queryByText(/Uploads work now|Your authentication code is saved/)).toBeNull();
     expect(screen.getByLabelText("Choose a demo file to upload")).toBeEnabled();
   });
@@ -279,9 +278,9 @@ describe("match list empty state and paused sync", () => {
     await advance();
     expect(screen.getByRole("button", { name: /SYNC MATCHES/ })).toBeEnabled();
     const empty = screen.getByLabelText("No matches yet");
-    expect(empty).toHaveTextContent("Press Sync matches above.");
+    expect(empty.querySelector(".empty-option p")).toBeNull();
     expect(empty).not.toHaveTextContent(/We import the match/);
-    expect(document.querySelector(".sync-meta")?.textContent).toBe("Not synced yet.");
+    expect(document.querySelector(".sync-meta")).toBeNull();
   });
 });
 

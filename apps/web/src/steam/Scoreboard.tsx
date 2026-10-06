@@ -62,7 +62,6 @@ export function Scoreboard({ report }: { report: MatchReport }) {
           </tbody>
         </table>
       ))}
-      <p className="steam-muted scoreboard-note">Steam names, ranks and damage aren’t in the stored data; open a profile to see who it is. “Played before” counts your other imported matches.</p>
     </section>
   );
 }
