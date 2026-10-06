@@ -44,6 +44,6 @@ describe("compare to peers (your lobbies)", () => {
     expect(won).toHaveTextContent("+5 pts");
     fireEvent.change(screen.getByLabelText("Map to compare"), { target: { value: "de_nuke" } });
     expect(section).toHaveTextContent("Bottom 30% for kills per round");
-    expect(section).toHaveTextContent("ranks aren’t stored");
+    expect(section).not.toHaveTextContent("ranks aren’t stored");
   });
 });

@@ -41,13 +41,12 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     expect(api.count("GET /matches/summary")).toBe(1);  // once per list load, not before it
 
     const tiles = within(panel()).getByLabelText("Previous matches summary");
-    expect(tiles).toHaveTextContent("MATCHES461 rounds · 59 scored");
-    expect(tiles).toHaveTextContent("MODEL HIT RATE88%52 of 59 rounds · opening-kill side 86%");
-    expect(tiles).toHaveTextContent("BRIER SCORE0.133Lower is better · coin flip 0.25");
-    expect(tiles).toHaveTextContent("CT / T ROUNDS56% / 44%CT side won 34 of 61");
-    expect(tiles).toHaveTextContent("OPENING KILL WINS86%CT 90% · T 82%");
-    expect(panel()).toHaveTextContent(
-      "Last 4 matches: the model’s favourite won 88% of scored rounds. Import more than 10 matches to see a trend.");
+    expect(tiles).toHaveTextContent("MATCHES4");
+    expect(tiles).toHaveTextContent("MODEL HIT RATE88%");
+    expect(tiles).toHaveTextContent("BRIER SCORE0.133");
+    expect(tiles).toHaveTextContent("CT / T ROUNDS56% / 44%");
+    expect(tiles).toHaveTextContent("OPENING KILL WINS86%");
+    expect(panel()).not.toHaveTextContent("favourite won");
 
     const maps = within(within(panel()).getByRole("table", { name: "By map" })).getAllByRole("row").slice(1);
     expect(maps.map(cells)).toEqual([
@@ -61,8 +60,8 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     ]);
     const weapons = within(within(panel()).getByRole("table", { name: "Opening weapons" })).getAllByRole("row").slice(1);
     expect(weapons.map((row) => cells(row)[0])).toEqual(["AK-47", "M4A1-S", "AWP", "MAC-10", "USP-S"]);
-    expect(panel()).toHaveTextContent("Unscored rounds: 2 × No opening kill recorded in this round.");
-    expect(panel()).toHaveTextContent("your own team isn’t tracked yet");
+    expect(panel()).not.toHaveTextContent("Unscored rounds:");
+    expect(panel()).not.toHaveTextContent("your own team isn’t tracked yet");
 
     // Above the list of matches.
     const firstMatch = screen.getAllByRole("button", { name: /mirage/i })[0];
@@ -70,12 +69,12 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(4);
   });
 
-  it("recent form compares the last N matches with the ones before", async () => {
+  it("recent form essay is gone (numbers live in tiles / FormTrend)", async () => {
     installFakeApi(routes({ "GET /matches/summary": { status: 200, body: summaryRecent2 } }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    expect(panel()).toHaveTextContent(
-      "Last 2 matches: the model’s favourite won 85% of scored rounds, vs 92% over the 2 matches before (−7 pts).");
+    expect(panel()).not.toHaveTextContent("favourite won");
+    expect(panel()).toHaveTextContent("MODEL HIT RATE");
   });
 
   it("no matches: no panel, just the empty list", async () => {
@@ -108,7 +107,7 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const tiles = within(panel()).getByLabelText("Previous matches summary");
-    expect(tiles).toHaveTextContent("MODEL HIT RATE—No scorable rounds yet");
+    expect(tiles).toHaveTextContent("MODEL HIT RATE—");
     expect(tiles).toHaveTextContent("BRIER SCORE—");
     const row = within(within(panel()).getByRole("table", { name: "By map" })).getAllByRole("row")[1];
     expect(cells(row)).toEqual(["mirage", "1", "10", "20%", "Not scored", "—"]);
@@ -148,8 +147,8 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     await advance();
     expect(api.count("GET /matches/summary")).toBe(2);
     const tiles = within(panel()).getByLabelText("Previous matches summary");
-    expect(tiles).toHaveTextContent("MATCHES110 rounds · 9 scored");
-    expect(tiles).toHaveTextContent("MODEL HIT RATE89%8 of 9 rounds");
-    expect(tiles).toHaveTextContent("CT / T ROUNDS20% / 80%CT side won 2 of 10");
+    expect(tiles).toHaveTextContent("MATCHES1");
+    expect(tiles).toHaveTextContent("MODEL HIT RATE89%");
+    expect(tiles).toHaveTextContent("CT / T ROUNDS20% / 80%");
   });
 });

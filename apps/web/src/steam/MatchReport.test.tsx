@@ -38,15 +38,13 @@ describe("match list and per-round report (real API response shapes)", () => {
     fireEvent.click(item);
     await advance();
     expect(api.count(`GET /matches/${MATCH.id}`)).toBe(1);
-    expect(screen.getByRole("note")).toHaveTextContent("Retrospective estimate, not calibrated for your games.");
-    expect(screen.getByRole("note")).toHaveTextContent(reportFixture.model.note);
-    expect(screen.getByText("9 of 10 rounds could be scored. The model’s favourite won 8 of 9.")).toBeInTheDocument();
-    // header: map, score, date, source
+    // header: map, score, date, source (no essay captions)
     const header = screen.getByLabelText("Match summary");
-    expect(header).toHaveTextContent("MAPmirage10 rounds");
-    expect(header).toHaveTextContent("SCORE8 – 2CT 2 · T 8 (sides at the end)");
+    expect(header).toHaveTextContent("MAPmirage");
+    expect(header).toHaveTextContent("SCORE8 – 2");
+    expect(header).not.toHaveTextContent("sides at the end");
     expect(header).toHaveTextContent(`DATE${new Date(reportFixture.match.imported_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`);
-    expect(header).toHaveTextContent("SOURCEUploadYou uploaded the demo");
+    expect(header).toHaveTextContent("SOURCEUpload");
 
     const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
     expect(rows).toHaveLength(10);
@@ -61,7 +59,8 @@ describe("match list and per-round report (real API response shapes)", () => {
     expect(cells(rows[4])[2]).toBe("CT");
     expect(cells(rows[4])[3]).toMatch(/^T favoured/);
     // round 10: no opening kill -> unscored, reason in plain language
-    expect(cells(rows[9])).toEqual(["10", "—", "T", "Unscored: No opening kill recorded in this round."]);
+    expect(cells(rows[9])).toEqual(["10", "—", "T", "—"]);
+    expect(screen.getByText(/Some rounds unscored/)).toBeInTheDocument();
     expect(rows[9]).toHaveClass("unscored-row");
 
     fireEvent.click(item);  // collapses
@@ -76,8 +75,8 @@ describe("match list and per-round report (real API response shapes)", () => {
     fireEvent.click(screen.getByRole("button", { name: /mirage/i }));
     await advance();
     const header = screen.getByLabelText("Match summary");
-    expect(header).toHaveTextContent("SCORE—Not recorded in this demo");
-    expect(header).toHaveTextContent("SOURCESteam syncFrom your match history");
+    expect(header).toHaveTextContent("SCORE—");
+    expect(header).toHaveTextContent("SOURCESteam sync");
   });
 
   it("shows unavailable / stub matches without a report", async () => {

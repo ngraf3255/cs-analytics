@@ -59,7 +59,7 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     await advance();
     const panel = screen.getByRole("region", { name: "Across your matches" });
     expect(within(panel).getByRole("group", { name: "Export for Tableau" })).toBeInTheDocument();
-    expect(group()).toHaveTextContent("Warmup and knife rounds aren’t included");
+    expect(group()).not.toHaveTextContent("Warmup and knife rounds");
 
     fireEvent.click(within(group()).getByRole("button", { name: "Rounds CSV" }));
     await advance();
@@ -134,7 +134,7 @@ describe("Export for Tableau (GET /matches/export/*.csv)", () => {
     const totals = summaryPersonal.totals;
     expect(group()).toHaveTextContent(`Rounds · ${totals.rounds.toLocaleString()} rows`);
     expect(group()).toHaveTextContent(`Matches · ${totals.imported_matches.toLocaleString()} row`);
-    expect(group()).toHaveTextContent(/The “you_” columns are filled for the 1 match you’re in\./);
+    expect(group()).not.toHaveTextContent(/you_ columns/);
     expect(within(group()).getByRole("link", { name: /How to open them in Tableau/ })).toHaveAttribute("href", expect.stringContaining("tableau/README.md"));
     fireEvent.click(within(group()).getByRole("button", { name: "Download both" }));
     await advance();

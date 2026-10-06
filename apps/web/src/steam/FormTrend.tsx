@@ -38,7 +38,6 @@ export function FormTrend({ refreshKey, matchCount }: { refreshKey: number; matc
       <figcaption className="section-kicker">FORM OVER TIME · LAST {matches.length} MATCHES</figcaption>
       <TrendChart title="Rounds won" unit="%" values={wins} matches={matches} min={0} max={100} reference={50} format={(v) => `${Math.round(v)}%`} />
       <TrendChart title="K/D" unit="" values={kds} matches={matches} min={0} max={Math.max(2, Math.ceil(Math.max(...kds)))} reference={1} format={(v) => kdText(v)} />
-      <p className="steam-muted trend-note">Dots: each match, oldest left (green won, orange lost). Line: {ROLL}-match rolling average. Dashed: 50% / K/D 1.0.</p>
     </figure>
   );
 }

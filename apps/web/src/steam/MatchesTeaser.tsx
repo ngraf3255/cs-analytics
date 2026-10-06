@@ -23,16 +23,11 @@ export function MatchesTeaser() {
       </figcaption>
       <div className="match-report teaser-report" aria-hidden="true">
         <dl className="report-header">
-          <div><dt>MAP</dt><dd>Mirage</dd><small>22 rounds</small></div>
-          <div><dt>SCORE</dt><dd>13 – 9</dd><small>CT 9 · T 13 (sides at the end)</small></div>
-          <div><dt>MODEL HIT RATE</dt><dd>16 / 21</dd><small>favourite won</small></div>
-          <div><dt>YOUR OPENERS</dt><dd>5</dd><small>first kills</small></div>
+          <div><dt>MAP</dt><dd>Mirage</dd></div>
+          <div><dt>SCORE</dt><dd>13 – 9</dd></div>
+          <div><dt>MODEL HIT RATE</dt><dd>16 / 21</dd></div>
+          <div><dt>YOUR OPENERS</dt><dd>5</dd></div>
         </dl>
-        <div className="report-legend">
-          <span><i className="legend actual" /> Actual winner</span>
-          <span><i className="legend model" /> Model estimate</span>
-          <span><i className="legend your-win" /> Your team won</span>
-        </div>
         <table className="round-table">
           <thead>
             <tr><th>Round</th><th>Opening kill</th><th>Actual winner</th><th>Model estimate</th></tr>
@@ -43,7 +38,7 @@ export function MatchesTeaser() {
                 <td>{round.n}</td>
                 <td>{round.opening}</td>
                 <td><span className={`actual-chip ${round.actual}`}>{SIDE[round.actual]}</span></td>
-                <td><span className="model-estimate">{SIDE[round.favoured]} favoured · CT {round.ct}% / T {100 - round.ct}%</span></td>
+                <td><span className="model-estimate">{SIDE[round.favoured]} {round.ct}%</span></td>
               </tr>
             ))}
           </tbody>

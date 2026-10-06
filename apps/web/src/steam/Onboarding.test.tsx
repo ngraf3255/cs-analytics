@@ -34,9 +34,9 @@ describe("first-run onboarding (signed in)", () => {
     expect(steps[0]).toHaveTextContent("Signed in with Steam (done)");
     expect(steps[0].querySelector("p")).toBeNull();
     expect(steps[1]).toHaveTextContent("Link your match history · optional (next)");
-    expect(steps[1]).toHaveTextContent("Paste your codes in Account settings. Or skip and upload.");
-    expect(within(steps[1]).getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/account");
-    expect(steps[2]).toHaveTextContent("Upload a demo below now");
+    expect(steps[1].querySelector("p")).toBeNull();
+    expect(steps[2]).toHaveTextContent("Import your first match");
+    expect(steps[2].querySelector("p")).toBeNull();
   });
 
   it("no matches, linked: the next step is the first import", async () => {
@@ -47,7 +47,7 @@ describe("first-run onboarding (signed in)", () => {
     expect(steps[1]).toHaveTextContent("(done)");
     expect(steps[1].querySelector("p")).toBeNull();
     expect(steps[2]).toHaveTextContent("Import your first match (next)");
-    expect(steps[2]).toHaveTextContent("Press Sync matches above, or upload a demo below.");
+    expect(steps[2].querySelector("p")).toBeNull();
   });
 
   it("no checklist without Steam sync (uploads-only accounts keep the plain empty state)", async () => {
@@ -63,7 +63,8 @@ describe("first-run onboarding (signed in)", () => {
     const { unmount } = render(<Matches me={unlinked} onMeChange={async () => undefined} />);
     await advance();
     const tip = screen.getByRole("complementary", { name: "Tip" });
-    expect(tip).toHaveTextContent("Link match history in Account settings for auto-import.");
+    expect(tip).toHaveTextContent("Link match history");
+    expect(within(tip).getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/account");
     fireEvent.click(within(tip).getByRole("button", { name: "Dismiss tip" }));
     expect(screen.queryByRole("complementary", { name: "Tip" })).toBeNull();
     unmount();

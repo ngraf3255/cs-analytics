@@ -33,7 +33,7 @@ describe("matches found by automatic sync appear without pressing Sync", () => {
     const onMeChange = vi.fn(async () => undefined);
     render(<Matches me={me} onMeChange={onMeChange} />);
     await advance();
-    expect(document.querySelector(".sync-meta")).toHaveTextContent("· auto-sync on");
+    expect(document.querySelector(".sync-meta")).toBeNull();
     expect(api.count("GET /steam/sync")).toBe(1);
     await advance(AUTO_SYNC_WATCH_MS);
     expect(syncButton()).toHaveTextContent("MATCH 1/1 · QUEUED…");
@@ -67,6 +67,6 @@ describe("matches found by automatic sync appear without pressing Sync", () => {
     await advance();
     await advance(AUTO_SYNC_WATCH_MS * 3);
     expect(api.count("GET /steam/sync")).toBe(calls + 1);  // only the on-mount check
-    expect(document.querySelector(".sync-meta")).not.toHaveTextContent("auto-sync on");
+    expect(document.querySelector(".sync-meta")).toBeNull();
   });
 });

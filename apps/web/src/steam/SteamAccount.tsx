@@ -40,7 +40,6 @@ export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onG
           <div className="steam-card">
             <span className="section-kicker">STEAM</span>
             <h3>Connect Steam</h3>
-            <p>Sign in to score your matches.</p>
             <a className="steam-button" href={steamLoginUrl("/#matches")}>
               Sign in through Steam ↗
             </a>
@@ -49,10 +48,6 @@ export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onG
           <div className="steam-card soft-disabled" aria-label="Connect Steam (coming soon)">
             <span className="section-kicker">STEAM SYNC · COMING SOON</span>
             <h3>Connect Steam</h3>
-            <p>
-              Automatic match import from your Steam match history isn’t switched on yet.
-              {guest ? " You can already upload demos and get full round reports." : ""}
-            </p>
             <button type="button" className="steam-button" disabled aria-disabled="true">Sign in through Steam · soon</button>
           </div>
         )}
@@ -87,10 +82,6 @@ function GuestStart({ onGuest }: { onGuest: (me: Me, file?: File) => void }) {
     <div className="steam-card">
       <span className="section-kicker">NO STEAM NEEDED</span>
       <h3>Upload a demo</h3>
-      <p>
-        Drop in any CS2 <code>.dem</code> or <code>.dem.bz2</code> (your replays live in <code>game/csgo/replays</code>)
-        and get a round-by-round report. Your uploads stay tied to this browser.
-      </p>
       <div className="steam-actions">
         <label className={`steam-button upload-button guest-upload ${busy ? "busy" : ""}`} aria-disabled={busy}>
           <span>{busy ? "STARTING…" : "CHOOSE A DEMO FILE"}</span>
@@ -135,10 +126,6 @@ function GuestAccount({ steam, onSignedOut }: { steam: boolean; onSignedOut: () 
     <div className="steam-card">
       <span className="section-kicker">GUEST SESSION</span>
       <h3>Uploading as a guest</h3>
-      <p>
-        Your uploads and reports are tied to this browser for about two weeks. Clearing cookies or signing out ends access to them.
-        {steam ? " Sign in through Steam for a permanent list with automatic match sync (it starts a separate list)." : " Steam sign-in and automatic sync are coming soon."}
-      </p>
       <div className="steam-actions">
         {steam && <a className="steam-button" href={steamLoginUrl("/#matches")}>Sign in through Steam ↗</a>}
         <button type="button" className="ghost-button" onClick={signOut} disabled={busy}>Sign out</button>

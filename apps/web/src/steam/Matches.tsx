@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
 import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob, YouInMatch } from "./types";
-import { kdText, matchDate, outdatedText, resultText } from "./format";
+import { matchDate, outdatedText, resultText } from "./format";
 import { MatchList, MatchListError, MatchListLoading } from "./MatchList";
 import { OpeningDuels, RoundTimeline } from "./MatchDetail";
 import { CoachTips } from "./CoachTips";
@@ -68,13 +68,6 @@ function jobLabel(job: UploadJob | null): string {
   return "PARSING…";
 }
 
-function jobHint(job: UploadJob | null): string {
-  if (job?.status === "queued" && job.queue_position)
-    return `Upload complete. Waiting for ${job.queue_position} other demo${job.queue_position === 1 ? "" : "s"} to finish first.`;
-  if (job?.stage === "decompressing")
-    return "Unpacking the .bz2 archive on the server. This is the slow part: it can take several minutes. Plain .dem files skip it.";
-  return "Upload complete. Parsing the demo and scoring each round in the background. A full match can take a minute or two; you can leave and come back.";
-}
 
 /** Sync button label / hint for the queued matches of a sync (one job per match, worked on in order). */
 function syncJobsLabel(jobs: UploadJob[]): string {
@@ -83,17 +76,6 @@ function syncJobsLabel(jobs: UploadJob[]): string {
   return `MATCH ${Math.min(finished + 1, jobs.length)}/${jobs.length} · ${jobLabel(current)}`;
 }
 
-function syncJobsHint(jobs: UploadJob[]): string {
-  const current = jobs.find((j) => j.status === "processing");
-  const waiting = jobs.find(isJobActive);
-  if (!current && waiting?.queue_position)
-    return `Matches found. Waiting for ${waiting.queue_position} other demo${waiting.queue_position === 1 ? "" : "s"} on the server to finish first.`;
-  if (current?.stage === "downloading" || current?.stage === "locating")
-    return "Downloading the match demo from Valve in the background. You can leave and come back.";
-  if (current?.stage === "decompressing")
-    return "Unpacking Valve’s .bz2 demo on the server. This is the slow part: it can take several minutes per match.";
-  return "Parsing each demo and scoring its rounds in the background. A full match can take a few minutes; you can leave and come back.";
-}
 
 /** How often the page checks for matches the server's automatic sync found. */
 export const AUTO_SYNC_WATCH_MS = 60_000;
@@ -355,7 +337,6 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
   const relink = linked ? me.match_access.needs_relink ?? null : null;
   // Auth code saved, no share code yet: nothing to sync from until they add one after a match.
   const awaitingShare = linked && !relink && !!me.match_access.awaiting_share_code;
-  const lastSync = me.sync.last_finished_at ? new Date(me.sync.last_finished_at).toLocaleString() : null;
 
   return (
     <div className="steam-card">
@@ -371,19 +352,6 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
           <input type="file" accept=".dem,.bz2,application/x-bzip2" disabled={uploading}
             onChange={(event) => { void uploadFile(event.target.files?.[0]); event.target.value = ""; }} />
         </label>
-        <span className="steam-muted sync-meta">
-          {uploading
-            ? upload?.phase === "processing"
-              ? jobHint(upload.job)
-              : "Uploading your demo…"
-            : syncJobs
-              ? syncJobsHint(syncJobs)
-              : !canSync ? `Upload a CS2 .dem / .dem.bz2 to get a round-by-round report.${steamAvailable ? " Sign in through Steam to sync matches automatically." : " Steam sync is coming soon."}`
-              : !linked ? <>Link match history in <a href={ACCOUNT_PATH}>Account settings</a> to sync, or upload a demo.</>
-                : awaitingShare ? <>Add a share code in <a href={ACCOUNT_PATH}>Account settings</a>.</>
-                : relink ? <>Sync is paused: {relink.field === "auth_code" ? "update your authentication code" : "add a recent share code"} in <a href={ACCOUNT_PATH}>Account settings</a>.</>
-                : syncing ? "Checking Valve’s match history for new matches…" : lastSync ? `Last sync ${lastSync}${me.sync.auto_sync?.active ? " · auto-sync on" : ""}` : "Not synced yet."}
-        </span>
       </div>
       {upload?.phase === "uploading" && (
         <div className="upload-progress" role="progressbar" aria-label="Demo upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(upload.fraction * 100)}>
@@ -429,25 +397,10 @@ function EmptyMatches({ linked, relink, awaitingShare, uploading, canSync, steam
       <div className="empty-options">
         <div className={`empty-option ${canSync ? "" : "soft-disabled"}`}>
           <span className="section-kicker">{canSync || steamAvailable ? "SYNC FROM STEAM" : "SYNC FROM STEAM · COMING SOON"}</span>
-          <p>
-            {!canSync
-              ? steamAvailable
-                ? "Sign in through Steam above to import your Competitive, Premier and Wingman matches automatically."
-                : "Automatic import from your Steam match history is coming soon. Uploading demos works now."
-              : !linked
-              ? <>Optional: link match history in <a href={ACCOUNT_PATH}>Account settings</a>, then press Sync matches.</>
-              : relink
-                ? <>Sync is paused until you update your codes in <a href={ACCOUNT_PATH}>Account settings</a>.</>
-                : awaitingShare
-                  ? <>Add a share code in <a href={ACCOUNT_PATH}>Account settings</a> after your next match.</>
-                : "Press Sync matches above."}
-          </p>
+          {canSync && !linked && <a className="ghost-button" href={ACCOUNT_PATH}>Account settings</a>}
         </div>
         <div className="empty-option">
           <span className="section-kicker">UPLOAD A DEMO</span>
-          <p>
-            Any <code>.dem</code> / <code>.dem.bz2</code> (older matches, FACEIT, pro).
-          </p>
           <label className={`ghost-button empty-upload ${uploading ? "busy" : ""}`} aria-disabled={uploading}>
             <span>CHOOSE A DEMO FILE</span>
             <input type="file" accept=".dem,.bz2,application/x-bzip2" disabled={uploading} aria-label="Choose a demo file to upload"
@@ -475,7 +428,7 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
   if (error) return <div className="steam-error" role="alert">{error}</div>;
   if (!report) return <p className="steam-muted">Loading round report…</p>;
 
-  const { summary, match } = report;
+  const { match } = report;
   const score = match.score ?? null;
   const date = matchDate(match);
   const you = report.you;
@@ -483,34 +436,24 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
   return (
     <div className="match-report">
       <dl className={`report-header ${you ? "with-you" : ""}`} aria-label="Match summary">
-        <div><dt>MAP</dt><dd>{mapLabel(match.map_name)}</dd><small>{plural(match.rounds_count, "round")}</small></div>
+        <div><dt>MAP</dt><dd>{mapLabel(match.map_name)}</dd></div>
         <div>
           <dt>SCORE</dt>
           <dd>{score ? `${Math.max(score.ct, score.t)} – ${Math.min(score.ct, score.t)}` : "—"}</dd>
-          <small>{score ? `CT ${score.ct} · T ${score.t} (sides at the end)` : "Not recorded in this demo"}</small>
         </div>
         <div><dt>DATE</dt><dd>{date.day}</dd><small>{date.label}</small></div>
-        <div><dt>SOURCE</dt><dd>{match.source === "upload" ? "Upload" : "Steam sync"}</dd><small>{match.source === "upload" ? "You uploaded the demo" : "From your match history"}</small></div>
+        <div><dt>SOURCE</dt><dd>{match.source === "upload" ? "Upload" : "Steam sync"}</dd></div>
         {you && <YouTile you={you} />}
       </dl>
       <div className="report-actions"><ShareButton card={() => matchCard(report)} label="Share match" /></div>
       {outdatedText(match) && <div className="outdated-note" role="note">{outdatedText(match)}</div>}
       <CoachTips report={report} />
-      <div className="calibration-note" role="note">
-        <strong>Retrospective estimate, not calibrated for your games.</strong> {report.model.note}
-      </div>
-      <p className="steam-muted">
-        {summary.scored} of {summary.rounds} rounds could be scored. The model’s favourite won {summary.correct_predictions} of {summary.scored}.
-      </p>
       <RoundTimeline rounds={report.rounds} />
       <OpeningDuels report={report} />
-      <div className="report-legend">
-        <span><i className="legend actual" /> Actual winner (from the demo)</span>
-        <span><i className="legend model" /> Model estimate (in hindsight)</span>
-        <span><i className="legend unscored" /> Unscored</span>
-        {inMatch && <span><i className="legend your-win" /> Your team won the round</span>}
-      </div>
       <Scoreboard report={report} />
+      {report.rounds.some((r) => !r.prediction) && (
+        <p className="steam-muted unscored-top-note" role="note">Some rounds unscored (no opening kill or map not in model).</p>
+      )}
       <table className="round-table" aria-label="Rounds">
         <thead>
           <tr><th>Round</th>{inMatch && <th>You</th>}<th>Opening kill</th><th>Actual winner</th><th>Model estimate</th></tr>
@@ -540,7 +483,7 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
                     {round.you?.win_probability != null && <>{" · "}<span className="estimate-you">your team {(round.you.win_probability * 100).toFixed(0)}%</span></>}
                   </span>
                 ) : (
-                  <span className="unscored-reason">Unscored: {messageFor(round.unscored_reason, "Not scorable.")}</span>
+                  <span className="unscored-reason">—</span>
                 )}
               </td>
             </tr>
@@ -576,18 +519,14 @@ function YouTile({ you }: { you: YouInMatch }) {
       <div className="you-tile muted">
         <dt>YOU</dt>
         <dd>{you.status === "not_in_match" ? "Not in this demo" : "Not tracked"}</dd>
-        <small>{you.status === "not_in_match"
-          ? "Your SteamID isn’t in this match: the stats cover all players."
-          : "Imported before per-player stats. Upload the demo again to add yours."}</small>
       </div>
     );
   }
-  const side = you.first_side === you.last_side ? `${sideName(you.first_side)} all match` : `Started ${sideName(you.first_side)}, then ${sideName(you.last_side)}`;
   return (
     <div className="you-tile">
       <dt>YOU</dt>
       <dd>{resultText(you) ?? `${you.won} of ${you.rounds} rounds won`}</dd>
-      <small title={`K/D ${kdText(you.kd)} · won ${you.won} of ${plural(you.rounds, "round")}`}>{side} · {you.kills} K / {you.deaths} D</small>
+      <small>{you.kills} K / {you.deaths} D</small>
     </div>
   );
 }
