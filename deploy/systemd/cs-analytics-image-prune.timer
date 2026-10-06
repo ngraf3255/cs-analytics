@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly Docker image prune for cs-analytics
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

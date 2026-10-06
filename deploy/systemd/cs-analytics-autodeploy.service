@@ -1,0 +1,23 @@
+# Pull origin/main and redeploy if it changed. Install:
+#   sudo install -m 0755 deploy/autodeploy.sh /usr/local/libexec/cs-analytics-autodeploy
+#   sudo cp deploy/systemd/cs-analytics-*.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cs-analytics-autodeploy.timer cs-analytics-image-prune.timer
+# Logs: journalctl -u cs-analytics-autodeploy
+[Unit]
+Description=CS Analytics auto-deploy from origin/main
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=agent
+Group=agent
+SupplementaryGroups=docker
+Environment=REPO_DIR=/opt/cs-analytics
+Environment=BRANCH=main
+StateDirectory=cs-analytics-autodeploy
+ExecStart=/usr/local/libexec/cs-analytics-autodeploy
+TimeoutStartSec=30min
+Nice=5

@@ -1,0 +1,11 @@
+# Weekly cleanup of unused Docker images and build cache older than 7 days.
+# Images used by running containers are never removed.
+[Unit]
+Description=Prune unused Docker images and build cache
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker image prune -af --filter until=168h
+ExecStart=/usr/bin/docker builder prune -f --filter until=168h
