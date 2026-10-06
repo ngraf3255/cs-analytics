@@ -36,7 +36,7 @@ describe("model card, confidence and why this call", () => {
   });
 
   it("why this call: asks the model about one change at a time, only when opened", async () => {
-    window.history.replaceState(null, "", "/predict");
+    window.history.replaceState(null, "", "/");
     const api = installFakeApi({ "GET /options": { status: 200, body: OPTIONS }, "GET /steam/status": { status: 200, body: { enabled: false } }, "POST /predict": predict });
     render(<App />);
     await advance();

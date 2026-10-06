@@ -17,7 +17,7 @@ function routes() {
 describe("round predictor form", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    window.history.replaceState(null, "", "/predict");
+    window.history.replaceState(null, "", "/");
   });
   afterEach(() => {
     window.localStorage.clear();

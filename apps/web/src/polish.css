@@ -254,7 +254,6 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 
 /* Bundle 3: multi-page shells */
 .page-intro{margin:28px clamp(22px,10vw,160px) 0}
-.page-predict .workspace{margin-top:22px}
 .page-about{margin-top:28px}
 .account-back{display:block;width:fit-content;margin-bottom:10px;font:11px 'DM Mono',monospace;color:#89939c}
 .account-back:hover{color:var(--acid)}

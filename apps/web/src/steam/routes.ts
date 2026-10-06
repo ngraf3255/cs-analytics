@@ -2,8 +2,10 @@
 export const ACCOUNT_PATH = "/account";
 /** Tableau CSV export (kept off the home page). */
 export const ACCOUNT_EXPORT_PATH = "/account/export";
-/** Round-winner predictor + readout. */
+/** Legacy predictor URL — redirects to home `#predictor`. */
 export const PREDICT_PATH = "/predict";
+/** In-page anchor for the round predictor on home. */
+export const PREDICTOR_HASH = "/#predictor";
 /** Model card / held-out accuracy. */
 export const ABOUT_PATH = "/about";
 /** Lobby compare, roles, map tables, all-players analytics. */
@@ -17,14 +19,14 @@ export const isPredictPath = (pathname: string) => strip(pathname) === PREDICT_P
 export const isAboutPath = (pathname: string) => strip(pathname) === ABOUT_PATH;
 export const isStatsPath = (pathname: string) => strip(pathname) === STATS_PATH;
 
-export type AppPage = "home" | "predict" | "stats" | "about" | "account" | "export";
+export type AppPage = "home" | "stats" | "about" | "account" | "export";
 
-/** Resolve the SPA page from a pathname (trailing slash ignored). */
+/** Resolve the SPA page from a pathname (trailing slash ignored). `/predict` → home. */
 export function pageFromPath(pathname: string): AppPage {
   const path = strip(pathname);
   if (path === ACCOUNT_EXPORT_PATH) return "export";
   if (path === ACCOUNT_PATH) return "account";
-  if (path === PREDICT_PATH) return "predict";
+  if (path === PREDICT_PATH) return "home";
   if (path === ABOUT_PATH) return "about";
   if (path === STATS_PATH) return "stats";
   return "home";
