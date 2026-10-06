@@ -1,0 +1,119 @@
+name: Build demoparser2 wheel
+
+# Builds the vendored demoparser2 wheel (services/prediction_api/vendor/wheels/README.md)
+# from the pinned upstream commit with scripts/build_demoparser2_wheel.sh, uploads the wheel
+# + sha256 + build info as an artifact, then installs that exact wheel (binary only) and runs
+# the API test suite and a real CS2 demo parse against it. The wheel committed to
+# vendor/wheels must be this artifact's file; its sha256 and run URL go in the README.
+on:
+  workflow_dispatch:
+    inputs:
+      demo_url:
+        description: "Extra real CS2 .dem/.dem.bz2 to parse with the built wheel (best effort; empty to skip)"
+        required: false
+        # awpy public test set: Valve MM de_ancient (match730_003736456444682174484), 108 MB.
+        default: "https://figshare.com/ndownloader/files/52456259"
+
+permissions:
+  contents: read
+
+env:
+  DEMOPARSER_COMMIT: 45ca85aeac8fb0de9d385124d2c7fe0e7b8ff0c8
+  WHEEL: demoparser2-0.42.1.dev20261005-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        id: py
+        with:
+          python-version: "3.11"
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version && cargo --version
+      - name: Build wheel (scripts/build_demoparser2_wheel.sh @ ${{ env.DEMOPARSER_COMMIT }})
+        working-directory: services/prediction_api
+        env:
+          PYTHON311: ${{ steps.py.outputs.python-path }}
+          WHEEL_OUT: ${{ runner.temp }}/wheel
+        run: |
+          grep -q "^COMMIT=$DEMOPARSER_COMMIT " scripts/build_demoparser2_wheel.sh
+          scripts/build_demoparser2_wheel.sh
+      - name: sha256 + build info
+        working-directory: ${{ runner.temp }}/wheel
+        run: |
+          test "$(ls)" = "$WHEEL"  # exactly the one expected wheel
+          sha256sum "$WHEEL" | tee "$WHEEL.sha256"
+          python -m pip -q install 'auditwheel>=6,<7'
+          {
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"
+            echo "repo commit: $GITHUB_SHA"
+            echo "upstream: https://github.com/LaihoE/demoparser/commit/$DEMOPARSER_COMMIT"
+            echo "runner: $ImageOS $ImageVersion"
+            rustc --version; cargo --version; python --version
+            echo "sha256: $(cut -d' ' -f1 "$WHEEL.sha256")"
+            echo; auditwheel show "$WHEEL"
+          } | tee build-info.txt
+          {
+            echo "### demoparser2 wheel"
+            echo '```'; cat build-info.txt; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demoparser2-wheel
+          path: ${{ runner.temp }}/wheel/
+          if-no-files-found: error
+          retention-days: 90
+
+      # Verify the artifact's wheel exactly as the API installs it.
+      - name: Install the built wheel via requirements.txt (binary only)
+        working-directory: services/prediction_api
+        run: |
+          rm -f vendor/wheels/*.whl
+          cp "$RUNNER_TEMP/wheel/$WHEEL" vendor/wheels/
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q --upgrade pip
+          "$RUNNER_TEMP/venv/bin/pip" install --only-binary demoparser2 --report "$RUNNER_TEMP/pip-report.json" -r requirements-dev.txt
+          "$RUNNER_TEMP/venv/bin/python" - <<'PY'
+          import json, os
+          from importlib.metadata import version
+          want = open(os.path.join(os.environ["RUNNER_TEMP"], "wheel", os.environ["WHEEL"] + ".sha256")).read().split()[0]
+          report = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "pip-report.json")))
+          (item,) = [i for i in report["install"] if i["metadata"]["name"] == "demoparser2"]
+          got = item["download_info"]["archive_info"]["hashes"]["sha256"]
+          print("installed", item["download_info"]["url"], got)
+          assert item["download_info"]["url"].endswith("/vendor/wheels/" + os.environ["WHEEL"]), item["download_info"]["url"]
+          assert got == want, (got, want)
+          assert version("demoparser2") == "0.42.1.dev20261005", version("demoparser2")
+          import demoparser2  # noqa: F401  (native module loads)
+          PY
+      - name: Real CS2 demos
+        env:
+          DEMO_URL: ${{ inputs.demo_url }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/fixture.dem" https://raw.githubusercontent.com/LaihoE/demoparser/$DEMOPARSER_COMMIT/src/parser/test_demo.dem
+          if [ -n "$DEMO_URL" ]; then
+            if curl -fsSL --retry 3 -A "Mozilla/5.0" -o "$RUNNER_TEMP/extra.dem" "$DEMO_URL" && [ -s "$RUNNER_TEMP/extra.dem" ]; then
+              echo "extra demo: $(du -h "$RUNNER_TEMP/extra.dem" | cut -f1), sha256 $(sha256sum "$RUNNER_TEMP/extra.dem" | cut -d' ' -f1)"
+            else
+              rm -f "$RUNNER_TEMP/extra.dem"
+              echo "::warning::could not download $DEMO_URL; extra demo parse skipped"
+            fi
+          fi
+      - name: pytest (full suite, demoparser fixture as CSA_TEST_DEMO)
+        working-directory: services/prediction_api
+        env:
+          CSA_TEST_DEMO: ${{ runner.temp }}/fixture.dem
+        run: '"$RUNNER_TEMP/venv/bin/python" -m pytest -q'
+      - name: pytest tests/test_real_demo.py (extra demo as CSA_TEST_DEMO)
+        working-directory: services/prediction_api
+        env:
+          CSA_TEST_DEMO: ${{ runner.temp }}/extra.dem
+        run: |
+          if [ ! -f "$CSA_TEST_DEMO" ]; then echo "no extra demo; skipped"; exit 0; fi
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -q -rs tests/test_real_demo.py
