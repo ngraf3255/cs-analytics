@@ -19,8 +19,7 @@ export function MatchesTeaser() {
   return (
     <figure className="matches-teaser" aria-label="Sample match report">
       <figcaption className="teaser-caption">
-        <span className="section-kicker">SAMPLE REPORT · PREVIEW</span>
-        <span>What you get for every match: the model’s read on each round, next to who actually won.</span>
+        <span className="section-kicker">SAMPLE REPORT</span>
       </figcaption>
       <div className="match-report teaser-report" aria-hidden="true">
         <dl className="report-header">

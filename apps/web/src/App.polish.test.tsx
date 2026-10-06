@@ -86,7 +86,8 @@ describe("matches teaser", () => {
     render(<SteamSection />);
     await advance();
     const teaser = screen.getByRole("figure", { name: "Sample match report" });
-    expect(teaser).toHaveTextContent("SAMPLE REPORT · PREVIEW");
+    expect(teaser).toHaveTextContent("SAMPLE REPORT");
+    expect(teaser).not.toHaveTextContent(/what you get/i);
     // decorative sample: it must not look like (or be read out as) the user's real data
     expect(teaser.querySelector(".teaser-report")).toHaveAttribute("aria-hidden", "true");
     expect(screen.queryByRole("table")).toBeNull();
