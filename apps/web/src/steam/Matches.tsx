@@ -5,6 +5,7 @@ import type { MatchReport, MatchSummary, Me, RoundReport, SyncResult, UploadJob,
 import { kdText, matchDate, outdatedText, resultText } from "./format";
 import { MatchList, MatchListError, MatchListLoading } from "./MatchList";
 import { OpeningDuels, RoundTimeline } from "./MatchDetail";
+import { CoachTips } from "./CoachTips";
 import { MatchesSummaryPanel } from "./MatchesSummary";
 import { FirstRunSteps, LinkHistoryTip } from "./Onboarding";
 import { Scoreboard } from "./Scoreboard";
@@ -494,6 +495,7 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
       </dl>
       <div className="report-actions"><ShareButton card={() => matchCard(report)} label="Share match" /></div>
       {outdatedText(match) && <div className="outdated-note" role="note">{outdatedText(match)}</div>}
+      <CoachTips report={report} />
       <div className="calibration-note" role="note">
         <strong>Retrospective estimate, not calibrated for your games.</strong> {report.model.note}
       </div>
