@@ -1,5 +1,6 @@
 import { kdText } from "./format";
 import type { MatchPlayer, MatchReport } from "./types";
+import "./scoreboard.css";
 
 const short = (steamId: string) => `…${steamId.slice(-5)}`;
 
