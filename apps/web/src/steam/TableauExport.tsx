@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { steamApi, type ExportTable } from "./api";
 import { ApiError } from "./errors";
+import "./tableauExport.css";
 
 const GUIDE_URL = "https://github.com/ngraf3255/cs-analytics/blob/main/tableau/README.md#connect-tableau";
 
