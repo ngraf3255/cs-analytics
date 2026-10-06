@@ -10,6 +10,8 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY services/prediction_api/requirements.txt /app/services/prediction_api/requirements.txt
+# Vendored demoparser2 wheel (requirements.txt --find-links; see vendor/wheels/README.md).
+COPY services/prediction_api/vendor/wheels /app/services/prediction_api/vendor/wheels
 RUN pip install --no-cache-dir -r /app/services/prediction_api/requirements.txt
 
 COPY model.pkl /app/model.pkl
