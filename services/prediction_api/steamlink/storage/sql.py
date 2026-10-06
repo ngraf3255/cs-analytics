@@ -939,6 +939,18 @@ class SqlStorage(Storage):
                 unscored_reason=r.unscored_reason))
         return [(_match_record(row, _Owner(row)), by_match.get(row.id, [])) for row in rows]
 
+    def list_all_player_rounds(self, user_id: str) -> dict[str, list[PlayerRoundRecord]]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(player_rounds).join(match_owners, match_owners.c.match_id == player_rounds.c.match_id)
+                .where(match_owners.c.user_id == user_id)
+                .order_by(player_rounds.c.match_id, player_rounds.c.steam_id, player_rounds.c.round_number)
+            ).all()
+        by_match: dict[str, list[PlayerRoundRecord]] = {}
+        for r in rows:
+            by_match.setdefault(r.match_id, []).append(_player_round(r))
+        return by_match
+
     # Deletion ---------------------------------------------------------------
     def delete_user(self, user_id: str) -> None:
         # Explicit child deletes so this does not depend on FK cascade settings. Shared

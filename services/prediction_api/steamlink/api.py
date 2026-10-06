@@ -685,6 +685,20 @@ def matches_summary(
     return summary
 
 
+@router.get("/matches/peers")
+def matches_peers(user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
+    """The signed-in player vs the other players in their own imported matches, overall and
+    per map (steamlink.peers). Registered before ``/matches/{match_id}``. 404 ``no_steam_id``
+    for accounts without a SteamID (guests): there is no "you" to compare."""
+
+    from .peers import build_peer_comparison
+
+    steam_id = _steam_id(user)
+    if steam_id is None:
+        raise HTTPException(status_code=404, detail="no_steam_id")
+    return build_peer_comparison(ctx.storage, user.id, steam_id)
+
+
 @router.get("/matches/export/{table}.csv")
 def export_csv(table: str, user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> Response:
     """Tableau-ready CSV of the signed-in user's own match list (steamlink.export):

@@ -417,6 +417,11 @@ class Storage(ABC):
         them; stubs with no rounds too) with its rounds in round order, newest
         first like :meth:`list_matches`. Two queries, for cross-match analytics."""
 
+    @abstractmethod
+    def list_all_player_rounds(self, user_id: str) -> dict[str, list[PlayerRoundRecord]]:
+        """``{match id: every recorded player's rounds}`` over the user's list (for comparing
+        the player with the others in their own lobbies). One query."""
+
     # Deletion ---------------------------------------------------------------
     @abstractmethod
     def delete_user(self, user_id: str) -> None:
