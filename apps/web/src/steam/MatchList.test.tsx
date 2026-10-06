@@ -133,6 +133,7 @@ describe("match list UX", () => {
     expect(note).toHaveTextContent("Demo gone from Valve — upload the .dem above if you have it.");
     expect(note.querySelectorAll("p")).toHaveLength(1);
   });
+
   it("renders a DEGRADED tag with thin-stats tooltip when the API marks the parse degraded", async () => {
     const body = {
       matches: [{
@@ -163,5 +164,20 @@ describe("match list UX", () => {
       "Many PacketEntities skips — team/position stats may be thin.",
     );
     expect(within(row).queryByText("NOT IMPORTED")).not.toBeInTheDocument();
+  });
+
+  it("re-opening a report uses the copy loaded this list load (no refetch)", async () => {
+    const api = installFakeApi(routes());
+    render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+    const id = matchesFixture.matches[0].id;
+    const row = screen.getAllByRole("button", { expanded: false })[0];
+    fireEvent.click(row);
+    await advance();
+    expect(screen.getByLabelText("Match summary")).toBeInTheDocument();
+    fireEvent.click(row);
+    fireEvent.click(row);
+    expect(screen.getByLabelText("Match summary")).toBeInTheDocument();
+    expect(api.count(`GET /matches/${id}`)).toBe(1);
   });
 });

@@ -920,6 +920,31 @@ class SqlStorage(Storage):
             by_match.setdefault(r.match_id, []).append(_player_round(r))
         return by_match
 
+    def get_match_players(self, match_id: str) -> dict[str, list[PlayerRoundRecord]]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(player_rounds).where(player_rounds.c.match_id == match_id)
+                .order_by(player_rounds.c.steam_id, player_rounds.c.round_number)
+            ).all()
+        by_player: dict[str, list[PlayerRoundRecord]] = {}
+        for r in rows:
+            by_player.setdefault(r.steam_id, []).append(_player_round(r))
+        return by_player
+
+    def list_players_in_matches(self, user_id: str, steam_ids: list[str]) -> dict[str, dict[str, list[PlayerRoundRecord]]]:
+        if not steam_ids:
+            return {}
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(player_rounds).join(match_owners, match_owners.c.match_id == player_rounds.c.match_id)
+                .where(and_(match_owners.c.user_id == user_id, player_rounds.c.steam_id.in_(list(steam_ids))))
+                .order_by(player_rounds.c.match_id, player_rounds.c.steam_id, player_rounds.c.round_number)
+            ).all()
+        out: dict[str, dict[str, list[PlayerRoundRecord]]] = {}
+        for r in rows:
+            out.setdefault(r.match_id, {}).setdefault(r.steam_id, []).append(_player_round(r))
+        return out
+
     def list_matches_with_rounds(self, user_id: str):
         owned = match_owners.c.user_id == user_id
         with self.engine.begin() as conn:  # one transaction: a consistent snapshot
@@ -938,6 +963,18 @@ class SqlStorage(Storage):
                 opening_kill_seconds=r.opening_kill_seconds, opening_weapon=r.opening_weapon,
                 unscored_reason=r.unscored_reason))
         return [(_match_record(row, _Owner(row)), by_match.get(row.id, [])) for row in rows]
+
+    def list_all_player_rounds(self, user_id: str) -> dict[str, list[PlayerRoundRecord]]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(player_rounds).join(match_owners, match_owners.c.match_id == player_rounds.c.match_id)
+                .where(match_owners.c.user_id == user_id)
+                .order_by(player_rounds.c.match_id, player_rounds.c.steam_id, player_rounds.c.round_number)
+            ).all()
+        by_match: dict[str, list[PlayerRoundRecord]] = {}
+        for r in rows:
+            by_match.setdefault(r.match_id, []).append(_player_round(r))
+        return by_match
 
     # Deletion ---------------------------------------------------------------
     def delete_user(self, user_id: str) -> None:
