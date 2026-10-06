@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { COMMON_WEAPONS, PRESETS, TIME_CHIPS, type Preset, type RoundInputs, initialInputs, remember, validSeconds } from "./roundForm";
 import "./roundForm.css";
 import { AccountPage } from "./steam/AccountPage";
-import { isAccountPath } from "./steam/routes";
+import { ACCOUNT_PATH, isAccountPath } from "./steam/routes";
 import { SteamSection } from "./steam/SteamSection";
 import { weaponName } from "./steam/weapons";
 
@@ -27,21 +27,11 @@ function App() {
   return isAccountPath(window.location.pathname) ? <AccountShell /> : <Home />;
 }
 
-/** ``/account``: same brand bar, links back to the home page sections. */
+/** ``/account``: same brand bar and menu, links back to the home page sections. */
 function AccountShell() {
   return (
     <div className="site-shell">
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="CS Gooner home">
-          <span className="brand-mark"><img src="/favicon.svg" alt="" /></span>
-          <span>CS <span className="brand-light">GOONER</span></span>
-        </a>
-        <nav aria-label="Main navigation">
-          <a href="/#predictor">Predictor</a>
-          <a href="/#matches">My matches</a>
-          <a className="nav-active" href="/account" aria-current="page">Account</a>
-        </nav>
-      </header>
+      <TopBar page="account" />
       <main id="top"><AccountPage /></main>
     </div>
   );
@@ -297,9 +287,11 @@ function Home() {
 }
 
 /** Brand, main navigation and model status. Below 640px the links fold into a menu
- * (.nav-toggle) so every section, including My matches, stays reachable. */
-function TopBar() {
+ * (.nav-toggle) so every section, including My matches and Account, stays reachable. */
+function TopBar({ page = "home" }: { page?: "home" | "account" }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const home = page === "home";
+  const section = (id: string) => (home ? `#${id}` : `/#${id}`);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -310,18 +302,19 @@ function TopBar() {
 
   return (
     <header className={`topbar ${menuOpen ? "menu-open" : ""}`}>
-      <a className="brand" href="#top" aria-label="CS Gooner home">
+      <a className="brand" href={home ? "#top" : "/"} aria-label="CS Gooner home">
         <span className="brand-mark"><img src="/favicon.svg" alt="" /></span>
         <span>CS <span className="brand-light">GOONER</span></span>
       </a>
       <nav id="main-nav" className="main-nav" aria-label="Main navigation"
         onClick={(event) => { if ((event.target as HTMLElement).closest("a")) setMenuOpen(false); }}>
-        <a className="nav-active" href="#predictor">Predictor</a>
-        <a href="#matches">My matches</a>
-        <a href="#about">About the model</a>
+        <a className={home ? "nav-active" : undefined} href={section("predictor")}>Predictor</a>
+        <a href={section("matches")}>My matches</a>
+        <a href={section("about")}>About the model</a>
+        <a className={home ? undefined : "nav-active"} href={ACCOUNT_PATH} aria-current={home ? undefined : "page"}>Account</a>
         <a href="https://public.tableau.com/app/profile/nicholas.hinkel/viz/CS2-Analytics/CS2RoundAnalytics?publish=yes" target="_blank" rel="noreferrer">Analytics ↗</a>
       </nav>
-      <div className="live-indicator"><span /> MODEL ONLINE</div>
+      {home && <div className="live-indicator"><span /> MODEL ONLINE</div>}
       <button type="button" className="nav-toggle" aria-controls="main-nav" aria-expanded={menuOpen}
         aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen((open) => !open)}>
         <span aria-hidden="true" /><span aria-hidden="true" /><span aria-hidden="true" />

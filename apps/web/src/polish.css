@@ -48,9 +48,10 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .teaser-report:after{content:'';position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(transparent,#0a0f14)}
 .teaser-report .round-table{min-width:520px}
 
-/* 4 · Narrow screens: the nav no longer drops "My matches"; it folds into a menu instead. */
+/* 4 · Narrow screens: the nav no longer drops "My matches" / "Account"; it folds into a menu
+   instead (from 900px down: five links + brand + status don't fit a tablet-width bar). */
 .nav-toggle{display:none}
-@media(max-width:640px){
+@media(max-width:900px){
   .nav-toggle{display:inline-grid;align-content:center;gap:4px;width:40px;height:40px;padding:0 10px;margin-left:12px;
     background:transparent;border:1px solid #2d3740;cursor:pointer}
   .nav-toggle span{display:block;height:1px;background:#e8ecee;transition:transform .2s,opacity .2s}
@@ -66,7 +67,8 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
   .topbar nav.main-nav a:nth-child(n){display:block;padding:15px 20px;border-top:1px solid #1b232a;white-space:nowrap}
   .topbar nav.main-nav .nav-active{box-shadow:inset 2px 0 0 var(--acid)}
   .topbar nav.main-nav .nav-active:after{display:none}
-
+}
+@media(max-width:640px){
   /* 6 · ROUND 01 stamp: tucked into the top-right corner, above the headline, instead of
      sitting beside "EVERY ROUND" and crowding it. */
   .hero{display:block;padding-top:64px}
