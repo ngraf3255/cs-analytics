@@ -524,6 +524,51 @@ Local dev still uses the Vite `/api` proxy when `VITE_API_BASE_URL` is empty.
    with DDNS. Schedule [`backup-pg.sh`](../deploy/homelab/backup-pg.sh) via the
    timer units or host cron against local `pg_dump`.
 
+## Demo parse on non-AVX CPUs (counterstrike)
+
+The API image must use Polars' runtime-compat build (`polars[rtcompat]` in
+`services/prediction_api/requirements.txt`). demoparser2 depends on Polars; the
+default Polars wheel assumes AVX/AVX2. The current counterstrike VM CPU
+(`QEMU Virtual CPU version 2.5+`) only exposes SSE4.2, so the default wheel
+crashes the parse worker with **SIGILL** (logged as `exited with -4`) right after
+a Polars CPU-features warning.
+
+After deploying an image that includes `polars[rtcompat]`, any match left as
+`status=parse_failed` / `status_reason=parser_error` from the SIGILL era will
+**not** be retried automatically (sync skips known share codes, Valve only walks
+forward). Re-queue one stub like this on the VM (share code never printed):
+
+```sh
+# Inside the db container; replace USER_ID with the owning users.id
+docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env \
+  exec -T db psql -U csgooners -d csgooners <<'SQL'
+BEGIN;
+-- Capture the failed match's share code into a temp table, then delete + rewind cursor.
+CREATE TEMP TABLE _reparse AS
+  SELECT m.user_id, m.share_code
+  FROM matches m
+  WHERE m.status = 'parse_failed' AND m.status_reason = 'parser_error';
+DELETE FROM matches m USING _reparse r
+  WHERE m.user_id = r.user_id AND m.share_code = r.share_code;
+UPDATE match_access ma SET cursor_share_code = r.share_code, updated_at = now()
+  FROM _reparse r WHERE ma.user_id = r.user_id;
+DELETE FROM upload_jobs uj USING _reparse r
+  WHERE uj.user_id = r.user_id AND uj.share_code = r.share_code AND uj.kind = 'steam_sync';
+UPDATE sync_state SET next_auto_sync_at = now(), last_auto_sync_error = NULL, auto_sync_failures = 0
+  WHERE user_id IN (SELECT user_id FROM _reparse);
+COMMIT;
+SELECT user_id, length(share_code) AS share_code_len FROM _reparse;
+SQL
+```
+
+Then either wait for the auto-sync tick (≤ `AUTO_SYNC_INTERVAL_SECONDS`, default 30 min;
+tick every `AUTO_SYNC_TICK_SECONDS`) or have the user press **Sync** in the UI.
+
+Optional (performance, not required once rtcompat is installed): set the Proxmox
+CPU type for counterstrike to `host` (or a CPU that exposes AVX2) and hard-reboot
+the VM so demos parse faster on the default Polars wheel. Keep `polars[rtcompat]`
+anyway so a misconfigured vCPU cannot SIGILL again.
+
 ## Cutover checklist
 
 1. Secrets in `deploy/homelab/.env` on `counterstrike` (or `/etc/cs-analytics/api.env`),

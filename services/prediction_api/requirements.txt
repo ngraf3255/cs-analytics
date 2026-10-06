@@ -13,6 +13,10 @@ cryptography>=42,<43
 # fixes that turn some "MalformedMessage" failures into successful parses (invalid UTF-8 in
 # game-event strings, LaihoE/demoparser#364; 14-bit entity handles, #363): bump when 0.42.1+ ships.
 demoparser2==0.42.0
+# demoparser2 pulls plain `polars`, whose default wheel needs AVX/AVX2. The counterstrike
+# Proxmox VM is QEMU Virtual CPU 2.5+ (SSE4.2 only): default polars dies with SIGILL (-4)
+# mid-parse. Force the runtime-compat build (same API; slower, works without AVX).
+polars[rtcompat]==1.44.2
 # CS2 Game Coordinator client for demo URL resolution (steam.py v1).
 steamio==1.1.3
 # steamio 1.1.3 imports aiohttp.streams.AsyncStreamReaderMixin, which newer aiohttp removed.
