@@ -186,3 +186,28 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .opening-duels .summary-tiles{margin:0}
 .detail-note{margin:0;font-size:11px}
 @media(max-width:640px){.tl-round{width:24px;height:30px;font-size:9px}.tl-round.side-swap{margin-left:8px}}
+
+/* Design must-fix: sample report Model estimate clipped at ~500px. teaser-report used
+   overflow:hidden (for the bottom fade) with a 520px-min table and nowrap cells, so the
+   "CT favoured · CT 66% / T 34%" pill ran past the card. On phones: drop the forced
+   min-width, let the estimate pill wrap inside the card, and allow horizontal scroll as
+   a fallback (overflow-y stays hidden for the fade). pointer-events:auto so touch can
+   scroll if needed (still aria-hidden + user-select:none — decorative sample). */
+.teaser-report{
+  overflow-x:auto;
+  overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  pointer-events:auto;
+}
+@media(max-width:640px){
+  .teaser-report .round-table{min-width:0}
+  .teaser-report .round-table td,
+  .teaser-report .round-table th{white-space:normal}
+  .teaser-report .model-estimate{
+    display:inline-block;
+    max-width:100%;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    line-height:1.35;
+  }
+}
