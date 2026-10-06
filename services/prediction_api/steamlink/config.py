@@ -92,6 +92,13 @@ class Settings:
     # (all users) may be queued or processing, further uploads get 429.
     upload_job_dir: str | None = None
     upload_queue_max: int = 3
+    # How long finished upload/sync job rows are kept (demo files are deleted as soon as
+    # the job finishes — success or failure). Default one week.
+    upload_job_retention_seconds: int = 7 * 24 * 3600
+    # Min seconds between orphan/retention cleanups while the worker drains the queue
+    # (startup recovery always cleans). Keeps the small homelab disk from filling with
+    # leftovers after a crash without scanning on every empty poll.
+    upload_job_cleanup_interval_seconds: int = 300
     http_timeout_seconds: float = 20.0
     # Demo parsing (see demo_parser.Demoparser2Parser): "subprocess" (default)
     # parses in a short-lived child so its memory goes back to the OS and an
@@ -171,6 +178,10 @@ class Settings:
             raise ConfigError("UPLOAD_MAX_BYTES must be positive")
         if self.upload_queue_max < 1:
             raise ConfigError("UPLOAD_QUEUE_MAX must be positive")
+        if self.upload_job_retention_seconds < 60:
+            raise ConfigError("UPLOAD_JOB_RETENTION_SECONDS must be at least 60")
+        if self.upload_job_cleanup_interval_seconds < 0:
+            raise ConfigError("UPLOAD_JOB_CLEANUP_INTERVAL_SECONDS must be 0 (every drain) or positive")
         if self.sync_max_matches_per_request < 1 or self.sync_max_matches_per_request > 10:
             raise ConfigError("SYNC_MAX_MATCHES_PER_REQUEST must be between 1 and 10")
         if self.sync_job_max_attempts < 1:
@@ -223,6 +234,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         upload_max_bytes=_int(env, "UPLOAD_MAX_BYTES", 1024 * 1024 * 1024),
         upload_job_dir=(env.get("UPLOAD_JOB_DIR") or "").strip() or None,
         upload_queue_max=_int(env, "UPLOAD_QUEUE_MAX", 3),
+        upload_job_retention_seconds=_int(env, "UPLOAD_JOB_RETENTION_SECONDS", 7 * 24 * 3600),
+        upload_job_cleanup_interval_seconds=_int(env, "UPLOAD_JOB_CLEANUP_INTERVAL_SECONDS", 300),
         demo_parse_isolation=(env.get("DEMO_PARSE_ISOLATION") or "subprocess").strip().lower(),
         demo_parse_timeout_seconds=float(_int(env, "DEMO_PARSE_TIMEOUT_SECONDS", 600)),
         demo_parse_threads=_int(env, "DEMO_PARSE_THREADS", 2),

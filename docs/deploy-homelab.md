@@ -201,6 +201,8 @@ this manual restart.
 | `STEAM_BOT_REFRESH_TOKEN` | optional; without it, sync stops at `demo_retrieval_not_configured` (uploads still work) |
 | `UPLOAD_MAX_BYTES` | **`100000000` (~100 MB) for Tunnel (Option A default)**; raise to `1073741824` only on Caddy/nginx grey-cloud fallback |
 | `UPLOAD_JOB_DIR` | durable disk path (compose volume `/var/lib/csa/upload-jobs`) |
+| `UPLOAD_JOB_RETENTION_SECONDS` | `604800` (7d) default; how long finished upload/sync *job rows* are kept. Demo `.upload` / `.work` files are deleted as soon as a job finishes (success **or** failure, including `demo_parse_failed` / MalformedMessage). |
+| `UPLOAD_JOB_CLEANUP_INTERVAL_SECONDS` | `300` default; orphan/retention sweep after each queue drain (throttled). Startup recovery always sweeps. |
 | `AUTO_SYNC_INTERVAL_SECONDS` | `1800` default; `0` disables background sync |
 
 Full optional knobs: [`docs/deploy-render.md`](deploy-render.md) env table
@@ -376,6 +378,35 @@ cat /var/lib/cs-analytics-autodeploy/deployed-sha # last good deploy
 
 Don't hand-edit tracked files on the VM: the next deploy resets them. Keep
 local config in `deploy/homelab/.env` (ignored).
+
+
+## Upload job disk use (small VM)
+
+The API keeps received demos only while a job is queued or processing under
+`UPLOAD_JOB_DIR` (`csa-upload-jobs` volume → `/var/lib/csa/upload-jobs`):
+
+| When | What is deleted |
+| --- | --- |
+| Job finishes (imported **or** failed parse) | that job's `<id>.upload` and `<id>.work` |
+| HTTP reject before queue (`not_a_cs2_demo`, `demo_too_large`, `upload_queue_full`) | the partial body file |
+| Startup recovery / each queue drain | finished job rows older than `UPLOAD_JOB_RETENTION_SECONDS`; stray `.upload` / `.work` no active job owns |
+
+Caps that bound peak disk for demos:
+
+- `UPLOAD_MAX_BYTES` (Tunnel default **100 MB**) × `UPLOAD_QUEUE_MAX` (default **3**)
+- `DEMO_MAX_DOWNLOAD_BYTES` / `DEMO_MAX_DECOMPRESSED_BYTES` for sync downloads and `.bz2` inflate
+
+Compose also caps container logs (`json-file`, **10 MB × 3 files** per service) so
+repeated parse failures cannot fill the VM with Docker logs. Host `cloudflared`
+is outside compose — if its journal grows, use `journalctl` vacuum on the host.
+
+Check usage on the VM:
+
+```sh
+docker system df
+docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env exec api \
+  du -sh /var/lib/csa/upload-jobs
+```
 
 ## Postgres backups
 

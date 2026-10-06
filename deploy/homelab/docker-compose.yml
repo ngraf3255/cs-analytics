@@ -7,6 +7,7 @@
 # "tunnel") is NOT used. Caddy (profile "edge") is a grey-cloud fallback only.
 # Postgres is never public: compose network + 127.0.0.1 only.
 # See docs/deploy-homelab.md.
+# API/db containers cap json-file logs (10m x 3) so parse failures cannot fill the VM disk.
 #
 # From the repository root on the VM (no --profile flags):
 #   cp deploy/homelab/.env.example deploy/homelab/.env   # edit secrets
@@ -18,6 +19,11 @@ services:
   db:
     image: postgres:17
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-csgooners}
       POSTGRES_USER: ${POSTGRES_USER:-csgooners}
@@ -40,6 +46,11 @@ services:
       context: ../..
       dockerfile: deploy/homelab/Dockerfile
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy
@@ -74,6 +85,11 @@ services:
   db-backup:
     image: postgres:17
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy
@@ -110,6 +126,11 @@ services:
     profiles: ["tunnel"]
     image: cloudflare/cloudflared:2026.9.3
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # Token required when starting --profile tunnel (compose interpolates even if profile off,
     # so we do not use :? here — cloudflared fails fast if TUNNEL_TOKEN is empty).
     environment:
@@ -130,6 +151,11 @@ services:
     profiles: ["edge"]
     image: caddy:2
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       api:
         condition: service_healthy
@@ -153,3 +179,4 @@ volumes:
 networks:
   csa:
     driver: bridge
+
