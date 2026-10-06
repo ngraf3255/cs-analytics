@@ -171,6 +171,24 @@ export type YouInMatch =
     survived: number;
   });
 
+/** One player of a match (GET /matches/{id} ``players``). ``team`` is relative to the signed-in
+ * player when they're in the demo, else the side the player started on. */
+export type MatchPlayer = {
+  steam_id: string;
+  team: "you" | "teammate" | "opponent" | "ct_start" | "t_start" | string;
+  rounds: number;
+  first_side: "ct" | "t" | null;
+  kills: number;
+  deaths: number;
+  kd: number | null;
+  kills_per_round: number | null;
+  opening_kills: number;
+  opening_deaths: number;
+  survived: number;
+  /** Other matches in your list with this player on your team / the other one. */
+  history?: { matches_with: number; matches_against: number };
+};
+
 export type MatchReport = {
   match: MatchSummary;
   model: { calibrated_for_matchmaking: boolean; note: string };
@@ -178,6 +196,8 @@ export type MatchReport = {
   rounds: RoundReport[];
   /** Missing from older API versions. */
   you?: YouInMatch;
+  /** Everyone in the demo; missing from older APIs, empty when not recorded. */
+  players?: MatchPlayer[];
 };
 
 /** Model hit rate / Brier score over a set of scored rounds (null when none were scored). */

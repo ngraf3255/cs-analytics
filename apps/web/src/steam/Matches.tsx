@@ -7,6 +7,7 @@ import { MatchList, MatchListError, MatchListLoading } from "./MatchList";
 import { OpeningDuels, RoundTimeline } from "./MatchDetail";
 import { MatchesSummaryPanel } from "./MatchesSummary";
 import { FirstRunSteps, LinkHistoryTip } from "./Onboarding";
+import { Scoreboard } from "./Scoreboard";
 import { ACCOUNT_PATH } from "./routes";
 import { ShareButton } from "./ShareButton";
 import { matchCard } from "./shareCard";
@@ -507,6 +508,7 @@ function MatchReportView({ matchId, cache }: { matchId: string; cache?: Map<stri
         <span><i className="legend unscored" /> Unscored</span>
         {inMatch && <span><i className="legend your-win" /> Your team won the round</span>}
       </div>
+      <Scoreboard report={report} />
       <table className="round-table" aria-label="Rounds">
         <thead>
           <tr><th>Round</th>{inMatch && <th>You</th>}<th>Opening kill</th><th>Actual winner</th><th>Model estimate</th></tr>
