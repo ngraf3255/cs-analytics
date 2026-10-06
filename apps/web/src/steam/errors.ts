@@ -25,7 +25,12 @@ const MESSAGES: Record<string, string> = {
     "The server’s Steam demo bot could not sign in, so demos can’t be fetched right now. Your next sync retries the match.",
   demo_too_large: "That demo is larger than the server allows.",
   not_a_cs2_demo: "That file isn’t a CS2 demo (.dem or .dem.bz2). CS:GO demos aren’t supported.",
-  demo_parse_failed: "The demo could not be parsed.",
+  demo_parse_failed: "The demo could not be parsed. It may be damaged; if it plays fine in CS2, try again later.",
+  demo_truncated:
+    "That demo file is incomplete (it’s cut off). Let CS2 finish saving it, or copy / download it again, then upload it.",
+  demo_format_unsupported:
+    "Our demo parser can’t read this demo yet: it uses a format from a newer CS2 update or a third-party server (e.g. FACEIT). Try again after the next parser update.",
+  demo_parse_timeout: "The demo took too long to parse. Try again in a few minutes.",
   upload_busy: "The server is parsing another demo. Try again in a minute.",
   upload_queue_full: "The server already has several demos waiting to be parsed. Try again in a few minutes.",
   server_restarted: "The server restarted before it finished your demo. Upload it again.",

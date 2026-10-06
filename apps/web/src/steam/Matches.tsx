@@ -138,7 +138,8 @@ export function Matches({ me, onMeChange }: { me: Me; onMeChange: () => Promise<
       await loadMatches();
       setSelected(job.match.id);
     } else if (job.status === "failed") {
-      setNotice({ tone: "error", text: messageFor(job.error, "The demo could not be imported.") });
+      // An error code this build doesn't know (newer server): show it rather than a bare "failed".
+      setNotice({ tone: "error", text: messageFor(job.error, job.error ? `The demo could not be imported (${job.error}).` : "The demo could not be imported.") });
     }
   }, [loadMatches]);
 
