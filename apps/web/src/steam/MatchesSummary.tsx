@@ -5,6 +5,7 @@ import { kdText, resultText } from "./format";
 import { FormTrend } from "./FormTrend";
 import { ShareButton } from "./ShareButton";
 import { profileCard } from "./shareCard";
+import { PeerCompare } from "./PeerCompare";
 import { TableauExport } from "./TableauExport";
 import type { MatchesAnalytics, YouAnalytics } from "./types";
 import { weaponName } from "./weapons";
@@ -75,6 +76,7 @@ function YouSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: number
       <div className="report-actions"><ShareButton card={() => profileCard(you)} label="Share my numbers" /></div>
       {youFormLine(you.recent_form) && <p className="summary-form">{youFormLine(you.recent_form)}</p>}
       <FormTrend refreshKey={refreshKey} matchCount={you.matches} />
+      {you.matches > 0 && <PeerCompare refreshKey={refreshKey} />}
       <table className="round-table summary-maps" aria-label="Your maps">
         <thead><tr><th>Map</th><th>Matches</th><th>Your rounds</th><th>Won</th><th>As CT</th><th>As T</th><th>K/D</th></tr></thead>
         <tbody>

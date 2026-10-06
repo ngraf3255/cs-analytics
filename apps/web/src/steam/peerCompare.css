@@ -1,0 +1,8 @@
+/* You vs your lobbies (peers = other players in your own matches). */
+.peer-compare{display:grid;gap:8px;border:1px solid #27313a;background:#0b1015;padding:12px 14px}
+.peer-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.peer-map{min-width:180px}.peer-map.select-wrap select{height:36px}
+.peer-map .chevron{top:5px}
+.steam-card .peer-headline{margin:0;font-size:13px;color:#d6dce0}.peer-headline strong{color:var(--acid)}
+.peer-note{margin:0;font-size:11px}
+@media(max-width:640px){.peer-map{width:100%}}
