@@ -29,6 +29,7 @@ from .config import Settings
 from .crypto import AuthCodeCipher, DecryptionError
 from . import export as tableau_export
 from .jobs import UploadJobWorker
+from .players import match_players
 from .scoring import RoundScorer
 from .sessions import LOGIN_STATE_COOKIE, CookieSigner
 from .sharecode import extract_share_code, is_valid_share_code
@@ -770,6 +771,8 @@ def build_match_report(storage: Storage, scorer: RoundScorer, user_id: str, matc
     }
     if steam_id is not None:
         report["you"] = _you_in_match(match, rounds, [mine[n] for n in sorted(mine)], steam_id)
+    # Everyone in the demo (empty when per-player rounds weren't recorded: re-upload).
+    report["players"] = match_players(storage, user_id, match_id, steam_id) if match.players_recorded else []
     return report
 
 
