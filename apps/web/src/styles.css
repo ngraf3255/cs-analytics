@@ -64,3 +64,13 @@
 .soft-disabled .steam-button{background:#2a333b;color:#9aa4ab}
 .empty-option.soft-disabled{border-style:dotted}
 .guest-upload{position:relative;min-height:44px}
+
+/* Signed in on the home page: one compact line; codes and account actions live on /account */
+.account-summary{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:14px clamp(16px,3vw,28px)}
+.account-link{white-space:nowrap}.sync-meta a{text-decoration:underline;text-underline-offset:2px;color:var(--acid)}
+.empty-option a{text-decoration:underline;text-underline-offset:2px}
+.account-settings{display:grid;gap:12px}
+.account-back{font:11px 'DM Mono',monospace;color:var(--acid);display:inline-block;margin-bottom:8px}
+.steam-steps-short{margin:6px 0 4px!important}
+@media(max-width:640px){.account-summary{grid-template-columns:1fr}.account-link{justify-self:stretch;text-align:center}}
+.steam-card a.account-link{text-decoration:none}.account-settings .steam-form{margin-top:12px}.account-settings .auto-sync{margin:6px 0}

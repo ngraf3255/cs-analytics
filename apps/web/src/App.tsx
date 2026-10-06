@@ -1,6 +1,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { COMMON_WEAPONS, PRESETS, TIME_CHIPS, type Preset, type RoundInputs, initialInputs, remember, validSeconds } from "./roundForm";
 import "./roundForm.css";
+import { AccountPage } from "./steam/AccountPage";
+import { isAccountPath } from "./steam/routes";
 import { SteamSection } from "./steam/SteamSection";
 import { weaponName } from "./steam/weapons";
 
@@ -22,6 +24,30 @@ const mapLabel = (map: string) => map.replace(/^de_/, "").replaceAll("_", " ");
 const AUTO_PREDICT_MS = 350;
 
 function App() {
+  return isAccountPath(window.location.pathname) ? <AccountShell /> : <Home />;
+}
+
+/** ``/account``: same brand bar, links back to the home page sections. */
+function AccountShell() {
+  return (
+    <div className="site-shell">
+      <header className="topbar">
+        <a className="brand" href="/" aria-label="CS Gooner home">
+          <span className="brand-mark"><img src="/favicon.svg" alt="" /></span>
+          <span>CS <span className="brand-light">GOONER</span></span>
+        </a>
+        <nav aria-label="Main navigation">
+          <a href="/#predictor">Predictor</a>
+          <a href="/#matches">My matches</a>
+          <a className="nav-active" href="/account" aria-current="page">Account</a>
+        </nav>
+      </header>
+      <main id="top"><AccountPage /></main>
+    </div>
+  );
+}
+
+function Home() {
   const [options, setOptions] = useState<Options | null>(null);
   const [mapName, setMapName] = useState("");
   const [side, setSide] = useState<"ct" | "t">("ct");

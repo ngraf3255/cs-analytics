@@ -5,7 +5,7 @@ import { advance, FakeXHR, installFakeApi } from "../test/fakeApi";
 import meFixture from "../test/fixtures/me.json";
 import uploadQueued from "../test/fixtures/upload_queued.json";
 import { Matches } from "./Matches";
-import { SteamAccount } from "./SteamAccount";
+import { AccountSettings } from "./SteamAccount";
 import type { Me } from "./types";
 
 const SHARE = "CSGO-9Dyih-7YcBA-VXraV-tRjNt-A3VTB";
@@ -24,22 +24,20 @@ const consent = () => screen.getByRole("checkbox");
 
 function renderAccount(me: Me) {
   const onChange = vi.fn(async () => undefined);
-  render(<SteamAccount me={me} onChange={onChange} onSignedOut={() => undefined} />);
+  render(<AccountSettings me={me} onChange={onChange} onSignedOut={() => undefined} />);
   return onChange;
 }
 
 describe("link match history (Leetify-style onboarding)", () => {
-  it("links Valve's exact pages and walks through both codes", () => {
+  it("links Valve's page in one short line (no wall of share-code instructions)", () => {
     installFakeApi({});
     renderAccount(unlinked);
     const form = screen.getByRole("form", { name: "Link match history" });
-    expect(within(form).getByRole("link", { name: /Access to Your Match History/ })).toHaveAttribute(
+    expect(within(form).getByRole("link", { name: /match history page/ })).toHaveAttribute(
       "href", "https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128");
-    expect(within(form).getByRole("link", { name: /Valve’s docs/ })).toHaveAttribute(
-      "href", "https://developer.valvesoftware.com/wiki/Counter-Strike:_Global_Offensive_Access_Match_History");
-    expect(form).toHaveTextContent("Your most recently completed match token");
-    expect(form).toHaveTextContent("upload the demo file below");
-    expect(form).toHaveTextContent("We import that match and every newer one");
+    expect(form).toHaveTextContent("Share code optional.");
+    expect(form).not.toHaveTextContent("Your most recently completed match token");
+    expect(form).not.toHaveTextContent("Watch → Your Matches");
     expect(screen.getByRole("button", { name: /LINK MATCH HISTORY/ })).toBeDisabled();
     expect(screen.getByText("Tick the box above to enable linking.")).toBeInTheDocument();
   });
@@ -133,8 +131,7 @@ describe("link match history (Leetify-style onboarding)", () => {
     const user = userEvent.setup();
     const api = installFakeApi({ "PUT /steam/match-access": { status: 200, body: { ...LINKED_ACCESS, awaiting_share_code: true } } });
     const onChange = renderAccount(unlinked);
-    expect(screen.getByText(/Linking match history is optional/)).toBeInTheDocument();
-    expect(screen.getByText("STEP 2 · AUTHORIZE MATCH HISTORY (OPTIONAL)")).toBeInTheDocument();
+    expect(screen.getByText("LINK MATCH HISTORY", { selector: ".section-kicker" })).toBeInTheDocument();
     expect(screen.getByText("OPTIONAL · ADD AFTER YOUR NEXT MATCH")).toBeInTheDocument();
     await user.type(authBox(), "AB12-CDE34-FG56");
     await user.click(consent());
@@ -158,11 +155,10 @@ describe("link match history (Leetify-style onboarding)", () => {
     const user = userEvent.setup();
     const api = installFakeApi({ "PUT /steam/match-access": { status: 200, body: LINKED_ACCESS } });
     const onChange = renderAccount(awaiting);
-    expect(screen.getByText(/Game Authentication Code saved/)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/Waiting for your first match/);
+    expect(screen.getByText(/Authentication code saved/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText("ADD A MATCH SHARING CODE")).toBeInTheDocument();
-    expect(authBox()).toHaveAttribute("placeholder", "Keep ****-*****-FG56");
+    expect(screen.queryByLabelText(/GAME AUTHENTICATION CODE/)).toBeNull();  // only the share code is asked for
     await user.click(consent());
     await user.click(screen.getByRole("button", { name: /SAVE SHARE CODE/ }));
     expect(api.calls).toHaveLength(0);  // nothing to save yet
@@ -206,7 +202,8 @@ describe("match list empty state and paused sync", () => {
     await advance();
     const empty = screen.getByLabelText("No matches yet");
     expect(empty).toHaveTextContent("SYNC FROM STEAM");
-    expect(empty).toHaveTextContent("Optional: link your match history above (step 2)");
+    expect(empty).toHaveTextContent("Optional: link match history in Account settings");
+    expect(within(empty).getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/account");
     expect(empty).toHaveTextContent("UPLOAD A DEMO");
     expect(empty).toHaveTextContent("game/csgo/replays");
     fireEvent.change(screen.getByLabelText("Choose a demo file to upload"), { target: { files: [new File(["demo"], "match.dem")] } });
@@ -223,8 +220,8 @@ describe("match list empty state and paused sync", () => {
     render(<Matches me={relinkShare} onMeChange={async () => undefined} />);
     await advance();
     expect(screen.getByRole("button", { name: /SYNC MATCHES/ })).toBeDisabled();
-    expect(screen.getByText(/Sync is paused: paste a recent share code above/)).toBeInTheDocument();
-    expect(screen.getByLabelText("No matches yet")).toHaveTextContent("Sync is paused until you update your codes above.");
+    expect(screen.getByText(/Sync is paused: add a recent share code in/)).toBeInTheDocument();
+    expect(screen.getByLabelText("No matches yet")).toHaveTextContent("Sync is paused until you update your codes in Account settings.");
   });
 
   it("auth code saved without a share code: Sync waits for one, uploads still work", async () => {
@@ -232,7 +229,7 @@ describe("match list empty state and paused sync", () => {
     render(<Matches me={awaiting} onMeChange={async () => undefined} />);
     await advance();
     expect(screen.getByRole("button", { name: /SYNC MATCHES/ })).toBeDisabled();
-    expect(screen.getByText(/Sync starts once you add the share code of a match you played/)).toBeInTheDocument();
+    expect(screen.getByText(/Sync starts once you add a share code in/)).toBeInTheDocument();
     expect(screen.getByLabelText("No matches yet")).toHaveTextContent("Your authentication code is saved.");
     expect(screen.getByLabelText("Choose a demo file to upload")).toBeEnabled();
   });
@@ -243,5 +240,19 @@ describe("match list empty state and paused sync", () => {
     await advance();
     expect(screen.getByRole("button", { name: /SYNC MATCHES/ })).toBeEnabled();
     expect(screen.getByLabelText("No matches yet")).toHaveTextContent("Press Sync matches above.");
+  });
+});
+
+describe("main matches page once signed in", () => {
+  it("shows only who is signed in and a link to Account settings: no codes form, no account buttons", async () => {
+    const { SteamAccount } = await import("./SteamAccount");
+    for (const me of [unlinked, awaiting, relinkShare, linked]) {
+      const { unmount } = render(<SteamAccount me={me} onChange={async () => undefined} onSignedOut={() => undefined} />);
+      expect(screen.getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/account");
+      expect(screen.queryByRole("form")).toBeNull();
+      expect(screen.queryByRole("button", { name: /Delete my data|Sign out|Disconnect/ })).toBeNull();
+      expect(screen.queryByText(/Game Authentication Code/)).toBeNull();
+      unmount();
+    }
   });
 });
