@@ -31,7 +31,7 @@ function RoleTile({ side, role, baseline, min }: { side: string; role: SideRole;
       <small>
         {role.role
           ? `In ${pct(role.opening_attempt_rate)} of rounds (avg ${pct(baseline)})`
-          : `Needs ${min}+ rounds on ${side} (${role.rounds} so far).`}
+          : `${role.rounds}/${min}`}
       </small>
     </div>
   );

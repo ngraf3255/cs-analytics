@@ -21,10 +21,11 @@ describe("form over time", () => {
     expect(rolling([null], 5)).toEqual([null]);
   });
 
-  it("fewer than 3 matches: a hint, no request", () => {
+  it("fewer than 3 matches: hidden, no request", () => {
     const api = installFakeApi({});
-    render(<FormTrend refreshKey={1} matchCount={2} />);
-    expect(screen.getByText(/after 3 matches/)).toBeInTheDocument();
+    const { container } = render(<FormTrend refreshKey={1} matchCount={2} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText(/after 3 matches/)).toBeNull();
     expect(api.calls).toHaveLength(0);
   });
 

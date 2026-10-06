@@ -31,7 +31,7 @@ describe("map & role breakdown", () => {
     const tiles = screen.getByLabelText("Your role by side");
     expect(tiles).toHaveTextContent("AS CTSupport");
     expect(tiles).toHaveTextContent("In 9% of rounds (avg 20%)");
-    expect(tiles).toHaveTextContent("Needs 20+ rounds on T (12 so far).");
+    expect(tiles).toHaveTextContent("12/20");
     expect(screen.getByRole("columnheader", { name: "Opening duels" })).toBeInTheDocument();
     expect(screen.getByText("4–1 · in 21% of rounds")).toBeInTheDocument();
   });
