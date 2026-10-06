@@ -35,8 +35,16 @@ def test_nothing_without_database():
 
 def test_database_and_session_secret_enable_upload_only():
     s = load_settings(DB)
-    assert s.demo_upload_enabled and s.guest_uploads_enabled and not s.steam_enabled
-    assert any("Steam sign-in and sync are off" in note for note in s.startup_notes())
+    assert s.demo_upload_enabled and not s.steam_enabled
+    # Guest (anonymous) uploads are off unless explicitly opted in.
+    assert not s.guest_uploads and not s.guest_uploads_enabled
+    assert any("Steam sign-in and sync are off" in note and "need a Steam sign-in" in note
+               for note in s.startup_notes())
+
+
+def test_guest_uploads_default_off_with_steam():
+    s = load_settings(STEAM)
+    assert s.steam_enabled and s.demo_upload_enabled and not s.guest_uploads_enabled
 
 
 def test_encryption_key_without_steam_key_runs_upload_only():
@@ -67,9 +75,11 @@ def test_short_session_secret_leaves_upload_off_instead_of_crashing():
     assert "SESSION_SECRET" in s.startup_notes()[0]
 
 
-def test_guest_uploads_can_be_turned_off():
-    s = load_settings({**DB, "GUEST_UPLOADS": "false"})
-    assert s.demo_upload_enabled and not s.guest_uploads_enabled
+def test_guest_uploads_opt_in():
+    s = load_settings({**DB, "GUEST_UPLOADS": "true"})
+    assert s.demo_upload_enabled and s.guest_uploads_enabled
+    assert any("guest demo upload is on" in note for note in s.startup_notes())
+    assert not load_settings({**DB, "GUEST_UPLOADS": "false"}).guest_uploads_enabled
 
 
 def test_build_context_without_steam_has_no_steam_pieces(tmp_path):
@@ -85,6 +95,7 @@ def test_build_context_without_steam_has_no_steam_pieces(tmp_path):
 # --- upload-only server --------------------------------------------------------------
 
 def upload_only_client(tmp_path, **overrides):
+    overrides.setdefault("guest_uploads", True)  # these tests exercise the opt-in guest flow
     settings = Settings(
         allowed_origins=["https://csgooner.com"], database_url="sqlite://", session_secret=SECRET,
         session_cookie_secure=False, upload_job_dir=str(tmp_path / "upload-jobs"), **overrides,
@@ -173,8 +184,22 @@ def test_guest_uploads_off(tmp_path):
 
 # --- Steam on: guests coexist, Steam flow unchanged ----------------------------------
 
+def test_steam_server_default_has_no_guest_sessions(tmp_path):
+    client, ctx = make_client(tmp_path)
+    status = client.get("/steam/status").json()
+    assert status["steam"] is True and status["upload"] is True and status["guest"] is False
+    response = client.post("/auth/guest", headers=H)
+    assert response.status_code == 503 and response.json()["detail"] == "guest_uploads_disabled"
+    # Anonymous upload is rejected; a Steam-signed-in user can upload.
+    assert client.post("/matches/upload", content=DEMO, headers=OCTET).status_code == 401
+    login(client, ctx)
+    post, job = upload_and_wait(client, ctx, DEMO, headers=OCTET)
+    assert post.status_code == 202 and job["status"] == "done"
+
+
 def test_guest_on_steam_server_cannot_use_steam_routes(tmp_path):
-    client, _ = make_client(tmp_path)
+    client, ctx = make_client(tmp_path)
+    ctx.settings = replace(ctx.settings, guest_uploads=True)
     me = client.post("/auth/guest", headers=H).json()
     assert me["account"] == "guest"
     response = client.post("/steam/sync", headers=H)
@@ -184,6 +209,7 @@ def test_guest_on_steam_server_cannot_use_steam_routes(tmp_path):
 
 def test_steam_login_still_works_and_is_not_a_guest(tmp_path):
     client, ctx = make_client(tmp_path)
+    ctx.settings = replace(ctx.settings, guest_uploads=True)
     assert client.get("/steam/status").json()["steam"] is True
     login(client, ctx)
     me = client.get("/me").json()

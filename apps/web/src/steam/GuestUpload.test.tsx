@@ -80,6 +80,19 @@ describe("upload without Steam (guest session)", () => {
     expect(screen.getByRole("button", { name: "Open my uploads" })).toBeInTheDocument();
   });
 
+  it("Steam on, guest uploads off (default): Steam sign-in only, no guest card", async () => {
+    const api = installFakeApi(routes({
+      "GET /steam/status": { status: 200, body: { enabled: true, steam: true, upload: true, guest: false } },
+      "GET /me": { status: 401, body: { detail: "not_authenticated" } },
+    }));
+    render(<SteamSection />);
+    await advance();
+    expect(screen.getByRole("link", { name: /Sign in through Steam/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open my uploads" })).toBeNull();
+    expect(screen.queryByLabelText("Choose a demo file to upload without Steam")).toBeNull();
+    expect(api.count("POST /auth/guest")).toBe(0);
+  });
+
   it("older API (only `enabled`): Steam sign-in as before, no guest card", async () => {
     installFakeApi(routes({
       "GET /steam/status": { status: 200, body: { enabled: true } },

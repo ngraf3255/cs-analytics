@@ -161,8 +161,10 @@ Copy [`deploy/homelab/.env.example`](../deploy/homelab/.env.example). Two
 feature levels (`services/prediction_api/steamlink/config.py`):
 
 - **Demo upload + match reports**: `DATABASE_URL` + `SESSION_SECRET` (32+ chars).
-  No Steam key needed. Visitors can upload a `.dem` as a guest (browser session,
-  `POST /auth/guest`); set `GUEST_UPLOADS=false` to require a Steam sign-in.
+  No Steam key needed for the upload pipeline itself, but uploads require a
+  Steam sign-in: anonymous guest sessions (`POST /auth/guest`) are **off by
+  default** (`GUEST_UPLOADS=false`). Only set `GUEST_UPLOADS=true` if you want
+  public anonymous uploads.
 - **Steam sign-in + sync**: additionally `TOKEN_ENCRYPTION_KEYS` +
   `STEAM_WEB_API_KEY`; then `PUBLIC_API_URL` and `FRONTEND_URL` are required.
   `STEAM_WEB_API_KEY` without `TOKEN_ENCRYPTION_KEYS` refuses to start.
@@ -175,9 +177,10 @@ line naming what is off and why.
 
 On `counterstrike` Steam is currently **off on purpose**: `STEAM_WEB_API_KEY`
 is empty in `deploy/homelab/.env`. With `DATABASE_URL` + `SESSION_SECRET` set the
-API runs in **upload-only** mode: guests upload `.dem` files and get match
-reports, `/steam/status` reports `"steam": false, "upload": true`, and the site
-shows Connect Steam as "coming soon". Setting `TOKEN_ENCRYPTION_KEYS` early is
+API starts without Steam: `/steam/status` reports `"steam": false`, and the site
+shows Connect Steam as "coming soon". Because guest uploads are off by default,
+nobody can upload until Steam is on (`"upload": false`); with `GUEST_UPLOADS=true`
+it would run upload-only for guests (`"upload": true, "guest": true`). Setting `TOKEN_ENCRYPTION_KEYS` early is
 harmless now (it no longer crash-loops without the Steam key).
 
 To enable:
@@ -189,7 +192,8 @@ To enable:
    `docker compose -f deploy/homelab/docker-compose.yml --env-file deploy/homelab/.env up -d`
    (or `/opt/cs-analytics/deploy/deploy.sh`), then check
    `curl -sS http://127.0.0.1:8000/steam/status` shows `"enabled": true` (and
-   `"steam": true`). Guest uploads keep working next to Steam sign-in.
+   `"steam": true`, `"upload": true`, `"guest": false`). Steam-signed-in users
+   can upload `.dem` files.
 
 Auto-deploy only redeploys when `main` moves, so `.env` changes always need
 this manual restart.
@@ -200,7 +204,7 @@ this manual restart.
 | `DATABASE_URL` | `postgresql://csgooners:…@db:5432/csgooners` (compose) or `…@127.0.0.1:5432/…` (systemd) |
 | `TOKEN_ENCRYPTION_KEYS` | Fernet key(s), newest first. `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `SESSION_SECRET` | ≥ 32 random chars (needed for uploads too; shorter/missing leaves uploads off) |
-| `GUEST_UPLOADS` | default `true`: upload without Steam via a guest session; `false` requires Steam sign-in |
+| `GUEST_UPLOADS` | default `false`: uploads require a Steam sign-in. `true` opens anonymous guest sessions (`POST /auth/guest`) that can upload without Steam — public, so leave off |
 | `STEAM_WEB_API_KEY` | https://steamcommunity.com/dev/apikey, domain `csgooner.com` (step-by-step: [Steam Web API key](#steam-web-api-key)) |
 | `PUBLIC_API_URL` | `https://api-site.csgooner.com` (OpenID realm + return URL; must match the public hostname exactly) |
 | `FRONTEND_URL` | `https://csgooner.com` (redirect after Steam login) |

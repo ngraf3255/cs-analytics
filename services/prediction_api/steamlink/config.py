@@ -4,8 +4,9 @@ Two feature levels, each validated at startup so a half-configured deploy fails
 loudly instead of running with insecure defaults:
 
 * **Demo upload** (``demo_upload_enabled``): ``DATABASE_URL`` + ``SESSION_SECRET``.
-  Signed-in users (and, with ``GUEST_UPLOADS`` on, guest sessions without Steam)
-  upload ``.dem`` files, get them parsed and view match reports. No Steam key needed.
+  Signed-in users upload ``.dem`` files, get them parsed and view match reports.
+  Uploads need a Steam sign-in unless ``GUEST_UPLOADS=true`` (off by default)
+  opens anonymous guest sessions.
 * **Steam** (``steam_enabled``): additionally ``TOKEN_ENCRYPTION_KEYS`` +
   ``STEAM_WEB_API_KEY`` (+ ``PUBLIC_API_URL`` / ``FRONTEND_URL``): Steam OpenID
   sign-in, match-history linking, sync and automatic sync.
@@ -116,7 +117,8 @@ class Settings:
     steam_bot_password: str | None = None
     steam_bot_shared_secret: str | None = None
     # Guest sessions (POST /auth/guest): upload demos and view reports without Steam.
-    guest_uploads: bool = True
+    # Off by default: anonymous uploads stay closed, uploads need a Steam sign-in.
+    guest_uploads: bool = False
 
     @property
     def demo_bot_configured(self) -> bool:
@@ -164,7 +166,8 @@ class Settings:
             return notes
         if not self.steam_enabled:
             notes.append("STEAM_WEB_API_KEY / TOKEN_ENCRYPTION_KEYS not set: Steam sign-in and sync are off; "
-                         + ("guest demo upload is on" if self.guest_uploads else "GUEST_UPLOADS=false, so uploads need a Steam sign-in"))
+                         + ("guest demo upload is on (GUEST_UPLOADS=true)" if self.guest_uploads
+                            else "uploads need a Steam sign-in, so demo upload is unavailable"))
         return notes
 
     def validate(self) -> None:
@@ -196,8 +199,6 @@ class Settings:
                     "Steam is enabled (DATABASE_URL, TOKEN_ENCRYPTION_KEYS and STEAM_WEB_API_KEY are set) but "
                     f"these settings are missing: {', '.join(missing)}"
                 )
-        if len(self.session_secret or "") < 32:
-            raise ConfigError("SESSION_SECRET must be at least 32 characters")
         for name, url in (("PUBLIC_API_URL", self.public_api_url), ("FRONTEND_URL", self.frontend_url)):
             if not url:
                 continue  # only required for Steam (checked above)
@@ -276,7 +277,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         steam_bot_username=env.get("STEAM_BOT_USERNAME") or None,
         steam_bot_password=env.get("STEAM_BOT_PASSWORD") or None,
         steam_bot_shared_secret=env.get("STEAM_BOT_SHARED_SECRET") or None,
-        guest_uploads=_bool(env, "GUEST_UPLOADS", True),
+        guest_uploads=_bool(env, "GUEST_UPLOADS", False),
     )
     settings.validate()
     return settings

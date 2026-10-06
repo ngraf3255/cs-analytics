@@ -21,8 +21,9 @@ returns `503 steam_sync_disabled`:
 - **Demo upload + reports** (`/me`, `/matches*`, `POST /matches/upload`,
   `POST /auth/guest`, logout, `DELETE /me`): `DATABASE_URL` + `SESSION_SECRET`
   (32+ chars). No Steam key. `POST /auth/guest` starts a guest session (a
-  `users` row with `steam_id = "guest:<hex>"`, no personal "you" analytics);
-  `GUEST_UPLOADS=false` turns it off (503 `guest_uploads_disabled`).
+  `users` row with `steam_id = "guest:<hex>"`, no personal "you" analytics)
+  only when `GUEST_UPLOADS=true`; by default it is off (503
+  `guest_uploads_disabled`) and uploads need a Steam sign-in.
 - **Steam** (OpenID login, `/steam/match-access`, `/steam/sync`,
   `/steam/auto-sync`, automatic sync): additionally `TOKEN_ENCRYPTION_KEYS` +
   `STEAM_WEB_API_KEY`, and then `PUBLIC_API_URL` + `FRONTEND_URL` are required.

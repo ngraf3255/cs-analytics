@@ -1,7 +1,7 @@
 """FastAPI routes for accounts (Steam or guest), demo upload, match reports and Steam sync.
 
 Two feature levels (see steamlink.config): with DATABASE_URL + SESSION_SECRET the
-account, upload and report routes work (guests via ``POST /auth/guest``); Steam
+account, upload and report routes work (guests via ``POST /auth/guest`` only with GUEST_UPLOADS=true; off by default); Steam
 sign-in, match-history linking and sync additionally need TOKEN_ENCRYPTION_KEYS +
 STEAM_WEB_API_KEY. A route whose feature is off returns 503 ``steam_sync_disabled``
 (``GET /steam/status`` says which features are on).
