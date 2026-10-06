@@ -549,7 +549,10 @@ def parse_in_process(demo_path: str) -> ParsedDemo:
     try:
         from demoparser2 import DemoParser as _Parser
 
-        # Patched wheel (vendor/patches): reset soft-skip counters before parse.
+        # Patched wheel (vendor/patches): process-global soft-skip counters. PARSE_SLOT
+        # serializes parses and we reset here, so counts are effectively per-parse
+        # (subprocess isolation also gives a fresh process). True instance-local
+        # counters need a demoparser2 wheel change — deferred.
         try:
             from demoparser2 import reset_packet_ents_skips, packet_ents_skips as _packet_ents_skips
             reset_packet_ents_skips()

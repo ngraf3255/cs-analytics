@@ -12,7 +12,7 @@ import main
 from steamlink import upload
 from steamlink.demo_parser import DemoParseError, DemoParser, ParsedDemo
 
-from fakes import FakeParser
+from fakes import FakeParser, fake_demo
 from test_api_steam import OCTET, login, make_client, upload_and_wait
 
 DEMO = b"PBDEMS2\0" + b"\x01" * 4096
@@ -30,6 +30,15 @@ class BrokenParser(DemoParser):
 class EmptyParser(DemoParser):
     def parse(self, demo_path):
         return ParsedDemo(map_name="de_mirage")
+
+
+class DegradedParser(FakeParser):
+    """Fake a Rush-style parse: rounds OK, but PacketEntities soft-skips > 0."""
+
+    def parse(self, demo_path):
+        self.calls += 1
+        # Homelab saw ~9.7k skips on Noah's rush_001 demo.
+        return replace(fake_demo(), packet_ents_skips=9700)
 
 
 @pytest.fixture()
@@ -161,6 +170,27 @@ def test_parse_problems_store_nothing(up, parser, detail):
     assert response.status_code == 202
     assert job["status"] == "failed" and job["error"] == detail and job["match"] is None
     assert client.get("/matches").json()["matches"] == []
+    assert leftovers(ctx, scratch) == []
+
+
+def test_packet_ents_skips_marks_match_degraded_on_matches_list(up):
+    """ParsedDemo with packet_ents_skips>0 -> status_reason=parse_degraded and degraded payload."""
+    client, ctx, scratch = up
+    ctx.sync.parser = DegradedParser()
+    response, job = upload_and_wait(client, ctx, DEMO)
+    assert response.status_code == 202 and job["status"] == "done" and job["error"] is None
+    match = job["match"]
+    assert match["status"] == "imported"
+    assert match["status_reason"] == "parse_degraded"
+    assert match["degraded"] == {
+        "reason": "packet_ents_skipped",
+        "detail": "Many PacketEntities skips — team/position stats may be thin.",
+    }
+    listed = client.get("/matches").json()["matches"]
+    assert len(listed) == 1
+    assert listed[0]["id"] == match["id"]
+    assert listed[0]["status_reason"] == "parse_degraded"
+    assert listed[0]["degraded"] == match["degraded"]
     assert leftovers(ctx, scratch) == []
 
 
