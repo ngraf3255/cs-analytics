@@ -3,11 +3,10 @@
 ## demoparser2 0.42.1.dev20261006 (CPython 3.11, manylinux2014 x86_64)
 
 `demoparser2-0.42.1.dev20261006-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl`
-sha256 `PENDING_CI` — replace with the artifact from the workflow_dispatch run below.
+sha256 `1a764b9199b0d38be5e19e44990d9335a8b3f48b22d149e4bfb0bbc3c9bb86b0`
 
-**CI build:** PENDING (workflow_dispatch of `.github/workflows/build-demoparser2-wheel.yml` on this branch).
-The committed wheel must be that run's artifact (byte-identical); paste the run URL and
-`sha256` from the job summary here after the run finishes.
+**CI build:** https://github.com/ngraf3255/cs-analytics/actions/runs/37423283870 (workflow_dispatch on `fix/demoparser2-rush-packetents-softskip`).
+This file is that run's artifact (byte-identical).
 
 **Why:** demoparser2 0.42.0 (newest on PyPI as of 2026-10-06) stops with
 `MalformedMessage` on current CS2 demos. Upstream master fixes the common cases but
@@ -35,6 +34,10 @@ GameTracking-CS2 protos at build time (unpinned, not reproducible). Version set 
 manylinux2014 / glibc 2.17 baseline). Prefer the Actions workflow
 (`workflow_dispatch`) so the wheel is CI-traceable. Rust builds are not byte-reproducible,
 so a rebuild has a different sha256; re-run the verification before swapping it in.
+
+**Verified (2026-10-06):** workflow_dispatch run above (pytest green + real demo parse).
+Locally, Noah's Valve Rush GOTV demo (`rush_001`) yields 15 deaths / 1 round_end with
+degraded PacketEntities skips; demoparser fixture still parses cleanly.
 
 **Remove** when demoparser2 >= 0.42.1 is on PyPI *and* handles Rush PacketEntities: delete
 this wheel + patch, drop the `--find-links` and both `demoparser2` lines in
