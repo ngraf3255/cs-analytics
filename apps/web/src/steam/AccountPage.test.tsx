@@ -18,7 +18,7 @@ describe("/account", () => {
     expect(isAccountPath("/")).toBe(false);
     expect(isAccountPath("/accounts")).toBe(false);
     expect(isAccountExportPath("/account/export")).toBe(true);
-    expect(pageFromPath("/predict")).toBe("predict");
+    expect(pageFromPath("/predict")).toBe("home");
     expect(pageFromPath("/stats")).toBe("stats");
     expect(pageFromPath("/about")).toBe("about");
     expect(pageFromPath("/account/export")).toBe("export");

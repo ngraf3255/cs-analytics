@@ -5,8 +5,8 @@ import { AccountPage } from "./steam/AccountPage";
 import { ExportPage } from "./steam/ExportPage";
 import { StatsPage } from "./steam/StatsPage";
 import {
-  ABOUT_PATH, ACCOUNT_PATH, PREDICT_PATH, STATS_PATH,
-  type AppPage, pageFromPath,
+  ABOUT_PATH, ACCOUNT_PATH, PREDICTOR_HASH, STATS_PATH,
+  isPredictPath, type AppPage, pageFromPath,
 } from "./steam/routes";
 import { ModelCard, WhyThisRound, confidenceLabel } from "./ModelCard";
 import { GuestHero } from "./steam/GuestHero";
@@ -32,6 +32,11 @@ const mapLabel = (map: string) => map.replace(/^de_/i, "").replaceAll("_", " ").
 const AUTO_PREDICT_MS = 350;
 
 function App() {
+  // Legacy /predict → home with #predictor so old bookmarks still land on the form.
+  useEffect(() => {
+    if (!isPredictPath(window.location.pathname)) return;
+    window.history.replaceState(null, "", PREDICTOR_HASH);
+  }, []);
   const page = pageFromPath(window.location.pathname);
   return (
     <div className="site-shell">
@@ -40,7 +45,6 @@ function App() {
         {page === "account" && <AccountPage />}
         {page === "export" && <ExportPage />}
         {page === "stats" && <StatsPage />}
-        {page === "predict" && <PredictPage />}
         {page === "about" && <AboutPage />}
         {page === "home" && <HomeMain />}
       </main>
@@ -69,18 +73,6 @@ function SiteFooter() {
       </a>
       <span>CS2 ANALYTICS PROJECT <i>© 2026</i></span>
     </footer>
-  );
-}
-
-function PredictPage() {
-  return (
-    <section className="page-predict">
-      <div className="info-intro page-intro">
-        <a className="account-back" href="/">← Home</a>
-        <h2>Predictor</h2>
-      </div>
-      <PredictorWorkspace />
-    </section>
   );
 }
 
@@ -354,7 +346,7 @@ function TopBar({ page }: { page: AppPage }) {
       <nav id="main-nav" className="main-nav" aria-label="Main navigation"
         onClick={(event) => { if ((event.target as HTMLElement).closest("a")) setMenuOpen(false); }}>
         <a className={active("home")} href="/" aria-current={current("home")}>Matches</a>
-        <a className={active("predict")} href={PREDICT_PATH} aria-current={current("predict")}>Predictor</a>
+        <a href={PREDICTOR_HASH}>Predictor</a>
         <a className={active("stats")} href={STATS_PATH} aria-current={current("stats")}>Stats</a>
         <a className={active("about")} href={ABOUT_PATH} aria-current={current("about")}>About</a>
         <a className={page === "account" || page === "export" ? "nav-active" : undefined}

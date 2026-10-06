@@ -23,7 +23,7 @@ const readout = () => screen.getByText("READOUT").closest(".result-panel") as HT
 describe("design review polish", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    window.history.replaceState(null, "", "/predict");
+    window.history.replaceState(null, "", "/");
   });
   afterEach(() => { window.history.replaceState(null, "", "/"); });
 
@@ -111,15 +111,16 @@ describe("home restores the round predictor", () => {
     expect(predictor!.querySelector(".result-panel")).toBeTruthy();
     const matches = screen.getByRole("region", { name: "Your CS2 matches" });
     expect(predictor!.compareDocumentPosition(matches) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Predictor" })).not.toBeInTheDocument(); // page title only on /predict
+    expect(screen.queryByRole("heading", { name: "Predictor" })).not.toBeInTheDocument(); // no standalone /predict page
   });
 
-  it("/predict still mounts the same workspace", async () => {
+  it("/predict redirects to home #predictor and keeps the workspace", async () => {
     window.history.replaceState(null, "", "/predict");
     installFakeApi(appRoutes());
     render(<App />);
     await advance();
-    expect(screen.getByRole("heading", { name: "Predictor" })).toBeInTheDocument();
+    expect(window.location.pathname + window.location.hash).toBe("/#predictor");
+    expect(screen.queryByRole("heading", { name: "Predictor" })).not.toBeInTheDocument();
     expect(document.getElementById("predictor")).toHaveClass("workspace");
     expect(screen.getByRole("region", { name: "Round winner predictor" })).toHaveAttribute("id", "predictor");
   });
@@ -136,7 +137,7 @@ describe("nav: Account stays reachable", () => {
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     expect(nav).toHaveClass("main-nav");
     expect(within(nav).getByRole("link", { name: "Account" })).toHaveAttribute("href", "/account");
-    expect(within(nav).getByRole("link", { name: "Predictor" })).toHaveAttribute("href", "/predict");
+    expect(within(nav).getByRole("link", { name: "Predictor" })).toHaveAttribute("href", "/#predictor");
     expect(within(nav).getByRole("link", { name: "Stats" })).toHaveAttribute("href", "/stats");
     expect(within(nav).getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
   });
