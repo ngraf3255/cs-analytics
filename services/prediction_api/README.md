@@ -282,6 +282,7 @@ parsed by an older parser (`matches.parse_version`, migration
 `0008_parse_version`; current = `PARSE_VERSION` in `storage/base.py`):
 `players_not_recorded` (before migration `0007`: no per-player stats) or
 `parser_updated` (version 1: warmup / knife rounds may still be counted).
+Version 2 matches only lack match detail (see below) and are not flagged.
 Demos aren't kept on the server (job files are deleted after parsing, Render's
 disk is ephemeral, and replay URLs aren't stored), so there is no server-side
 re-parse: uploading the same demo again re-parses it and replaces its rounds,
@@ -339,6 +340,26 @@ by `played_at`, else `imported_at`. `GET /matches/{id}` adds `you`
 won, K/D, opening kills / deaths, `score: {you, them}`, `result`) and per round
 `you` (`side`, `won`, `kills`, `deaths`, `opening_kill`, `opening_death`,
 `survived`, `win_probability` = the model's probability for the player's side).
+
+**Match detail** (`PARSE_VERSION` 3, migration `0010_match_detail`,
+`steamlink/match_detail.py`). The parse also stores how each round ended
+(`rounds.end_reason`, the `round_end` reason; numeric reasons from older demos
+are mapped to the same names), every player's equipment value at the round's
+freeze end (`player_rounds.equip_value`, one extra `parse_ticks` pass over the
+freeze-end ticks: about +2 s and +20 MB peak heap on a 440 MB demo; if it fails
+the demo still parses without values) and clutches (`player_rounds.clutch_vs`:
+enemies alive when the player became the last one alive on their team, 0 = none).
+`GET /matches/{id}` adds per round `end` (`{"reason", "outcome"}`, outcome
+`elimination` | `bomb` | `defuse` | `time` | `surrender` | `draw`), `economy`
+(`{"ct"|"t": {"buy", "equip_value"}}`: the team's average equipment value and
+buy type `pistol` (first round of the match or a half, under $1,500) | `eco`
+(under $1,500) | `force` (under $3,500) | `full`), `you.equip_value` and
+`you.clutch` (`{"vs", "won"}`); the match-level `you` adds `opening_duels`
+(taken / won / lost / win_rate), `clutches` (attempts / won / win_rate /
+`by_size`) and `buys` (your rounds won by your team's buy type). Matches parsed
+before have `match.detail_recorded: false` and nulls there; they are **not**
+flagged `outdated` (their stats are right), but uploading the same demo again
+re-parses them and fills the detail in.
 
 ### Tableau export (`GET /matches/export/rounds.csv`, `GET /matches/export/matches.csv`)
 

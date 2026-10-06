@@ -14,7 +14,7 @@ from steamlink.demo_parser import (
 from steamlink.gc import GameCoordinator, GameCoordinatorDemoLocator, GCMatch
 from steamlink.migrate import apply_migrations
 from steamlink.sharecode import ShareCode
-from steamlink.storage.base import UNKNOWN_MATCH_ID, NewMatch, PlayerRoundRecord, RoundRecord
+from steamlink.storage.base import PARSE_VERSION, UNKNOWN_MATCH_ID, NewMatch, PlayerRoundRecord, RoundRecord
 from steamlink.storage.sql import SqlStorage
 from steamlink.sync import _played_at
 
@@ -61,14 +61,19 @@ def test_kills_deaths_opening_duels_and_survival():
               ParsedDeath(9500, "t", "ct", "ak47", 1, 2, A2, B2)]  # after the LAST round: post-match, ignored
     records = extract_player_rounds(ParsedDemo("de_nuke", rounds, deaths, spawns=spawns))
     r1, r2 = by_round(records, A1)[1], by_round(records, A1)[2]
-    assert r1 == PlayerRoundRecord(1, A1, "t", kills=2, deaths=0, opening_kill=True, opening_death=False, survived=True)
+    # clutch_vs: B1's opening death leaves B2 alone vs 2; the teamkill then leaves A1 alone vs 1.
+    assert r1 == PlayerRoundRecord(1, A1, "t", kills=2, deaths=0, opening_kill=True, opening_death=False, survived=True,
+                                   clutch_vs=1)
     assert r2 == PlayerRoundRecord(2, A1, "t", kills=0, deaths=1, opening_kill=False, opening_death=False,
-                                   survived=False)
-    assert by_round(records, A2)[1] == PlayerRoundRecord(1, A2, "t", 0, 1, False, False, False)
-    assert by_round(records, B1)[1] == PlayerRoundRecord(1, B1, "ct", 0, 1, False, True, False)
-    assert by_round(records, B1)[2] == PlayerRoundRecord(2, B1, "ct", 0, 1, False, True, False)  # suicide: no kill
-    assert by_round(records, B2)[1] == PlayerRoundRecord(1, B2, "ct", 0, 2, False, False, False)  # world + exit frag
-    assert by_round(records, B2)[2] == PlayerRoundRecord(2, B2, "ct", 1, 0, False, False, True)
+                                   survived=False, clutch_vs=0)
+    assert by_round(records, A2)[1] == PlayerRoundRecord(1, A2, "t", 0, 1, False, False, False, clutch_vs=0)
+    assert by_round(records, B1)[1] == PlayerRoundRecord(1, B1, "ct", 0, 1, False, True, False, clutch_vs=0)
+    assert by_round(records, B1)[2] == PlayerRoundRecord(2, B1, "ct", 0, 1, False, True, False,  # suicide: no kill
+                                                         clutch_vs=0)
+    assert by_round(records, B2)[1] == PlayerRoundRecord(1, B2, "ct", 0, 2, False, False, False,  # world + exit frag
+                                                         clutch_vs=2)
+    assert by_round(records, B2)[2] == PlayerRoundRecord(2, B2, "ct", 1, 0, False, False, True, clutch_vs=2)
+    assert by_round(records, A2)[2].clutch_vs == 1  # B2 kills A1 on the round_end tick: A2 alone vs 1
 
 
 def test_rounds_before_the_last_match_restart_and_unknown_players_have_no_records():
@@ -93,7 +98,7 @@ def test_a_round_without_any_spawn_takes_its_players_from_the_next_round():
     records = extract_player_rounds(ParsedDemo("de_nuke", rounds, deaths, spawns=spawns))
     assert {(r.steam_id, r.side) for r in records if r.round_number == 1} == {
         (A1, "t"), (A2, "t"), (B1, "ct"), (B2, "ct")}
-    assert by_round(records, A2)[1] == PlayerRoundRecord(1, A2, "t", 0, 0, False, False, True)
+    assert by_round(records, A2)[1] == PlayerRoundRecord(1, A2, "t", 0, 0, False, False, True, clutch_vs=0)
     assert 3 not in by_round(records, A2)  # round 3 had spawns: A2 is not made up
     # The teams switched between the spawn-less round and the next one: the filled sides switch too.
     swapped = [ParsedSpawn(1100, s, side) for s, side in ((A1, "ct"), (A2, "ct"), (B1, "t"), (B2, "t"))]
@@ -211,7 +216,8 @@ def test_matches_from_before_the_migration_are_marked_unknown(tmp_path):
             {"t": NOW})
         conn.execute(text("INSERT INTO match_owners (user_id, match_id, source, added_at) VALUES ('u', 'm', 'upload', :t)"),
                      {"t": NOW})
-    assert apply_migrations(engine) == ["0007_player_rounds", "0008_parse_version", "0009_auto_sync"]
+    assert apply_migrations(engine) == ["0007_player_rounds", "0008_parse_version", "0009_auto_sync",
+                                        "0010_match_detail"]
     record = SqlStorage(engine).get_match("u", "m")[0]
     assert (record.players_recorded, record.played_at, record.played_at_source) == (False, None, None)
     assert (record.parse_version, record.outdated_reason) == (0, "players_not_recorded")
@@ -243,7 +249,7 @@ def test_migration_0008_flags_matches_parsed_before_warmup_rounds_were_left_out(
                 {"id": mid, "code": "upload:" + mid, "status": status, "r": recorded, "t": NOW})
             conn.execute(text("INSERT INTO match_owners (user_id, match_id, source, added_at) VALUES ('u', :id, 'upload', :t)"),
                          {"id": mid, "t": NOW})
-    assert apply_migrations(engine) == ["0008_parse_version", "0009_auto_sync"]
+    assert apply_migrations(engine) == ["0008_parse_version", "0009_auto_sync", "0010_match_detail"]
     storage = SqlStorage(engine)
     got = {mid: storage.get_match("u", mid)[0] for mid in ("v1", "v0", "stub")}
     assert {mid: (m.parse_version, m.outdated_reason, m.rounds_count) for mid, m in got.items()} == {
@@ -333,14 +339,14 @@ def test_a_newer_parse_replaces_an_outdated_match_and_an_older_one_changes_nothi
     again, added = storage.record_uploaded_match(a.id, match=match("e" * 64, players=PLAYERS), now=NOW)
     assert (again, added) == (match_id, False)
     record, rounds = storage.get_match(a.id, match_id)
-    assert (record.rounds_count, record.parse_version, record.outdated_reason) == (2, 2, None)
+    assert (record.rounds_count, record.parse_version, record.outdated_reason) == (2, PARSE_VERSION, None)
     assert [(r.round_number, r.opening_weapon) for r in rounds] == [(1, "ak47"), (2, "m4a1")]
     assert (record.score_ct, record.score_t) == (1, 1)
     assert storage.get_player_rounds(match_id, A1) == list(PLAYERS[:2])
 
     storage.record_uploaded_match(a.id, match=v1, now=NOW)  # an older parser's result
     record, rounds = storage.get_match(a.id, match_id)
-    assert (record.rounds_count, record.parse_version, len(rounds)) == (2, 2, 2)
+    assert (record.rounds_count, record.parse_version, len(rounds)) == (2, PARSE_VERSION, 2)
 
 
 def test_reupload_of_an_outdated_match_someone_else_imported_adds_it_and_updates_it(tmp_path):

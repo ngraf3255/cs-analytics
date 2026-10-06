@@ -282,3 +282,33 @@ def test_real_demo_personal_analytics_for_a_player_in_the_demo(tmp_path):
     assert other.get(f"/matches/{match_id}").json()["you"]["status"] == "not_in_match"
     other_you = other.get("/matches/summary").json()["you"]
     assert (other_you["matches"], other_you["matches_without_you"]) == (0, 1)
+
+
+def test_match_detail_round_ends_buys_and_clutches(tmp_path):
+    """Match detail on a real demo: every round has an end reason, nearly every player round
+    with a freeze end has an equipment value, and the clutches add up (at most one player
+    per side, a 1vN with N between 1 and the team size)."""
+
+    from collections import Counter
+
+    from steamlink.demo_parser import extract_player_rounds, extract_rounds, match_rounds
+    from steamlink.match_detail import economy_by_round
+
+    demo = Demoparser2Parser(isolation="inprocess").parse(_plain_demo(tmp_path))
+    rounds, records = extract_rounds(demo), extract_player_rounds(demo)
+    with_freeze = {r.number for r in match_rounds(demo) if r.freeze_end_tick is not None}
+    assert demo.equipment, "no equipment values read"
+    decided = [r for r in rounds if r.winner_side in ("ct", "t")]
+    assert sum(r.end_reason is not None for r in decided) >= len(decided) - 1
+    valued = [p for p in records if p.round_number in with_freeze]
+    assert sum(p.equip_value is not None for p in valued) >= 0.9 * len(valued)
+    assert all(p.equip_value is None or 0 <= p.equip_value <= 20000 for p in records)
+    per_side = Counter((p.round_number, p.side) for p in records if p.clutch_vs)
+    assert per_side and max(per_side.values()) == 1
+    assert all(1 <= p.clutch_vs <= 5 for p in records if p.clutch_vs)
+    economy = economy_by_round(rounds, records)
+    first = economy[1]
+    assert first is not None and first["ct"]["buy"] == first["t"]["buy"] == "pistol"
+    if _sha256(DEMO) == DEMOPARSER_FIXTURE_SHA256:
+        # The fixture gives RoundEndReason numbers: 9 (T win), 7 (bomb defused), 9.
+        assert [r.end_reason for r in rounds[:3]] == ["ct_killed", "bomb_defused", "ct_killed"]

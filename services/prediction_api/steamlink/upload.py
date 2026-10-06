@@ -136,7 +136,7 @@ def import_uploaded_demo(
                                       source=source, now=now)
     if known is not None:
         record, added = known
-        if record.outdated_reason is None:
+        if not record.reparse_on_upload:
             return UploadResult(record.id, added)
         # Stored by an older parser: parse once more to bring it up to date.
     on_stage("parsing", None)

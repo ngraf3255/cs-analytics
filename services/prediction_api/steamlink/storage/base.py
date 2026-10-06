@@ -64,6 +64,9 @@ class RoundRecord:
     opening_kill_seconds: float | None
     opening_weapon: str | None
     unscored_reason: str | None
+    # round_end reason (demoparser2 name, e.g. t_killed, bomb_defused); None: not recorded
+    # (parsed before PARSE_VERSION 3) or not in the demo.
+    end_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,11 @@ class PlayerRoundRecord:
     opening_kill: bool = False
     opening_death: bool = False
     survived: bool = True
+    # Equipment value at the round's freeze end (their buy); None: not recorded.
+    equip_value: int | None = None
+    # Enemies alive when the player became their team's last one alive (0: no clutch);
+    # None: not recorded (parsed before PARSE_VERSION 3).
+    clutch_vs: int | None = None
 
 
 # What a demo parse extracts (stored per match as matches.parse_version, migration 0008).
@@ -86,8 +94,14 @@ class PlayerRoundRecord:
 # then flagged ("outdated") and a re-upload of the same demo re-parses and replaces them.
 # 1 = rounds + per-player rounds (migration 0007); 2 = warmup / knife rounds before the
 # last begin_new_match left out of ALL numbers and rounds numbered from the match start,
-# players of a round without any player_spawn taken from the next round.
-PARSE_VERSION = 2
+# players of a round without any player_spawn taken from the next round; 3 = round end
+# reasons, per-player equipment value at freeze end and clutches (match detail).
+PARSE_VERSION = 3
+# Matches parsed at or above this version have correct core stats (rounds, sides, K/D):
+# only older ones are flagged outdated. Versions in between lack only match detail
+# (``MatchRecord.detail_recorded``); a re-upload of the same demo still re-parses them.
+STATS_PARSE_VERSION = 2
+DETAIL_PARSE_VERSION = 3
 
 # valve_match_id value when the Valve match id is not known (uploads without a share code).
 UNKNOWN_MATCH_ID = "upload"
@@ -154,9 +168,21 @@ class MatchRecord:
             return None
         if not self.players_recorded:
             return "players_not_recorded"
-        if self.parse_version < PARSE_VERSION:
+        if self.parse_version < STATS_PARSE_VERSION:
             return "parser_updated"
         return None
+
+    @property
+    def detail_recorded(self) -> bool:
+        """Round end reasons, equipment values and clutches were recorded at parse time."""
+
+        return self.status == "imported" and self.players_recorded and self.parse_version >= DETAIL_PARSE_VERSION
+
+    @property
+    def reparse_on_upload(self) -> bool:
+        """An upload of the same demo should parse it again (outdated, or older than PARSE_VERSION)."""
+
+        return self.status == "imported" and (self.outdated_reason is not None or self.parse_version < PARSE_VERSION)
 
 
 UPLOAD_JOB_ACTIVE = ("queued", "processing")
@@ -405,6 +431,10 @@ class Storage(ABC):
     def get_player_rounds(self, match_id: str, steam_id: str) -> list[PlayerRoundRecord]:
         """One player's rounds of a stored match, in round order (empty: not in the demo,
         or not recorded; see ``MatchRecord.players_recorded``)."""
+
+    @abstractmethod
+    def get_match_player_rounds(self, match_id: str) -> list[PlayerRoundRecord]:
+        """Every player's rounds of a stored match, in round order (economy per team)."""
 
     @abstractmethod
     def list_player_rounds(self, user_id: str, steam_id: str) -> dict[str, list[PlayerRoundRecord]]:
