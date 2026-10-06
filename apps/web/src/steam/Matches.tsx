@@ -337,7 +337,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
   const onPersonalMatches = useCallback((rows: YouAnalytics["recent_form"]["matches"]) => {
     const next: Record<string, YouMatchBits> = {};
     for (const row of rows) {
-      next[row.id] = { result: row.result, score: row.score, kills: row.kills, deaths: row.deaths };
+      next[row.id] = { result: row.result, score: row.score, kills: row.kills, deaths: row.deaths, rounds: row.rounds, won: row.won };
     }
     setYouById(next);
   }, []);

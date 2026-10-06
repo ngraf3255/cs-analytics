@@ -198,4 +198,91 @@ describe("match list UX", () => {
     expect(screen.getByRole("button", { name: /Share match/i })).toBeInTheDocument();
     expect(api.count(`GET /matches/${id}`)).toBe(1);
   });
+
+  it("shows a day group header even for a 1-match list", async () => {
+    vi.setSystemTime(new Date("2026-10-06T15:00:00-05:00"));
+    const body = {
+      matches: [{
+        ...matchesFixture.matches[0],
+        id: "oneday",
+        map_name: "cs_rush",
+        imported_at: "2026-10-06T12:00:00-05:00",
+        date: "2026-10-06T12:00:00-05:00",
+        date_source: "imported",
+        score: { ct: 0, t: 1 },
+        rounds_count: 1,
+      }],
+      limit: 50,
+      offset: 0,
+    };
+    installFakeApi(routes({
+      "GET /matches?limit=50&offset=0": { status: 200, body },
+    }));
+    render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+    expect(screen.getByText("1 MATCH")).toBeInTheDocument();
+    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /rush/i })).toBeInTheDocument();
+  });
+
+  it("bold score is your rounds won–lost, not remapped CT–T you.score", async () => {
+    vi.setSystemTime(new Date("2026-10-06T15:00:00-05:00"));
+    const rushId = "rush-regrade";
+    const match = {
+      id: rushId,
+      source: "upload",
+      share_code: null,
+      status: "imported",
+      status_reason: "parse_degraded",
+      map_name: "rush_001",
+      rounds_count: 1,
+      imported_at: "2026-10-06T12:00:00-05:00",
+      date: "2026-10-06T12:00:00-05:00",
+      date_source: "imported",
+      // Degraded aggregate disagrees with the 1-round T LOST table:
+      score: { ct: 0, t: 2 },
+      players_recorded: true,
+      outdated: null,
+      degraded: { reason: "packet_ents_skipped", detail: "thin" },
+    };
+    const summary = {
+      ...summaryPersonal,
+      you: {
+        ...summaryPersonal.you,
+        matches: 1,
+        recent_form: {
+          ...summaryPersonal.you.recent_form,
+          matches: [{
+            id: rushId,
+            map_name: "rush_001",
+            date: "2026-10-06T12:00:00-05:00",
+            date_source: "imported",
+            played_at: null,
+            first_side: "t",
+            rounds: 1,
+            won: 0,
+            win_rate: 0,
+            kills: 0,
+            deaths: 1,
+            // Remapped CT–T (wrong for this demo) — UI must prefer rounds/won:
+            score: { you: 0, them: 2 },
+            result: "lost",
+          }],
+        },
+      },
+    };
+    installFakeApi(routes({
+      "GET /matches?limit=50&offset=0": { status: 200, body: { matches: [match], limit: 50, offset: 0 } },
+      "GET /matches/summary?recent=50": { status: 200, body: summary },
+    }));
+    render(<Matches me={me} onMeChange={async () => undefined} />);
+    await advance();
+
+    const row = screen.getByRole("button", { name: /Lost · rush 001 · 0–1 · 0–1/i });
+    expect(within(row).getByText("L")).toBeInTheDocument();
+    expect(within(row).getByText("0–1")).toBeInTheDocument();
+    // Bold primary is the first strong; K-D is in small — ensure we did not show 0–2.
+    expect(within(row).queryByText("0–2")).not.toBeInTheDocument();
+    expect(screen.getByText("Today")).toBeInTheDocument();
+  });
 });

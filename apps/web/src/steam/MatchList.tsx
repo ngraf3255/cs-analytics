@@ -13,8 +13,9 @@ const STUB_DEFAULT = "Not imported — upload the .dem above if you have it.";
 
 const mapLabel = (map: string | null) => (map ? map.replace(/^de_/, "").replaceAll("_", " ") : "Unknown map");
 
-/** Personal bits for a collapsed row (from summary you.recent_form). */
-export type YouMatchBits = MatchResult & { kills: number; deaths: number };
+/** Personal bits for a collapsed row (from summary you.recent_form).
+ * Bold score uses your rounds won–lost (``won`` / ``rounds``), not remapped CT–T ``score``. */
+export type YouMatchBits = MatchResult & { kills: number; deaths: number; rounds: number; won: number };
 
 const DAY_MS = 86_400_000;
 
@@ -33,8 +34,7 @@ function calendarDay(iso: string): { key: string; label: string; start: number }
 }
 
 function groupMatches(matches: MatchSummary[]): { key: string; label: string; matches: MatchSummary[] }[] {
-  // Date groups only when the list is long enough to benefit (or spans multiple days).
-  if (matches.length < 3) return [{ key: "all", label: "", matches }];
+  // Always day-group (even a 1-match list) so a header like Today / Oct 6 sits above the row.
   const groups: { key: string; label: string; matches: MatchSummary[]; start: number }[] = [];
   for (const match of matches) {
     const date = matchDate(match);
@@ -44,7 +44,6 @@ function groupMatches(matches: MatchSummary[]): { key: string; label: string; ma
     if (last && last.key === key) last.matches.push(match);
     else groups.push({ key, label, matches: [match], start });
   }
-  if (groups.length < 2) return [{ key: "all", label: "", matches }];
   return groups.map(({ key, label, matches: ms }) => ({ key, label, matches: ms }));
 }
 
@@ -62,12 +61,16 @@ function MatchRow({
   const score = scoreLine(match.score);
   const imported = match.status === "imported";
   const result = you?.result ?? null;
-  const yourScore = you?.score;
-  const primary = yourScore
-    ? `${yourScore.you}–${yourScore.them}`
-    : imported && score
-      ? score.primary
-      : null;
+  // Your-side rounds won–lost from recent_form tally — NOT remapped CT–T (``you.score``),
+  // which for short/degraded demos can disagree with the round table (e.g. 0–2 vs 0–1).
+  const yourSide =
+    you && you.rounds > 0
+      ? `${you.won}–${you.rounds - you.won}`
+      : you?.score
+        ? `${you.score.you}–${you.score.them}`
+        : null;
+  const primary = yourSide
+    ?? (imported && !you && score ? score.primary : null);
   // One primary metric: K-D when personal bits exist, else rounds count.
   const metric = you
     ? `${you.kills}–${you.deaths}`
@@ -121,7 +124,7 @@ function MatchRow({
           <span className="match-glyph stub" title={STUB_NOTE[match.status_reason ?? ""] ?? STUB_DEFAULT} aria-label="Not imported">⊘</span>
         )}
       </span>
-      <span className="match-score" title={imported && !yourScore ? score?.detail : undefined}>
+      <span className="match-score" title={imported && !you ? score?.detail : undefined}>
         {primary ? (
           <>
             <strong>{primary}</strong>
