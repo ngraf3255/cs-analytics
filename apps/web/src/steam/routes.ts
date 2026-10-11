@@ -19,6 +19,11 @@ export const isPredictPath = (pathname: string) => strip(pathname) === PREDICT_P
 export const isAboutPath = (pathname: string) => strip(pathname) === ABOUT_PATH;
 export const isStatsPath = (pathname: string) => strip(pathname) === STATS_PATH;
 
+/** Legacy /predict → /#predictor; called before the first render so nothing flashes. */
+export function redirectLegacyPredict(): void {
+  if (isPredictPath(window.location.pathname)) window.history.replaceState(null, "", PREDICTOR_HASH);
+}
+
 export type AppPage = "home" | "stats" | "about" | "account" | "export";
 
 /** Resolve the SPA page from a pathname (trailing slash ignored). `/predict` → home. */

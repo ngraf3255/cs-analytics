@@ -281,4 +281,18 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 /* Lost is never lime-success */
 .wl-chip.lost,.result-lost .wl-chip{color:#ffd3c8!important;background:#6b3a32!important;border-color:#8a4a40!important}
 .you-lost{color:#ff9f8a!important}
-.match-map strong{text-transform:lowercase}
+.match-map strong{text-transform:none}
+
+/* Soft polish (post-declutter) */
+/* Tile grids: flex rows so 5 tiles (or 2 role tiles) never leave an empty cell at any width. */
+.report-header.summary-tiles{display:flex;flex-wrap:wrap}
+.report-header.summary-tiles>div{flex:1 1 130px}
+@media(max-width:640px){.report-header.summary-tiles>div{flex-basis:40%}}
+/* Presets: odd last chip spans the 2-col mobile grid. */
+@media(max-width:640px){.preset-row .preset-chip:last-child:nth-child(odd){grid-column:1/-1}}
+/* No stray rule above MATCHES. */
+.steam-section#matches{border-top:0}
+/* Readout collapses until a prediction exists (stacked layout). */
+@media(max-width:640px){.result-panel-idle{display:none}.workspace:has(.result-panel-idle) .form-panel{border-bottom:0}}
+.info-glyph{background:none;border:0;padding:0;color:#59656e;font-size:12px;line-height:1;cursor:help}
+.info-glyph:hover,.info-glyph:focus-visible{color:var(--acid)}

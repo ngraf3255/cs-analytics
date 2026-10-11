@@ -3,7 +3,7 @@
 .model-card-grid{margin:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#1b232a;border:1px solid #27313a}
 .model-card-grid>div{background:#0c1117;padding:12px 14px;display:grid;gap:4px;min-width:0}
 .model-card-grid dt{font:9px 'DM Mono',monospace;letter-spacing:.1em;color:var(--label)}
-.model-card-grid dd{margin:0;font-size:12px;line-height:1.5;color:#d6dce0;text-transform:capitalize;overflow-wrap:anywhere}
+.model-card-grid dd{margin:0;font-size:12px;line-height:1.5;color:#d6dce0;overflow-wrap:anywhere}
 .model-card-grid div:nth-child(-n+3) dd{text-transform:none}
 .model-card-note{margin:0;font-size:11px;line-height:1.6}
 .confidence-chip{font:10px 'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;border:1px solid #3a454f;color:#c8d0d6}

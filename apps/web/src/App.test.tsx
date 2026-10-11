@@ -34,7 +34,8 @@ describe("round predictor form", () => {
     const calls = api.calls.filter((c) => c.method === "POST" && c.path === "/predict");
     expect(calls).toHaveLength(1);
     expect(calls[0].body).toEqual({ map_name: "de_mirage", opening_kill_side: "ct", opening_kill_seconds: 8, opening_weapon: "awp" });
-    expect(screen.getByText("Winner")).toBeInTheDocument();
+    expect(screen.queryByText("Winner")).not.toBeInTheDocument();
+    expect(document.querySelector(".winner-name")).toBeTruthy();
     expect(screen.getByRole("button", { name: /AWP pick/ })).toHaveAttribute("aria-pressed", "true");
   });
 

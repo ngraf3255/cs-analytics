@@ -10,7 +10,7 @@ import type { MatchReport, MatchesAnalytics } from "./types";
 describe("share card content", () => {
   it("match you played: result headline and your own numbers", () => {
     const card = matchCard(reportPersonal as MatchReport);
-    expect(card.title).toBe("mirage");
+    expect(card.title).toBe("Mirage");
     expect(card.headline).toBe("Won 13–11");
     expect(card.tone).toBe("won");
     expect(card.stats.map((s) => s.label)).toEqual(["KILLS / DEATHS", "K/D RATIO", "ROUNDS WON", "OPENING DUELS"]);

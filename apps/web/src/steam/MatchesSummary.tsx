@@ -50,7 +50,7 @@ function YouStatsSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: n
     <div className="you-section">
       <FormTrend refreshKey={refreshKey} matchCount={you.matches} />
       {you.matches > 0 && <PeerCompare refreshKey={refreshKey} />}
-      {you.roles && <RoleBreakdown roles={you.roles} />}
+      {you.roles && (you.roles.ct.role || you.roles.t.role) && <RoleBreakdown roles={you.roles} />}
       <table className="round-table summary-maps" aria-label="Your maps">
         <thead><tr><th>Map</th><th>Matches</th><th>Your rounds</th><th>Won</th><th>As CT</th><th>As T</th><th>K/D</th>{hasDuels && <th>Opening duels</th>}</tr></thead>
         <tbody>
@@ -208,9 +208,6 @@ export function MatchesSummaryPanel({ refreshKey, onPersonalMatches, variant = "
 
   return (
     <section className="summary-panel" aria-label="Across your matches">
-      <div className="summary-heading">
-        <span className="section-kicker">STATS</span>
-      </div>
       {summary.you && <YouStatsSection you={summary.you} refreshKey={refreshKey} />}
       <AllPlayersSection summary={summary} />
     </section>

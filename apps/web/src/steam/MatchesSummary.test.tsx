@@ -57,9 +57,9 @@ describe("summary across previous matches (GET /matches/summary)", () => {
 
     const maps = within(within(panel()).getByRole("table", { name: "By map" })).getAllByRole("row").slice(1);
     expect(maps.map(cells)).toEqual([
-      ["mirage", "2", "35", "54%", "85% (29/34)", "0.144"],
-      ["nuke", "1", "18", "50%", "89% (16/18)", "0.131"],
-      ["ancient", "1", "8", "75%", "100% (7/7)", "0.088"],
+      ["Mirage", "2", "35", "54%", "85% (29/34)", "0.144"],
+      ["Nuke", "1", "18", "50%", "89% (16/18)", "0.131"],
+      ["Ancient", "1", "8", "75%", "100% (7/7)", "0.088"],
     ]);
     const calibration = within(within(panel()).getByRole("table", { name: "Model calibration" })).getAllByRole("row").slice(1);
     expect(calibration.map(cells)).toEqual([
@@ -117,7 +117,7 @@ describe("summary across previous matches (GET /matches/summary)", () => {
     expect(tiles).toHaveTextContent("HIT RATE—");
     expect(tiles).toHaveTextContent("BRIER—");
     const row = within(within(panel()).getByRole("table", { name: "By map" })).getAllByRole("row")[1];
-    expect(cells(row)).toEqual(["mirage", "1", "10", "20%", "Not scored", "—"]);
+    expect(cells(row)).toEqual(["Mirage", "1", "10", "20%", "Not scored", "—"]);
     expect(within(panel()).queryByRole("table", { name: "Model calibration" })).not.toBeInTheDocument();
   });
 

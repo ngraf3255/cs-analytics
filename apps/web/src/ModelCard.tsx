@@ -1,3 +1,4 @@
+import { mapLabel } from "./steam/format";
 import { useEffect, useState } from "react";
 import { apiBase } from "./steam/api";
 import { weaponName } from "./steam/weapons";
@@ -83,7 +84,6 @@ export function WhyThisRound({ inputs, ct, weapons }: { inputs: RoundInputs; ct:
   );
 }
 
-const mapLabel = (map: string) => map.replace(/^de_/i, "").replaceAll("_", " ").toLowerCase();
 
 /** About the model: what it sees, which maps it covers, how sure it is and where it stops. */
 export function ModelCard({ maps }: { maps: string[] }) {

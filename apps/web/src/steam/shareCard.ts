@@ -83,7 +83,7 @@ export async function renderCard(card: ShareCard): Promise<Blob> {
   ctx.fillStyle = COLORS.acid; ctx.font = `500 22px ${mono}`;
   ctx.fillText(card.kicker.split("").join(String.fromCharCode(8202)), 72, 96);
   ctx.fillStyle = COLORS.text; ctx.font = `800 64px ${cond}`;
-  ctx.fillText(card.title.toUpperCase(), 72, 170, W - 144);
+  ctx.fillText(card.title, 72, 170, W - 144);
   ctx.fillStyle = card.tone === "won" ? COLORS.acid : card.tone === "lost" ? COLORS.lost : COLORS.text;
   ctx.font = `800 120px ${cond}`;
   ctx.fillText(card.headline.toUpperCase(), 72, 300, W - 144);
