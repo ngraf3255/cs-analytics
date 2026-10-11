@@ -3,8 +3,9 @@ import { useMe, useSteamStatus } from "./hooks";
 /** Short marketing hero for signed-out visitors on `/`. */
 export function GuestHero() {
   const { enabled, loading } = useSteamStatus();
-  const { me } = useMe(enabled);
-  if (loading || me) return null;
+  const { me, checked } = useMe(enabled);
+  // Hold until auth resolves so a signed-in reload never flashes guest chrome.
+  if (loading || (enabled && !checked) || me) return null;
   return (
     <section className="hero">
       <div className="hero-copy">
