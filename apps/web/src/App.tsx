@@ -354,9 +354,11 @@ export function InfoPopover({ label, children }: { label: string; children: Reac
 /** Brand, main navigation. Below 640px the links fold into a menu. */
 function TopBar({ page }: { page: AppPage }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { enabled } = useSteamStatus();
-  const { me } = useMe(enabled);
+  const { enabled, loading: statusLoading } = useSteamStatus();
+  const { me, checked } = useMe(enabled);
   const steamUser = me && me.account !== "guest" ? me : null;
+  // Until auth settles, hold the header's right side still (no "MODEL ONLINE" → badge jump).
+  const authPending = statusLoading || (enabled && !checked);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -383,7 +385,8 @@ function TopBar({ page }: { page: AppPage }) {
         <a className={page === "account" || page === "export" ? "nav-active" : undefined}
           href={ACCOUNT_PATH} aria-current={page === "account" || page === "export" ? "page" : undefined}>Account</a>
       </nav>
-      {page === "home" && <div className="live-indicator"><span /> MODEL ONLINE</div>}
+      {page === "home" && <div className={`live-indicator ${authPending ? "is-pending" : ""}`.trim()} aria-hidden={authPending || undefined}><span /> MODEL ONLINE</div>}
+      {authPending && <span className="account-avatar account-avatar-slot" aria-hidden="true" />}
       {steamUser && (
         <a className="account-avatar" href={ACCOUNT_PATH} aria-label="Account settings"
           title={steamUser.steam_id ?? "Account"}>

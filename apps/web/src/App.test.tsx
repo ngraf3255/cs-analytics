@@ -24,6 +24,19 @@ describe("round predictor form", () => {
     window.history.replaceState(null, "", "/");
   });
 
+  it("time chips follow the time value: a preset at 8s leaves no chip pressed; 15s preset presses 15s", async () => {
+    installFakeApi(routes());
+    render(<App />);
+    await advance();
+    const chip = (n: number) => screen.getByRole("button", { name: `${n}s` });
+    fireEvent.click(chip(15));
+    expect(chip(15)).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: /AWP pick/ }));
+    for (const n of [5, 15, 30, 60]) expect(chip(n)).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: /T entry/ }));
+    expect(chip(15)).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("a preset predicts in one tap with the preset's side / time / weapon and keeps the map", async () => {
     const api = installFakeApi(routes());
     render(<App />);

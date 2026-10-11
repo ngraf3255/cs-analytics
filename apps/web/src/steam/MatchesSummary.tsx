@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { steamApi } from "./api";
 import { ApiError } from "./errors";
-import { kdText, mapLabel } from "./format";
+import { kdText } from "./format";
+import { MapName } from "./MapName";
 import { FormTrend } from "./FormTrend";
 import { ShareButton } from "./ShareButton";
 import { profileCard } from "./shareCard";
@@ -55,7 +56,7 @@ function YouStatsSection({ you, refreshKey }: { you: YouAnalytics; refreshKey: n
         <tbody>
           {you.maps.map((map) => (
             <tr key={map.map_name ?? "unknown"}>
-              <td>{mapLabel(map.map_name)}</td>
+              <td><MapName map={map.map_name} /></td>
               <td>{map.matches} ({map.results.won}–{map.results.lost}{map.results.tied ? `–${map.results.tied}` : ""})</td>
               <td>{map.rounds}</td>
               <td>{pct(map.win_rate)}</td>
@@ -108,7 +109,7 @@ function AllPlayersSection({ summary }: { summary: MatchesAnalytics }) {
         <tbody>
           {maps.map((map) => (
             <tr key={map.map_name ?? "unknown"}>
-              <td>{mapLabel(map.map_name)}</td>
+              <td><MapName map={map.map_name} /></td>
               <td>{map.matches}</td>
               <td>{map.rounds}</td>
               <td>{pct(map.ct_win_rate)}</td>

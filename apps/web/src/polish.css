@@ -319,3 +319,9 @@ html{scrollbar-gutter:stable}
 .result-panel:has(.model-info-pop[open]){padding-bottom:72px}
 /* Loading placeholder ≈ result height so the panel doesn't jump when the answer lands. */
 .result-panel .readout-empty{min-height:300px;margin:22px 0 0}
+
+/* Number input: no native spinners under the SEC suffix. */
+.number-wrap input{appearance:textfield;-moz-appearance:textfield}
+.number-wrap input::-webkit-inner-spin-button,.number-wrap input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+/* Reserved badge slot while auth settles. */
+.account-avatar-slot,.live-indicator.is-pending{visibility:hidden}
