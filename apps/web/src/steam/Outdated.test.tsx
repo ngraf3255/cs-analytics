@@ -76,7 +76,7 @@ describe("matches parsed by an older version: re-upload to update", () => {
     const panel = screen.getByRole("region", { name: "Across your matches" });
     expect(within(panel).getByLabelText("Previous matches summary")).toHaveTextContent("MATCHES3");
     const note = within(panel).getByRole("note");
-    expect(note).toHaveTextContent(/^1 match marked OUTDATED — re-upload that demo\.$/);  // the tag's tooltip explains why
+    expect(note).toHaveTextContent(/^1 outdated · re-upload$/);  // the tag's tooltip explains why
     expect(note).not.toHaveTextContent(/warmup|knife|counted as stored/i);
   });
 

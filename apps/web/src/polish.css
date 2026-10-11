@@ -293,6 +293,14 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 /* No stray rule above MATCHES. */
 .steam-section#matches{border-top:0}
 /* Readout collapses until a prediction exists (stacked layout). */
-@media(max-width:640px){.result-panel-idle{display:none}.workspace:has(.result-panel-idle) .form-panel{border-bottom:0}}
-.info-glyph{background:none;border:0;padding:0;color:#59656e;font-size:12px;line-height:1;cursor:help}
-.info-glyph:hover,.info-glyph:focus-visible{color:var(--acid)}
+/* Readout collapses until a prediction exists; the form takes the full width. */
+.result-panel-idle{display:none}
+.workspace:has(.result-panel-idle){grid-template-columns:1fr}
+.workspace:has(.result-panel-idle) .form-panel{border-right:0;border-bottom:0}
+.model-info-pop > summary{color:#c0c8cd;border-color:#4a5661;font-size:12px;padding:3px 6px}
+.model-info-pop .tl-legend{left:auto;right:0;top:auto;bottom:calc(100% + 6px);min-width:0;white-space:nowrap;color:#c0c8cd;font:10px 'DM Mono',monospace;letter-spacing:.04em}
+/* Desktop presets: chips stretch so a wrapped last chip fills its row. */
+.preset-row .preset-chip{flex:1 1 auto}
+.btn-spinner{width:14px;height:14px;border:2px solid #11160a55;border-top-color:#11160a;border-radius:50%;animation:btn-spin .7s linear infinite}
+@keyframes btn-spin{to{transform:rotate(360deg)}}
+.result-panel{align-self:start}

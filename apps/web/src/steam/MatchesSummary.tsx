@@ -12,7 +12,6 @@ import type { MatchesAnalytics, YouAnalytics } from "./types";
 import { weaponName } from "./weapons";
 
 const pct = (rate: number | null | undefined) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : word.endsWith("ch") ? "es" : "s"}`;
 
 /** Four home tiles (and Share). Deeper tables / lobbies live on /stats. */
 function YouHomeTiles({ you }: { you: YouAnalytics }) {
@@ -101,7 +100,7 @@ function AllPlayersSection({ summary }: { summary: MatchesAnalytics }) {
       </dl>
       {totals.outdated_matches ? (
         <p className="steam-muted outdated-summary" role="note">
-          {plural(totals.outdated_matches, "match")} marked OUTDATED — re-upload {totals.outdated_matches === 1 ? "that demo" : "those demos"}.
+          {totals.outdated_matches} outdated · re-upload
         </p>
       ) : null}
       <table className="round-table summary-maps" aria-label="By map">

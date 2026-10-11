@@ -268,7 +268,7 @@ function PredictorWorkspace() {
           </label>
 
           <button className="submit-button" type="submit" disabled={!ready || loading}>
-            <span>{loading ? "…" : "Predict"}</span><span className="button-arrow">↗</span>
+            <span>Predict</span>{loading ? <span className="btn-spinner" role="progressbar" aria-label="Predicting" /> : <span className="button-arrow">↗</span>}
           </button>
         </form>
       </div>
@@ -302,7 +302,10 @@ function PredictorWorkspace() {
         ) : null}
         {prediction && <WhyThisRound inputs={lastInputs} ct={prediction.probabilities.ct} weapons={options?.weapons ?? []} />}
         {prediction && <div className="result-foot">
-          <button type="button" className="info-glyph" aria-label="Model info" title="Logistic regression · pro data">ⓘ</button>
+          <details className="tl-legend-info model-info-pop">
+            <summary aria-label="Model info">ⓘ</summary>
+            <div className="tl-legend">Logistic regression · pro data</div>
+          </details>
         </div>}
         {error && <div className="error-message" role="alert">{error}</div>}
       </div>
