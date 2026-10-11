@@ -1,4 +1,4 @@
-import { endSession } from "./sessionHint";
+import { endSession, withAuthMarker } from "./sessionHint";
 import { ApiError } from "./errors";
 import type { AutoSync, MatchAccess, MatchesAnalytics, PeerComparison, MatchReport, MatchSummary, Me, ServerStatus, SyncResult, SyncState, UploadJob } from "./types";
 
@@ -145,13 +145,29 @@ export async function downloadExport(table: ExportTable, now: Date = new Date())
 }
 
 export function steamLoginUrl(next = "/#matches"): string {
-  const path = next.startsWith("/") ? next : `/${next}`;
+  const path = withAuthMarker(next.startsWith("/") ? next : `/${next}`);
   return `${apiBase}/auth/steam/login?next=${encodeURIComponent(path)}`;
+}
+
+/** One shared GET /me at a time (header, hero and matches all ask on load). ``?soft=1``: a signed-out
+ * visitor gets 200 ``{account: null}`` (no browser-logged 401) on APIs that support it; older APIs
+ * ignore it and answer 401 as before. Both become ApiError 401 here. */
+let meInFlight: Promise<Me> | null = null;
+/** Tests: forget a shared request left pending by a previous test. */
+export function resetMeRequest(): void { meInFlight = null; }
+function getMe(): Promise<Me> {
+  meInFlight ??= request<Me | { account: null }>("/me?soft=1")
+    .then((body) => {
+      if (body && (body as { account?: unknown }).account === null) throw new ApiError(401, "not_authenticated");
+      return body as Me;
+    })
+    .finally(() => { meInFlight = null; });
+  return meInFlight;
 }
 
 export const steamApi = {
   status: () => request<ServerStatus>("/steam/status"),
-  me: () => request<Me>("/me"),
+  me: getMe,
   /** Start (or keep) a guest session: upload demos without Steam. */
   startGuest: () => request<Me>("/auth/guest", { method: "POST" }, true),
   /** Both end the session hint synchronously, before the request goes out. */

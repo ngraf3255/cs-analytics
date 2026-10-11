@@ -24,7 +24,7 @@ export function redirectLegacyPredict(): void {
   if (isPredictPath(window.location.pathname)) window.history.replaceState(null, "", PREDICTOR_HASH);
 }
 
-export type AppPage = "home" | "stats" | "about" | "account" | "export";
+export type AppPage = "home" | "stats" | "about" | "account" | "export" | "notfound";
 
 /** Resolve the SPA page from a pathname (trailing slash ignored). `/predict` → home. */
 export function pageFromPath(pathname: string): AppPage {
@@ -34,5 +34,6 @@ export function pageFromPath(pathname: string): AppPage {
   if (path === PREDICT_PATH) return "home";
   if (path === ABOUT_PATH) return "about";
   if (path === STATS_PATH) return "stats";
-  return "home";
+  if (path === "/") return "home";
+  return "notfound";  // the Worker answers these with a real 404 (worker/index.js)
 }

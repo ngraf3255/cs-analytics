@@ -48,7 +48,7 @@ export function installFakeApi(routes: Record<string, Reply | Reply[] | Handler>
     } as Response;
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { calls, fetchMock, count: (key: string) => calls.filter((c) => `${c.method} ${c.path}` === key).length };
+  return { calls, fetchMock, count: (key: string) => calls.filter((c) => `${c.method} ${c.path}` === key || `${c.method} ${c.path.split("?")[0]}` === key).length };
 }
 
 /** Minimal XMLHttpRequest the upload code talks to; the test drives progress and the reply. */

@@ -119,15 +119,29 @@ export function useMe(enabled: boolean) {
 /** Scroll to the element named by the URL hash (e.g. #matches) once ``ready`` and on every
  * hashchange. The browser's own jump happens before this section exists (it renders after
  * GET /steam/status), so a fresh load of /#matches would otherwise stay at the top. */
+/** How long the anchor is re-pinned while content above it settles (auth, tiles, list). */
+export const HASH_PIN_MS = 5000;
+
 export function useHashScroll(ready: boolean) {
   useEffect(() => {
     if (!ready) return;
-    const scroll = () => {
-      const id = decodeURIComponent(window.location.hash.slice(1));
-      if (id) document.getElementById(id)?.scrollIntoView?.({ block: "start" });
-    };
+    const target = () => document.getElementById(decodeURIComponent(window.location.hash.slice(1)));
+    const scroll = () => target()?.scrollIntoView?.({ block: "start" });
     scroll();
+    // Re-pin while layout above the anchor settles; stop on the first user scroll intent or after HASH_PIN_MS.
+    let pinning = Boolean(target());
+    const stop = () => { pinning = false; };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => { if (pinning) scroll(); });
+    if (pinning) observer?.observe(document.body);
+    const intents = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    intents.forEach((e) => window.addEventListener(e, stop, { passive: true, once: true }));
+    const timer = window.setTimeout(stop, HASH_PIN_MS);
     window.addEventListener("hashchange", scroll);
-    return () => window.removeEventListener("hashchange", scroll);
+    return () => {
+      observer?.disconnect();
+      window.clearTimeout(timer);
+      intents.forEach((e) => window.removeEventListener(e, stop));
+      window.removeEventListener("hashchange", scroll);
+    };
   }, [ready]);
 }

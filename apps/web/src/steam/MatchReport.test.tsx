@@ -101,7 +101,7 @@ describe("match list and per-round report (real API response shapes)", () => {
     installFakeApi(routes({ "GET /me": { status: 401, body: { detail: "not_authenticated" } } }));
     render(<SteamSection />);
     await advance();
-    expect(screen.getByRole("link", { name: /Sign in through Steam/ })).toHaveAttribute("href", expect.stringContaining("/auth/steam/login?next=%2F%23matches"));
+    expect(screen.getByRole("link", { name: /Sign in through Steam/ })).toHaveAttribute("href", expect.stringContaining("/auth/steam/login?next=%2F%3Fauth%3D1%23matches"));
     expect(screen.queryByText("STEP 3 · IMPORT MATCHES")).not.toBeInTheDocument();
   });
 
