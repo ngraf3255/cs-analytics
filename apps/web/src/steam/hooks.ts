@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./errors";
 import { steamApi } from "./api";
-import { setSessionHint } from "./sessionHint";
+import { sessionEpoch, setSessionHint } from "./sessionHint";
 import type { Me } from "./types";
 
 export type Features = {
@@ -64,8 +64,10 @@ export function useMe(enabled: boolean) {
     }
     if (!answered.current) setLoading(true);
     setError("");
+    const started = sessionEpoch();
     try {
       const body = await steamApi.me();
+      if (sessionEpoch() !== started) return null;  // began before a sign-out: ignore
       setMe((prev) => (JSON.stringify(prev) === JSON.stringify(body) ? prev : body));
       setSessionHint(true);
       return body;
