@@ -51,6 +51,10 @@ describe("design review polish", () => {
     expect(within(panel).queryByText("Predict")).toBeNull();
     expect(panel).toHaveTextContent("Counter-Terrorists");
     expect(panel).toHaveTextContent("64.3%");
+    const info = panel.querySelector("details.model-info-pop");  // tap popover, not hover-only title
+    expect(info).toBeTruthy();
+    expect(info!.querySelector("summary")).toHaveAccessibleName("Model info");
+    expect(info).toHaveTextContent("Logistic regression · pro data");
     expect(panel.querySelectorAll(".prob-track")).toHaveLength(2);
   });
 
