@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useHashScroll, useMe, useSteamStatus } from "./hooks";
 import { Matches } from "./Matches";
 import { MatchesTeaser } from "./MatchesTeaser";
+import { useGuestChrome } from "./GuestHero";
 import { SteamAccount } from "./SteamAccount";
 
 function loginFailureReason(): string | null {
@@ -11,7 +12,8 @@ function loginFailureReason(): string | null {
 
 export function SteamSection() {
   const { steam, upload, guest, reachable, enabled, loading } = useSteamStatus();
-  const { me, setMe, error, refresh } = useMe(enabled);
+  const { me, setMe, error, refresh, checked } = useMe(enabled);
+  const guestChrome = useGuestChrome(me, checked, error, enabled, loading);
   const failure = loginFailureReason();
   // A demo picked before a guest session existed: uploaded once the session is ready.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -44,15 +46,16 @@ export function SteamSection() {
             {failure && <div className="steam-error" role="alert">Steam sign-in could not be verified. Please try again.</div>}
             {error && <div className="steam-error" role="alert">{error}</div>}
             {/* Signed-in Steam users: account lives in the header avatar → /account (no SteamID card here). */}
-            <SteamAccount me={me} steam={steam} guest={guest && upload} onChange={refresh}
+            {/* Guest pieces (Connect Steam, teaser) follow the hero's first-paint rules: never mounted while a session hint waits on auth. */}
+            {(me || guestChrome) && <SteamAccount me={me} steam={steam} guest={guest && upload} onChange={refresh}
               onSignedOut={() => { setPendingFile(null); setMe(null); }} onGuest={onGuest}
-              homeChrome />
+              homeChrome />}
             {me && (
               <Matches key={me.steam_id ?? `guest-${me.created_at}`} me={me} onMeChange={refresh}
                 canSync={steam && !isGuest} steamAvailable={steam}
                 initialFile={pendingFile} onInitialFile={() => setPendingFile(null)} />
             )}
-            {!me && <MatchesTeaser />}
+            {!me && guestChrome && <MatchesTeaser />}
           </>
         )}
       </section>

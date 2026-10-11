@@ -12,3 +12,13 @@ export function setSessionHint(on: boolean): void {
     else window.localStorage.removeItem(KEY);
   } catch { /* storage unavailable */ }
 }
+
+/** Bumped on sign-out / account delete; /me answers that started before it are ignored. */
+let epoch = 0;
+export const sessionEpoch = () => epoch;
+
+/** Sign-out / delete: drop the hint synchronously (before any request or navigation). */
+export function endSession(): void {
+  epoch += 1;
+  setSessionHint(false);
+}

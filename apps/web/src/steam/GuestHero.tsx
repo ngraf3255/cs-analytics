@@ -7,10 +7,10 @@ export const HERO_AUTH_TIMEOUT_MS = 4000;
 
 /** Short marketing hero for signed-out visitors on `/`.
  * Decided on first paint: no session hint → render now; hint → wait for auth (max 4 s). */
-export function GuestHero() {
+/** Guest chrome (hero, Connect Steam) visibility, decided on first paint:
+ * no session hint → show unless signed in; hint → wait for auth (max 4 s), show only if it ends signed-out. */
+export function useGuestChrome(me: unknown, checked: boolean, error: string, enabled: boolean, loading: boolean): boolean {
   const [hint] = useState(hasSessionHint);
-  const { enabled, loading } = useSteamStatus();
-  const { me, checked, error } = useMe(enabled);
   const [timedOut, setTimedOut] = useState(false);
   useEffect(() => {
     if (!hint) return;
@@ -19,10 +19,15 @@ export function GuestHero() {
   }, [hint]);
   const settled = !loading && (!enabled || checked);
   const guest = settled && !me;
-  // A real "signed out" answer clears the stale hint; a /me error or timeout shows the hero but keeps it.
+  // A real "signed out" answer clears the stale hint; a /me error or timeout shows guest chrome but keeps it.
   useEffect(() => { if (hint && guest && !error) setSessionHint(false); }, [hint, guest, error]);
+  return hint ? !me && (settled || timedOut) : !me;
+}
 
-  const show = hint ? !me && (settled || timedOut) : !me;
+export function GuestHero() {
+  const { enabled, loading } = useSteamStatus();
+  const { me, checked, error } = useMe(enabled);
+  const show = useGuestChrome(me, checked, error, enabled, loading);
   if (!show) return null;
   return (
     <section className="hero">
