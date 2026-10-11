@@ -335,3 +335,11 @@ def test_link_without_share_code_validation(app_client, body, detail):
     client, _ = app_client
     response = client.put("/steam/match-access", json=body, headers=H)
     assert response.status_code == 422 and response.json()["detail"] == detail
+
+
+def test_me_soft_answers_200_with_no_account_when_signed_out(tmp_path):
+    client, _ = make_client(tmp_path)
+    assert client.get("/me").status_code == 401
+    response = client.get("/me", params={"soft": "1"})
+    assert response.status_code == 200
+    assert response.json() == {"account": None}
