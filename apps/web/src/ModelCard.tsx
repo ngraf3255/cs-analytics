@@ -15,9 +15,13 @@ export function confidenceLabel(p: Probs): { label: string; tone: "strong" | "le
   return { label: "Toss-up", tone: "toss" };
 }
 
-async function predictCt(inputs: RoundInputs): Promise<number | null> {
+/** Per-ask cap so "Why this call?" can never sit on "Asking the model…". */
+export const WHY_TIMEOUT_MS = 8000;
+
+async function predictCt(inputs: RoundInputs, signal?: AbortSignal): Promise<number | null> {
   try {
     const response = await fetch(`${apiBase}/predict`, {
+      signal,
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ map_name: inputs.mapName, opening_kill_side: inputs.side,
         opening_kill_seconds: Number(inputs.seconds), opening_weapon: inputs.weapon }),
@@ -56,12 +60,15 @@ export function WhyThisRound({ inputs, ct, weapons }: { inputs: RoundInputs; ct:
       ...(altWeapon ? [{ id: "weapon", label: "The weapon", detail: `With ${weaponName(altWeapon)} instead of ${weaponName(inputs.weapon)}`,
         inputs: { ...inputs, weapon: altWeapon } }] : []),
     ];
-    Promise.all(asks.map((a) => predictCt(a.inputs))).then((results) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), WHY_TIMEOUT_MS);
+    Promise.all(asks.map((a) => predictCt(a.inputs, controller.signal))).then((results) => {
+      clearTimeout(timer);
       if (cancelled) return;
       // delta: how much CT's chance changes if this one thing were different (negative = this input favours CT)
       setFactors(asks.map((a, i) => ({ id: a.id, label: a.label, detail: a.detail, delta: results[i] == null ? null : results[i]! - ct })));
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, key, ct]);
 

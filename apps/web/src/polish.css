@@ -314,3 +314,8 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 /* No layout shift when a scrollbar appears. */
 html{scrollbar-gutter:stable}
 .info-pop-below .tl-legend{scroll-margin-bottom:24px}
+.map-digits{font-family:'DM Mono',monospace;font-weight:500;font-size:.82em;font-variant-numeric:slashed-zero tabular-nums;letter-spacing:0}
+/* Room under the open ⓘ note so it never sits on the panel edge. */
+.result-panel:has(.model-info-pop[open]){padding-bottom:72px}
+/* Loading placeholder ≈ result height so the panel doesn't jump when the answer lands. */
+.result-panel .readout-empty{min-height:300px;margin:22px 0 0}

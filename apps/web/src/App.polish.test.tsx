@@ -54,6 +54,7 @@ describe("design review polish", () => {
     const info = panel.querySelector("details.model-info-pop");  // tap popover, not hover-only title
     expect(info).toBeTruthy();
     expect(info!.querySelector("summary")).toHaveAccessibleName("Model info");
+    expect(info!.querySelector("summary")).toHaveAttribute("role", "button");
     expect(info).toHaveTextContent("Logistic regression · pro data");
     expect(info).toHaveClass("info-pop-below");  // anchored under the icon, inside the viewport
     fireEvent.click(info!.querySelector("summary")!);

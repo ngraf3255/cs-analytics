@@ -103,7 +103,7 @@ function MatchRow({
         <span className="wl-chip empty" aria-hidden="true" />
       )}
       <span className="match-map">
-        <strong>{map}</strong>
+        <strong>{mapDigits(map)}</strong>
         {match.source === "upload" && (
           <span className="match-glyph" title="Uploaded" aria-label="Uploaded">↑</span>
         )}
@@ -168,6 +168,11 @@ type MatchListProps = {
   /** Expanded report (or stub note) for the selected match. */
   children?: (match: MatchSummary) => ReactNode;
 };
+
+/** Digits in map names ("Rush 001") in the mono body font so zeros don't read as O's. */
+export function mapDigits(name: string) {
+  return name.split(/(\d+)/).map((part, i) => (/^\d+$/.test(part) ? <span key={i} className="map-digits">{part}</span> : part));
+}
 
 /** Scannable match rows: [W/L] MAP score · metric ▸ */
 export function MatchList({ matches, selected, onSelect, youById, children }: MatchListProps) {
