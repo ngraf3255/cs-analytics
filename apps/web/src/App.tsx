@@ -322,26 +322,31 @@ function PredictorWorkspace() {
 /** Tap ⓘ popover: opens below the icon, closes on second tap, Escape, or a click outside. */
 export function InfoPopover({ label, children }: { label: string; children: React.ReactNode }) {
   const ref = useRef<HTMLDetailsElement>(null);
-  const [open, setOpen] = useState(false);
+  const noteRef = useRef<HTMLDivElement>(null);
+  // Always-on document listeners that read the live `open` attribute (no state race), capture phase so
+  // Escape / pointerdown on any element (inputs included) close it wherever focus is.
   useEffect(() => {
-    if (!open) return;
-    const close = () => { if (ref.current) ref.current.open = false; setOpen(false); };
+    const close = () => { if (ref.current?.open) ref.current.open = false; };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
-    const onDown = (e: PointerEvent | MouseEvent) => { if (!ref.current?.contains(e.target as Node)) close(); };
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("mousedown", onDown);
+    const onDown = (e: Event) => { if (ref.current?.open && !ref.current.contains(e.target as Node)) close(); };
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("mousedown", onDown, true);
     return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("mousedown", onDown, true);
     };
-  }, [open]);
+  }, []);
+  const onToggle = () => {
+    if (!ref.current?.open) return;
+    const note = noteRef.current;
+    requestAnimationFrame(() => note?.scrollIntoView?.({ block: "nearest", behavior: "smooth" }));
+  };
   return (
-    <details ref={ref} className="tl-legend-info model-info-pop info-pop-below" open={open}
-      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+    <details ref={ref} className="tl-legend-info model-info-pop info-pop-below" onToggle={onToggle}>
       <summary aria-label={label}>ⓘ</summary>
-      <div className="tl-legend" role="note">{children}</div>
+      <div ref={noteRef} className="tl-legend" role="note">{children}</div>
     </details>
   );
 }
