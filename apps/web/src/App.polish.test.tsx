@@ -1,5 +1,6 @@
 import { redirectLegacyPredict } from "./steam/routes";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { HERO_AUTH_TIMEOUT_MS } from "./steam/GuestHero";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { advance, installFakeApi } from "./test/fakeApi";
@@ -225,7 +226,8 @@ describe("matches teaser", () => {
 describe("signed-in hard reload: no guest chrome, predictor ready immediately", () => {
   beforeEach(() => { vi.useFakeTimers(); window.history.replaceState(null, "", "/"); window.localStorage.clear(); });
 
-  it("no guest hero while /me is pending (or after it says signed in)", async () => {
+  it("hint + signed in: no guest hero while /me is pending or after it answers", async () => {
+    window.localStorage.setItem("csa_has_session", "1");
     let answer: (v: { status: number; body: unknown }) => void = () => undefined;
     installFakeApi(appRoutes({
       "GET /steam/status": { status: 200, body: { enabled: true, steam: true, upload: true } },
@@ -246,5 +248,55 @@ describe("signed-in hard reload: no guest chrome, predictor ready immediately", 
     expect(screen.getByLabelText("Map")).not.toHaveValue("");
     expect(screen.getByLabelText("Opening weapon")).toHaveValue("ak47");
     expect(screen.getByRole("button", { name: /Predict/ })).toBeEnabled();
+  });
+});
+
+describe("guest hero decided on first paint (session hint)", () => {
+  beforeEach(() => { vi.useFakeTimers(); window.history.replaceState(null, "", "/"); window.localStorage.clear(); });
+  const slowAuth = (me: () => Promise<{ status: number; body: unknown }>) => appRoutes({
+    "GET /steam/status": { status: 200, body: { enabled: true, steam: true, upload: true } },
+    "GET /me": me,
+  });
+
+  it("no hint: hero on the very first render, before any API answer", () => {
+    installFakeApi(slowAuth(() => new Promise(() => undefined)));
+    render(<App />);
+    expect(screen.getByText(/turning point/i)).toBeInTheDocument();
+  });
+
+  it("hint + 401: hero appears once auth says guest, and the hint is cleared", async () => {
+    window.localStorage.setItem("csa_has_session", "1");
+    installFakeApi(slowAuth(async () => ({ status: 401, body: { detail: "not_signed_in" } })));
+    render(<App />);
+    expect(screen.queryByText(/turning point/i)).toBeNull();
+    await advance();
+    expect(screen.getByText(/turning point/i)).toBeInTheDocument();
+    expect(window.localStorage.getItem("csa_has_session")).toBeNull();
+  });
+
+  it("hint + /me error: hero still appears", async () => {
+    window.localStorage.setItem("csa_has_session", "1");
+    installFakeApi(slowAuth(async () => ({ status: 500, body: { detail: "boom" } })));
+    render(<App />);
+    await advance();
+    expect(screen.getByText(/turning point/i)).toBeInTheDocument();
+  });
+
+  it("hint + /me hangs: hero appears after the 4 s timeout", async () => {
+    window.localStorage.setItem("csa_has_session", "1");
+    installFakeApi(slowAuth(() => new Promise(() => undefined)));
+    render(<App />);
+    await advance();
+    expect(screen.queryByText(/turning point/i)).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(HERO_AUTH_TIMEOUT_MS + 10); });
+    expect(screen.getByText(/turning point/i)).toBeInTheDocument();
+  });
+
+  it("successful /me sets the hint", async () => {
+    installFakeApi(slowAuth(async () => ({ status: 200, body: meFixture })));
+    render(<App />);
+    await advance();
+    expect(window.localStorage.getItem("csa_has_session")).toBe("1");
+    expect(screen.queryByText(/turning point/i)).toBeNull();
   });
 });
