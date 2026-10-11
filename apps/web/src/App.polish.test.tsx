@@ -221,3 +221,30 @@ describe("matches teaser", () => {
     expect(screen.getByRole("button", { name: /mirage/i })).toBeInTheDocument();
   });
 });
+
+describe("signed-in hard reload: no guest chrome, predictor ready immediately", () => {
+  beforeEach(() => { vi.useFakeTimers(); window.history.replaceState(null, "", "/"); window.localStorage.clear(); });
+
+  it("no guest hero while /me is pending (or after it says signed in)", async () => {
+    let answer: (v: { status: number; body: unknown }) => void = () => undefined;
+    installFakeApi(appRoutes({
+      "GET /steam/status": { status: 200, body: { enabled: true, steam: true, upload: true } },
+      "GET /me": () => new Promise((resolve) => { answer = resolve; }),
+    }));
+    render(<App />);
+    await advance();  // status answered, /me still pending
+    expect(screen.queryByText(/turning point/i)).toBeNull();
+    answer({ status: 200, body: meFixture });
+    await advance();
+    expect(screen.queryByText(/turning point/i)).toBeNull();
+  });
+
+  it("predictor form is enabled with defaults on first render, before /options answers", () => {
+    installFakeApi(appRoutes({ "GET /options": () => new Promise(() => undefined) }));
+    render(<App />);
+    expect(screen.getByLabelText("Map")).toBeEnabled();
+    expect(screen.getByLabelText("Map")).not.toHaveValue("");
+    expect(screen.getByLabelText("Opening weapon")).toHaveValue("ak47");
+    expect(screen.getByRole("button", { name: /Predict/ })).toBeEnabled();
+  });
+});

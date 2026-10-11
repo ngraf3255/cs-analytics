@@ -19,6 +19,29 @@ export const TIME_CHIPS = [5, 15, 30, 60];
 export const COMMON_WEAPONS = ["ak47", "m4a1_silencer", "m4a1", "awp", "glock", "usp_silencer", "deagle", "famas", "galilar"];
 
 const STORAGE_KEY = "csa.round.v1";
+const OPTIONS_KEY = "csa.options.v1";
+
+export type PredictOptions = { maps: string[]; weapons: string[]; opening_kill_sides: string[] };
+
+/** Used until GET /options answers (or if it never does): the form is usable immediately. */
+export const DEFAULT_OPTIONS: PredictOptions = {
+  maps: ["de_ancient", "de_anubis", "de_dust2", "de_inferno", "de_mirage", "de_nuke", "de_train"],
+  weapons: ["ak47", "m4a1_silencer", "m4a1", "awp", "glock", "usp_silencer", "deagle", "famas", "galilar"],
+  opening_kill_sides: ["ct", "t"],
+};
+
+/** Last /options answer if cached, else the built-in defaults. */
+export function localOptions(): PredictOptions {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(OPTIONS_KEY) ?? "null");
+    if (v && Array.isArray(v.maps) && v.maps.length && Array.isArray(v.weapons) && v.weapons.length) return v;
+  } catch { /* fall through */ }
+  return DEFAULT_OPTIONS;
+}
+
+export function rememberOptions(options: PredictOptions): void {
+  try { window.localStorage.setItem(OPTIONS_KEY, JSON.stringify(options)); } catch { /* ignore */ }
+}
 
 export function loadRemembered(): Partial<RoundInputs> {
   try {

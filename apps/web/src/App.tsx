@@ -1,6 +1,6 @@
 import type React from "react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { COMMON_WEAPONS, PRESETS, TIME_CHIPS, type Preset, type RoundInputs, initialInputs, remember, validSeconds } from "./roundForm";
+import { COMMON_WEAPONS, PRESETS, localOptions, rememberOptions, TIME_CHIPS, type Preset, type RoundInputs, initialInputs, remember, validSeconds } from "./roundForm";
 import "./roundForm.css";
 import { AccountPage } from "./steam/AccountPage";
 import { ExportPage } from "./steam/ExportPage";
@@ -95,11 +95,13 @@ function AboutPage() {
 }
 
 function PredictorWorkspace() {
-  const [options, setOptions] = useState<Options | null>(null);
-  const [mapName, setMapName] = useState("");
-  const [side, setSide] = useState<"ct" | "t">("ct");
-  const [seconds, setSeconds] = useState("15.0");
-  const [weapon, setWeapon] = useState("");
+  // Usable on first paint: cached /options (or built-in defaults) until the live answer arrives.
+  const [start] = useState(() => { const o = localOptions(); return { o, i: initialInputs(o.maps, o.weapons) }; });
+  const [options, setOptions] = useState<Options | null>(start.o);
+  const [mapName, setMapName] = useState(start.i.mapName);
+  const [side, setSide] = useState<"ct" | "t">(start.i.side);
+  const [seconds, setSeconds] = useState(start.i.seconds);
+  const [weapon, setWeapon] = useState(start.i.weapon);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -115,13 +117,13 @@ function PredictorWorkspace() {
       })
       .then((data) => {
         setOptions(data);
-        const start = initialInputs(data.maps, data.weapons);
-        setMapName(start.mapName);
-        setSide(start.side);
-        setSeconds(start.seconds);
-        setWeapon(start.weapon);
+        rememberOptions(data);
+        // Keep what's picked; only replace values the live model doesn't know.
+        const fallback = initialInputs(data.maps, data.weapons);
+        setMapName((m) => (data.maps.includes(m) ? m : fallback.mapName));
+        setWeapon((w) => (data.weapons.includes(w) ? w : fallback.weapon));
       })
-      .catch(() => setError("Prediction service is unavailable. Please try again shortly."));
+      .catch(() => undefined);  // keep the local options; a failed /predict shows its own error
   }, []);
 
   const winnerLabel = useMemo(() => {
