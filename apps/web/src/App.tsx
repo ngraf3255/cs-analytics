@@ -6,13 +6,14 @@ import { ExportPage } from "./steam/ExportPage";
 import { StatsPage } from "./steam/StatsPage";
 import {
   ABOUT_PATH, ACCOUNT_PATH, PREDICTOR_HASH, STATS_PATH,
-  isPredictPath, type AppPage, pageFromPath,
+  type AppPage, pageFromPath,
 } from "./steam/routes";
 import { ModelCard, WhyThisRound, confidenceLabel } from "./ModelCard";
 import { GuestHero } from "./steam/GuestHero";
 import { SteamSection } from "./steam/SteamSection";
 import { useMe, useSteamStatus } from "./steam/hooks";
 import { weaponName } from "./steam/weapons";
+import { mapLabel } from "./steam/format";
 
 type Options = {
   maps: string[];
@@ -27,16 +28,10 @@ type Prediction = {
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "/api" : "https://api-site.csgooner.com")).replace(/\/$/, "");
 
-const mapLabel = (map: string) => map.replace(/^de_/i, "").replaceAll("_", " ").toLowerCase();
 /** After the first prediction, edits re-predict on their own after this pause. */
 const AUTO_PREDICT_MS = 350;
 
 function App() {
-  // Legacy /predict → home with #predictor so old bookmarks still land on the form.
-  useEffect(() => {
-    if (!isPredictPath(window.location.pathname)) return;
-    window.history.replaceState(null, "", PREDICTOR_HASH);
-  }, []);
   const page = pageFromPath(window.location.pathname);
   return (
     <div className="site-shell">
@@ -275,11 +270,10 @@ function PredictorWorkspace() {
           <button className="submit-button" type="submit" disabled={!ready || loading}>
             <span>{loading ? "…" : "Predict"}</span><span className="button-arrow">↗</span>
           </button>
-          <p className="form-note"><span>✳</span> Pro data</p>
         </form>
       </div>
 
-      <div className="result-panel" aria-live="polite">
+      <div className={`result-panel ${prediction || loading ? "" : "result-panel-idle"}`.trim()} aria-live="polite">
         <div className="result-topline">
           <span className="section-kicker">READOUT</span>
           <span className={`result-status ${prediction ? "has-result" : ""}`} aria-hidden="true"><i /></span>
@@ -287,15 +281,12 @@ function PredictorWorkspace() {
         {prediction ? (
           <>
             <div className="result-main">
-              <span className="result-label">Winner</span>
               <div className={`winner-name ${prediction.predicted_winner}`}>{winnerLabel}<span className="winner-arrow">↗</span></div>
               <div className="probability-summary">
-                <strong>{`${Math.round(Math.max(ctPercent, tPercent))}%`}</strong>
                 <span className={`confidence-chip ${confidenceLabel(prediction.probabilities).tone}`}>{confidenceLabel(prediction.probabilities).label}</span>
               </div>
             </div>
             <div className="probability-card">
-              <div className="probability-heading"><span>By side</span></div>
               <div className="prob-row">
                 <div className="prob-label"><span className="side-symbol ct-symbol">C</span><span>CT</span><strong>{`${ctPercent.toFixed(1)}%`}</strong></div>
                 <div className="prob-track"><span className="prob-fill ct-fill" style={{ width: `${ctPercent}%` }} /></div>
@@ -306,14 +297,13 @@ function PredictorWorkspace() {
               </div>
             </div>
           </>
-        ) : (
-          <div className="readout-empty" role="status">
-            <span className="readout-empty-mark" aria-hidden="true" />
-            <strong>{loading ? "…" : "Predict"}</strong>
-          </div>
-        )}
+        ) : loading ? (
+          <div className="readout-empty" role="status"><strong>…</strong></div>
+        ) : null}
         {prediction && <WhyThisRound inputs={lastInputs} ct={prediction.probabilities.ct} weapons={options?.weapons ?? []} />}
-        <div className="result-foot"><span>Logistic regression</span></div>
+        {prediction && <div className="result-foot">
+          <button type="button" className="info-glyph" aria-label="Model info" title="Logistic regression · pro data">ⓘ</button>
+        </div>}
         {error && <div className="error-message" role="alert">{error}</div>}
       </div>
     </section>

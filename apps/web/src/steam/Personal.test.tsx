@@ -62,7 +62,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
     await advance();
     // Bundle 4: home 4-tiles are not re-shown on /stats
     expect(within(panel()).queryByLabelText("Your stats")).not.toBeInTheDocument();
-    expect(rows("Your maps").map(cells)).toEqual([["mirage", "1 (1–0)", "24", "54%", "75% (9/12)", "33% (4/12)", "1.71"]]);
+    expect(rows("Your maps").map(cells)).toEqual([["Mirage", "1 (1–0)", "24", "54%", "75% (9/12)", "33% (4/12)", "1.71"]]);
     expect(panel()).toHaveTextContent("ALL PLAYERS");
     const all = within(panel()).getByLabelText("Previous matches summary");
     expect(all).toHaveTextContent("MATCHES3");
@@ -104,6 +104,7 @@ describe("personal analytics: the signed-in player's own side each round", () =>
   });
 
   it("match list: date groups when the list spans days; no Added essays on rows", async () => {
+    vi.setSystemTime(new Date("2026-10-06T18:00:00Z"));  // fixture "today" (labels are relative to now)
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();

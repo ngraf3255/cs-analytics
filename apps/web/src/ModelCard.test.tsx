@@ -31,7 +31,7 @@ describe("model card, confidence and why this call", () => {
     await advance();
     const card = screen.getByLabelText("Model card");
     expect(card).toHaveTextContent("MAPS COVERED · 2");
-    expect(card).toHaveTextContent("mirage, nuke");
+    expect(card).toHaveTextContent("Mirage, Nuke");
     window.history.replaceState(null, "", "/");
   });
 

@@ -67,8 +67,9 @@ export function everyText(seconds: number): string {
   return `every ${span(seconds * 1000)}`;
 }
 
-/** Strip de_ / underscores; always lowercase for dense scan lines. */
+/** One display style everywhere: strip de_/cs_, underscores → spaces, Title Case ("Mirage", "Rush 001"). */
 export function mapLabel(map: string | null | undefined): string {
   if (!map) return "Unknown map";
-  return map.replace(/^de_/i, "").replaceAll("_", " ").toLowerCase();
+  return map.replace(/^(de|cs)_/i, "").split("_").filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 }

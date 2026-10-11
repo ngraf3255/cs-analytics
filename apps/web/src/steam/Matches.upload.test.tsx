@@ -73,7 +73,7 @@ describe("demo upload", () => {
     expect(screen.getByText("SAVING…")).toBeInTheDocument();
     await advance(POLL_MS);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Demo imported: mirage, 10 rounds.");
+    expect(screen.getByRole("status")).toHaveTextContent("Demo imported: Mirage, 10 rounds.");
     expect(screen.getByText("UPLOAD .DEM")).toBeInTheDocument();
     expect(fileInput()).not.toBeDisabled();
     expect(api.count(`GET ${JOB}`)).toBe(4);
@@ -172,7 +172,7 @@ describe("demo upload", () => {
     await advance(POLL_MS);
     expect(screen.getByText("PARSING…")).toBeInTheDocument();
     await advance(POLL_MS);
-    expect(screen.getByRole("status")).toHaveTextContent("Demo imported: mirage, 10 rounds.");
+    expect(screen.getByRole("status")).toHaveTextContent("Demo imported: Mirage, 10 rounds.");
     expect(api.count(`GET ${JOB}`)).toBe(2);
     expect(FakeXHR.instances).toHaveLength(0);
   });

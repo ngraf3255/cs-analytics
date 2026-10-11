@@ -50,11 +50,11 @@ describe("matches parsed by an older version: re-upload to update", () => {
     const items = screen.getAllByRole("listitem");
     const tagged = items.filter((item) => within(item).queryByLabelText("Outdated"));
     expect(tagged).toHaveLength(1);
-    expect(tagged[0]).toHaveTextContent("ancient");
+    expect(tagged[0]).toHaveTextContent("Ancient");
     expect(within(tagged[0]).getByLabelText("Outdated")).toHaveAttribute(
       "title", "Parsed by an older version (warmup or knife rounds may still be counted). Upload this demo again to update it.");
 
-    fireEvent.click(screen.getByRole("button", { name: /ancient/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Ancient/ }));
     await advance();
     expect(screen.getAllByRole("note").map((n) => n.textContent)).toContain(
       "Parsed by an older version (warmup or knife rounds may still be counted). Upload this demo again to update it.");
@@ -103,7 +103,7 @@ describe("matches parsed by an older version: re-upload to update", () => {
       { target: { files: [new File(["demo"], "faceit.dem")] } });
     await act(() => FakeXHR.last().respond(202, { job: job(queued, { queue_position: 0 }) }));
     await advance(POLL_MS);
-    expect(screen.getByRole("status")).toHaveTextContent("Match updated from the demo: mirage, 24 rounds.");
+    expect(screen.getByRole("status")).toHaveTextContent("Match updated from the demo: Mirage, 24 rounds.");
     expect(screen.getByRole("status")).not.toHaveTextContent("already in your matches");
   });
 });

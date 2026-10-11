@@ -1,3 +1,4 @@
+import { redirectLegacyPredict } from "./steam/routes";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -32,9 +33,9 @@ describe("design review polish", () => {
     render(<App />);
     await advance();
     const panel = readout();
-    expect(within(panel).getByText("Predict")).toBeInTheDocument();
-    expect(panel.querySelector(".readout-empty")?.textContent).toBe("Predict");
-    expect(panel).not.toHaveTextContent("NO PREDICTION YET");
+    expect(panel).toHaveClass("result-panel-idle"); // collapses on mobile until a prediction exists
+    expect(panel.querySelector(".readout-empty")).toBeNull();
+    expect(panel).not.toHaveTextContent("Logistic regression");
     expect(panel.querySelector(".prob-track")).toBeNull();
     expect(panel.querySelector(".probability-card")).toBeNull();
     expect(panel).not.toHaveTextContent("—");
@@ -116,6 +117,7 @@ describe("home restores the round predictor", () => {
 
   it("/predict redirects to home #predictor and keeps the workspace", async () => {
     window.history.replaceState(null, "", "/predict");
+    redirectLegacyPredict(); // main.tsx runs this before the first render (no flash)
     installFakeApi(appRoutes());
     render(<App />);
     await advance();
