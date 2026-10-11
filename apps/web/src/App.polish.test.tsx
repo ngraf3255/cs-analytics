@@ -55,6 +55,17 @@ describe("design review polish", () => {
     expect(info).toBeTruthy();
     expect(info!.querySelector("summary")).toHaveAccessibleName("Model info");
     expect(info).toHaveTextContent("Logistic regression · pro data");
+    expect(info).toHaveClass("info-pop-below");  // anchored under the icon, inside the viewport
+    fireEvent.click(info!.querySelector("summary")!);
+    await advance();
+    expect(info).toHaveProperty("open", true);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(info).toHaveProperty("open", false);
+    fireEvent.click(info!.querySelector("summary")!);
+    await advance();
+    expect(info).toHaveProperty("open", true);
+    fireEvent.mouseDown(document.body);
+    expect(info).toHaveProperty("open", false);
     expect(panel.querySelectorAll(".prob-track")).toHaveLength(2);
   });
 

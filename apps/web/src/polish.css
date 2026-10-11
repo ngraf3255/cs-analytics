@@ -297,10 +297,16 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .result-panel-idle{display:none}
 .workspace:has(.result-panel-idle){grid-template-columns:1fr}
 .workspace:has(.result-panel-idle) .form-panel{border-right:0;border-bottom:0}
-.model-info-pop > summary{color:#c0c8cd;border-color:#4a5661;font-size:12px;padding:3px 6px}
-.model-info-pop .tl-legend{left:auto;right:0;top:auto;bottom:calc(100% + 6px);min-width:0;white-space:nowrap;color:#c0c8cd;font:10px 'DM Mono',monospace;letter-spacing:.04em}
+.model-info-pop > summary{color:#e8ecee;border-color:#6b7782;font-size:14px;padding:4px 8px}
+/* Opens below, left-aligned to the icon, kept inside the viewport. */
+.info-pop-below .tl-legend{left:0;right:auto;top:calc(100% + 6px);bottom:auto;min-width:0;width:max-content;max-width:calc(100vw - 48px);white-space:normal;color:#f2f3f0;background:#151d24;border-color:#6b7782;font:12px/1.5 'DM Mono',monospace;letter-spacing:.02em;padding:10px 12px}
 /* Desktop presets: chips stretch so a wrapped last chip fills its row. */
 .preset-row .preset-chip{flex:1 1 auto}
 .btn-spinner{width:14px;height:14px;border:2px solid #11160a55;border-top-color:#11160a;border-radius:50%;animation:btn-spin .7s linear infinite}
 @keyframes btn-spin{to{transform:rotate(360deg)}}
 .result-panel{align-self:start}
+/* Desktop = mobile: form always full width, readout stacks under it (no column switch). */
+.workspace,.workspace:has(.result-panel-idle){grid-template-columns:1fr}
+.workspace .form-panel{border-right:0}
+.workspace:not(:has(.result-panel-idle)) .form-panel{border-bottom:1px solid var(--line)}
+.workspace .result-panel{min-height:0}

@@ -1,3 +1,4 @@
+import type React from "react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { COMMON_WEAPONS, PRESETS, TIME_CHIPS, type Preset, type RoundInputs, initialInputs, remember, validSeconds } from "./roundForm";
 import "./roundForm.css";
@@ -137,6 +138,14 @@ function PredictorWorkspace() {
 
   const requestId = useRef(0);
   const lastSent = useRef("");
+  const resultRef = useRef<HTMLDivElement>(null);
+  const hadPrediction = useRef(false);
+  // First readout lands under the form: bring it into view if it's below the fold.
+  useEffect(() => {
+    if (!prediction || hadPrediction.current) return;
+    hadPrediction.current = true;
+    resultRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [prediction]);
   const predict = useCallback(async (inputs: RoundInputs) => {
     if (!inputs.mapName || !inputs.weapon || !validSeconds(inputs.seconds)) return;
     lastSent.current = JSON.stringify(inputs);
@@ -273,7 +282,7 @@ function PredictorWorkspace() {
         </form>
       </div>
 
-      <div className={`result-panel ${prediction || loading ? "" : "result-panel-idle"}`.trim()} aria-live="polite">
+      <div ref={resultRef} className={`result-panel ${prediction || loading ? "" : "result-panel-idle"}`.trim()} aria-live="polite">
         <div className="result-topline">
           <span className="section-kicker">READOUT</span>
           <span className={`result-status ${prediction ? "has-result" : ""}`} aria-hidden="true"><i /></span>
@@ -302,14 +311,38 @@ function PredictorWorkspace() {
         ) : null}
         {prediction && <WhyThisRound inputs={lastInputs} ct={prediction.probabilities.ct} weapons={options?.weapons ?? []} />}
         {prediction && <div className="result-foot">
-          <details className="tl-legend-info model-info-pop">
-            <summary aria-label="Model info">ⓘ</summary>
-            <div className="tl-legend">Logistic regression · pro data</div>
-          </details>
+          <InfoPopover label="Model info">Logistic regression · pro data</InfoPopover>
         </div>}
         {error && <div className="error-message" role="alert">{error}</div>}
       </div>
     </section>
+  );
+}
+
+/** Tap ⓘ popover: opens below the icon, closes on second tap, Escape, or a click outside. */
+export function InfoPopover({ label, children }: { label: string; children: React.ReactNode }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => { if (ref.current) ref.current.open = false; setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onDown = (e: PointerEvent | MouseEvent) => { if (!ref.current?.contains(e.target as Node)) close(); };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [open]);
+  return (
+    <details ref={ref} className="tl-legend-info model-info-pop info-pop-below" open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary aria-label={label}>ⓘ</summary>
+      <div className="tl-legend" role="note">{children}</div>
+    </details>
   );
 }
 
