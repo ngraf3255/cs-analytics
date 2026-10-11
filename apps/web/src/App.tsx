@@ -43,6 +43,7 @@ function App() {
         {page === "stats" && <StatsPage />}
         {page === "about" && <AboutPage />}
         {page === "home" && <HomeMain />}
+        {page === "notfound" && <NotFound />}
       </main>
       <SiteFooter />
     </div>
@@ -57,6 +58,14 @@ function HomeMain() {
       <PredictorWorkspace />
       <SteamSection />
     </>
+  );
+}
+
+function NotFound() {
+  return (
+    <section className="not-found" aria-label="Not found">
+      <p>Not found · <a href="/">← Home</a></p>
+    </section>
   );
 }
 

@@ -325,3 +325,7 @@ html{scrollbar-gutter:stable}
 .number-wrap input::-webkit-inner-spin-button,.number-wrap input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 /* Reserved badge slot while auth settles. */
 .account-avatar-slot,.live-indicator.is-pending{visibility:hidden}
+
+.not-found{min-height:50vh;display:grid;place-items:center;padding:40px 22px}
+.not-found p{margin:0;font:13px 'DM Mono',monospace;letter-spacing:.04em;color:#9aa4ab}
+.not-found a{color:var(--acid)}

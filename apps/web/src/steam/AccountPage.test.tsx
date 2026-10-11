@@ -58,7 +58,7 @@ describe("/account", () => {
     });
     render(<AccountPage />);
     const link = await screen.findByRole("link", { name: /Sign in through Steam/ });
-    expect(decodeURIComponent(link.getAttribute("href") ?? "")).toMatch(/next=\/account$/);
+    expect(decodeURIComponent(link.getAttribute("href") ?? "")).toMatch(/next=\/account\?auth=1$/);
   });
 
   it("failed Steam sign-in that started here comes back here and says so", async () => {

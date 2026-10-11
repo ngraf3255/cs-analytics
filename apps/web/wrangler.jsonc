@@ -2,6 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "cs-analytics",
   "compatibility_date": "2026-10-04",
+  "main": "./worker/index.js",
   "workers_dev": false,
   "routes": [
     {
@@ -15,6 +16,7 @@
   ],
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "none"
   }
 }
