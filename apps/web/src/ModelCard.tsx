@@ -1,4 +1,4 @@
-import { mapLabel } from "./steam/format";
+import { MapName } from "./steam/MapName";
 import { useEffect, useState } from "react";
 import { apiBase } from "./steam/api";
 import { weaponName } from "./steam/weapons";
@@ -102,7 +102,7 @@ export function ModelCard({ maps }: { maps: string[] }) {
         <div><dt>CONFIDENCE</dt><dd>Toss-up under 55% · Lean 55–65% · Strong lean 65%+</dd></div>
         <div>
           <dt>MAPS COVERED{maps.length ? ` · ${maps.length}` : ""}</dt>
-          <dd>{maps.length ? maps.map(mapLabel).join(", ") : "Loading…"}</dd>
+          <dd>{maps.length ? maps.map((m, i) => <span key={m}>{i ? ", " : ""}<MapName map={m} /></span>) : "Loading…"}</dd>
         </div>
       </dl>
     </div>

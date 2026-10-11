@@ -154,6 +154,17 @@ describe("nav: Account stays reachable", () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { window.history.replaceState(null, "", "/"); });
 
+  it("header: badge slot reserved and MODEL ONLINE held until auth settles", async () => {
+    installFakeApi(appRoutes());
+    render(<App />);
+    const header = document.querySelector("header.topbar")!;
+    expect(header.querySelector(".account-avatar-slot")).toBeTruthy();
+    expect(header.querySelector(".live-indicator")).toHaveClass("is-pending");  // laid out, not shown
+    await advance();
+    expect(header.querySelector(".account-avatar-slot")).toBeNull();
+    expect(header.querySelector(".live-indicator")).not.toHaveClass("is-pending");
+  });
+
   it("home: Account is a menu link (not hidden by the narrow-screen rules)", async () => {
     installFakeApi(appRoutes());
     render(<App />);

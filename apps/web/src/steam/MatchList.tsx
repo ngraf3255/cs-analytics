@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { MatchResult, MatchSummary } from "./types";
+import { mapDigits } from "./MapName";
 import { mapLabel, matchDate, outdatedText, scoreLine } from "./format";
 
 /** One-line stub note per status_reason (the row itself only says a glyph). */
@@ -168,11 +169,6 @@ type MatchListProps = {
   /** Expanded report (or stub note) for the selected match. */
   children?: (match: MatchSummary) => ReactNode;
 };
-
-/** Digits in map names ("Rush 001") in the mono body font so zeros don't read as O's. */
-export function mapDigits(name: string) {
-  return name.split(/(\d+)/).map((part, i) => (/^\d+$/.test(part) ? <span key={i} className="map-digits">{part}</span> : part));
-}
 
 /** Scannable match rows: [W/L] MAP score · metric ▸ */
 export function MatchList({ matches, selected, onSelect, youById, children }: MatchListProps) {
