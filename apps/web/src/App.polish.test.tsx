@@ -66,6 +66,12 @@ describe("design review polish", () => {
     expect(info).toHaveProperty("open", true);
     fireEvent.mouseDown(document.body);
     expect(info).toHaveProperty("open", false);
+    (info as HTMLDetailsElement).open = true;
+    fireEvent.keyDown(screen.getByLabelText("Opening kill time in seconds"), { key: "Escape" });  // focus anywhere
+    expect(info).toHaveProperty("open", false);
+    (info as HTMLDetailsElement).open = true;
+    fireEvent.pointerDown(screen.getByLabelText("Opening kill time in seconds"));  // input outside closes
+    expect(info).toHaveProperty("open", false);
     expect(panel.querySelectorAll(".prob-track")).toHaveLength(2);
   });
 

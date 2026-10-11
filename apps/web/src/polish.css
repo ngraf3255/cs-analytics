@@ -310,3 +310,7 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .workspace .form-panel{border-right:0}
 .workspace:not(:has(.result-panel-idle)) .form-panel{border-bottom:1px solid var(--line)}
 .workspace .result-panel{min-height:0}
+
+/* No layout shift when a scrollbar appears. */
+html{scrollbar-gutter:stable}
+.info-pop-below .tl-legend{scroll-margin-bottom:24px}
