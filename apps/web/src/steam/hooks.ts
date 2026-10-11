@@ -52,17 +52,20 @@ export function useMe(enabled: boolean) {
   // shouldn't render a signed-out state (avoids a "Sign in" flash while /me loads).
   const [checkedFor, setCheckedFor] = useState<boolean | null>(null);
 
+  // Background re-checks (focus / hashchange) must not flip ``loading``: SteamSection unmounts
+  // while loading, which remounted the match list and flashed its skeleton rows.
+  const answered = useRef(false);
   const refresh = useCallback(async () => {
     if (!enabled) {
       setMe(null);
       setCheckedFor(false);
       return null;
     }
-    setLoading(true);
+    if (!answered.current) setLoading(true);
     setError("");
     try {
       const body = await steamApi.me();
-      setMe(body);
+      setMe((prev) => (JSON.stringify(prev) === JSON.stringify(body) ? prev : body));
       return body;
     } catch (reason) {
       if (reason instanceof ApiError && reason.status === 401) {
@@ -72,6 +75,7 @@ export function useMe(enabled: boolean) {
       setError(reason instanceof ApiError ? reason.message : "Could not load your Steam account.");
       return null;
     } finally {
+      answered.current = true;
       setLoading(false);
       setCheckedFor(true);
     }

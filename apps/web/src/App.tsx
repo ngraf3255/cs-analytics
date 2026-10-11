@@ -345,7 +345,7 @@ export function InfoPopover({ label, children }: { label: string; children: Reac
   };
   return (
     <details ref={ref} className="tl-legend-info model-info-pop info-pop-below" onToggle={onToggle}>
-      <summary aria-label={label}>ⓘ</summary>
+      <summary role="button" aria-label={label}>ⓘ</summary>
       <div ref={noteRef} className="tl-legend" role="note">{children}</div>
     </details>
   );
