@@ -1,3 +1,4 @@
+import { setSessionHint } from "./sessionHint";
 import { ApiError } from "./errors";
 import type { AutoSync, MatchAccess, MatchesAnalytics, PeerComparison, MatchReport, MatchSummary, Me, ServerStatus, SyncResult, SyncState, UploadJob } from "./types";
 
@@ -153,8 +154,8 @@ export const steamApi = {
   me: () => request<Me>("/me"),
   /** Start (or keep) a guest session: upload demos without Steam. */
   startGuest: () => request<Me>("/auth/guest", { method: "POST" }, true),
-  logout: () => request<void>("/auth/logout", { method: "POST" }, true),
-  deleteMe: () => request<void>("/me", { method: "DELETE" }, true),
+  logout: () => request<void>("/auth/logout", { method: "POST" }, true).then((r) => { setSessionHint(false); return r; }),
+  deleteMe: () => request<void>("/me", { method: "DELETE" }, true).then((r) => { setSessionHint(false); return r; }),
   putMatchAccess: (body: { auth_code: string; share_code: string; consent: boolean }) =>
     request<MatchAccess>("/steam/match-access", { method: "PUT", body: JSON.stringify(body) }, true),
   deleteMatchAccess: () => request<void>("/steam/match-access", { method: "DELETE" }, true),
