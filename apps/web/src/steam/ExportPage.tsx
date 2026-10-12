@@ -27,18 +27,18 @@ export function ExportPage() {
           <span /><span /><span />
         </div>
       ) : !enabled ? (
-        <div className="steam-card" role="status">
+        <div className="steam-card" data-ui-content role="status">
           <p>{reachable ? "Exports aren’t switched on yet." : "Can’t reach the match service. Refresh in a minute."}</p>
         </div>
       ) : !me ? (
-        <div className="steam-card">
+        <div className="steam-card" data-ui-content>
           <p>Sign in to download your rounds and matches as CSV.</p>
           {steam || upload ? (
             <a className="steam-button" href={steamLoginUrl(ACCOUNT_EXPORT_PATH)}>Sign in through Steam ↗</a>
           ) : null}
         </div>
       ) : (
-        <div className="steam-card export-page-card">
+        <div className="steam-card export-page-card" data-ui-content>
           <span className="section-kicker">TABLEAU</span>
           <p className="steam-muted">Rounds and matches CSV for your imported demos.</p>
           <TableauExport layout="page" />

@@ -1,3 +1,4 @@
+import { Icon, Tip } from "../Icon";
 import type { MatchReport, RoundReport } from "./types";
 
 const pct = (part: number, whole: number) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
@@ -13,7 +14,7 @@ export function RoundTimeline({ rounds }: { rounds: RoundReport[] }) {
       <div className="tl-heading">
         <span className="section-kicker">TIMELINE</span>
         <details className="tl-legend-info">
-          <summary aria-label="Timeline legend">ⓘ</summary>
+          <summary aria-label="Timeline legend" aria-describedby="tl-legend-tip"><Icon name="info" /><Tip id="tl-legend-tip">Timeline legend</Tip></summary>
           <div className="report-legend tl-legend">
             <span><i className="legend tl-ct" /> CT won</span>
             <span><i className="legend tl-t" /> T won</span>
@@ -85,7 +86,7 @@ export function OpeningDuels({ report }: { report: MatchReport }) {
   return (
     <div className="opening-duels">
       <span className="section-kicker">OPENING DUELS</span>
-      <dl className="report-header summary-tiles" aria-label="Opening duels">
+      <dl className="report-header summary-tiles" data-ui-content aria-label="Opening duels">
         {mine && (
           <div>
             <dt>YOUR TEAM FIRST</dt><dd>{team.rounds} of {team.rounds + opp.rounds}</dd>

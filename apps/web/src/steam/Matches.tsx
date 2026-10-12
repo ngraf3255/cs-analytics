@@ -347,7 +347,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
   const awaitingShare = linked && !relink && !!me.match_access.awaiting_share_code;
 
   return (
-    <div className="steam-card">
+    <div className="steam-card" data-ui-content>
       <span className="section-kicker">{canSync ? "IMPORT MATCHES" : "YOUR UPLOADS"}</span>
       <div className="sync-row">
         {canSync && (

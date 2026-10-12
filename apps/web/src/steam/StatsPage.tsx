@@ -27,17 +27,17 @@ export function StatsPage() {
           <span /><span /><span />
         </div>
       ) : !enabled ? (
-        <div className="steam-card" role="status">
+        <div className="steam-card" data-ui-content role="status">
           <p>{reachable ? "Stats aren’t switched on yet." : "Can’t reach the match service. Refresh in a minute."}</p>
         </div>
       ) : !me ? (
-        <div className="steam-card">
+        <div className="steam-card" data-ui-content>
           <p>Sign in to see lobby compare, roles, and map tables.</p>
           {(steam || upload) && <a className="steam-button" href={steamLoginUrl(STATS_PATH)}>Sign in through Steam ↗</a>}
           <p className="steam-muted"><a href={ACCOUNT_PATH}>Account settings</a></p>
         </div>
       ) : (
-        <div className="steam-card">
+        <div className="steam-card" data-ui-content>
           <MatchesSummaryPanel variant="stats" refreshKey={1} />
         </div>
       )}

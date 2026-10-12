@@ -1,3 +1,4 @@
+import { Icon } from "../Icon";
 import { useEffect, useState } from "react";
 import { steamApi } from "./api";
 import { kdText, mapLabel } from "./format";
@@ -44,7 +45,7 @@ export function PeerCompare({ refreshKey }: { refreshKey: number }) {
             <select aria-label="Map to compare" value={map} onChange={(e) => setMap(e.target.value)}>
               <option value="__all">All maps</option>
               {data.maps.map((m) => <option key={m.map_name ?? "?"} value={m.map_name ?? ""}>{mapLabel(m.map_name)} ({m.matches})</option>)}
-            </select><span className="chevron">⌄</span>
+            </select><span className="chevron"><Icon name="chevronDown" /></span>
           </span>
         )}
       </div>
