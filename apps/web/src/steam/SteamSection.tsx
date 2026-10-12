@@ -1,3 +1,4 @@
+import { goHomeTop } from "./routes";
 import { useCallback, useEffect, useState } from "react";
 import { useHashScroll, useMe, useSteamStatus } from "./hooks";
 import { Matches } from "./Matches";
@@ -48,7 +49,7 @@ export function SteamSection() {
             {/* Signed-in Steam users: account lives in the header avatar → /account (no SteamID card here). */}
             {/* Guest pieces (Connect Steam, teaser) follow the hero's first-paint rules: never mounted while a session hint waits on auth. */}
             {(me || guestChrome) && <SteamAccount me={me} steam={steam} guest={guest && upload} onChange={refresh}
-              onSignedOut={() => { setPendingFile(null); setMe(null); }} onGuest={onGuest}
+              onSignedOut={() => { setPendingFile(null); setMe(null); goHomeTop(); }} onGuest={onGuest}
               homeChrome />}
             {me && (
               <Matches key={me.steam_id ?? `guest-${me.created_at}`} me={me} onMeChange={refresh}

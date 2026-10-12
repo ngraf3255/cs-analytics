@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { steamLoginUrl } from "./api";
 import { useMe, useSteamStatus } from "./hooks";
-import { ACCOUNT_PATH } from "./routes";
+import { ACCOUNT_PATH, goHomeTop } from "./routes";
 import { AccountSettings, SteamAccount } from "./SteamAccount";
 
 /** ``/account``: everything about linking and the account, kept off the main matches page. */
@@ -38,10 +38,10 @@ export function AccountPage() {
           {failure && <div className="steam-error" role="alert">Steam sign-in could not be verified. Please try again.</div>}
           {error && <div className="steam-error" role="alert">{error}</div>}
           {me && me.account !== "guest" ? (
-            <AccountSettings me={me} onChange={refresh} onSignedOut={() => { setMe(null); window.location.assign("/#matches"); }} />
+            <AccountSettings me={me} onChange={refresh} onSignedOut={() => { setMe(null); goHomeTop(); }} />
           ) : me ? (
             <SteamAccount me={me} steam={steam} guest={guest && upload} onChange={refresh}
-              onSignedOut={() => { setMe(null); window.location.assign("/#matches"); }} />
+              onSignedOut={() => { setMe(null); goHomeTop(); }} />
           ) : steam ? (
             <div className="steam-card">
               <p>Sign in to manage your account.</p>
