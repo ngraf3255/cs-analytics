@@ -408,3 +408,7 @@ main .workspace,main .steam-section,main .model-info{margin-left:var(--page-x);m
 .action-button:focus-visible{outline:2px solid var(--acid);outline-offset:2px}
 /* ⓘ centred on the "Why this call?" line (32px summary at the row's 10px padding). */
 .why-row .model-info-pop{top:26px;transform:translateY(-50%)}
+/* GD #69: one subtle hover for both action buttons; keyboard ring on both. */
+.action-button{transition:border-color .12s,background-color .12s}
+@media(hover:hover){.home-tile-actions .action-button:hover:not(:disabled),.action-button:hover:not(:disabled){border-color:#6b7782;background-color:#151d24}}
+.action-button:focus-visible,button.action-button:focus-visible{outline:2px solid var(--acid);outline-offset:2px}
