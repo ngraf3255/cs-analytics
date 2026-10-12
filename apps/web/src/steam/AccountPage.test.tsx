@@ -87,8 +87,8 @@ describe("/account", () => {
     expect(screen.getByRole("button", { name: "Disconnect match history" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete my data" })).toBeInTheDocument();
     const assign = vi.fn();
-    vi.spyOn(window, "location", "get").mockReturnValue({ ...window.location, assign } as Location);
+    vi.spyOn(window, "location", "get").mockReturnValue({ ...window.location, pathname: "/account", assign } as Location);
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
-    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("/#matches"));
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
   });
 });

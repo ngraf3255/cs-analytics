@@ -126,7 +126,9 @@ export function useHashScroll(ready: boolean) {
   useEffect(() => {
     if (!ready) return;
     const target = () => document.getElementById(decodeURIComponent(window.location.hash.slice(1)));
-    const scroll = () => target()?.scrollIntoView?.({ block: "start" });
+    // Load + re-pin: jump, never animate (the CSS smooth scroll would show a ~0.5s glide).
+    const scroll = () => target()?.scrollIntoView?.({ block: "start", behavior: "instant" });
+    const glide = () => target()?.scrollIntoView?.({ block: "start" });
     scroll();
     // Re-pin while layout above the anchor settles; stop on the first user scroll intent or after HASH_PIN_MS.
     let pinning = Boolean(target());
@@ -136,12 +138,12 @@ export function useHashScroll(ready: boolean) {
     const intents = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
     intents.forEach((e) => window.addEventListener(e, stop, { passive: true, once: true }));
     const timer = window.setTimeout(stop, HASH_PIN_MS);
-    window.addEventListener("hashchange", scroll);
+    window.addEventListener("hashchange", glide);
     return () => {
       observer?.disconnect();
       window.clearTimeout(timer);
       intents.forEach((e) => window.removeEventListener(e, stop));
-      window.removeEventListener("hashchange", scroll);
+      window.removeEventListener("hashchange", glide);
     };
   }, [ready]);
 }

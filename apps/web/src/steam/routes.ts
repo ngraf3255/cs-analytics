@@ -37,3 +37,13 @@ export function pageFromPath(pathname: string): AppPage {
   if (path === "/") return "home";
   return "notfound";  // the Worker answers these with a real 404 (worker/index.js)
 }
+
+/** After sign-out: the guest home at the top (a guest has no #matches). */
+export function goHomeTop(): void {
+  if (window.location.pathname === "/") {
+    window.history.replaceState(window.history.state, "", "/");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  } else {
+    window.location.assign("/");
+  }
+}
