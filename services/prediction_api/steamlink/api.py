@@ -102,11 +102,14 @@ def _csrf(request: Request, ctx: SteamContext = Depends(_ctx)) -> None:
         raise HTTPException(status_code=403, detail="origin_not_allowed")
 
 
-def _current_user(request: Request, ctx: SteamContext = Depends(_ctx)) -> User:
+def _optional_user(request: Request, ctx: SteamContext = Depends(_ctx)) -> User | None:
     token_hash = ctx.signer.session_token_hash(
         request.cookies.get(ctx.settings.session_cookie_name), ctx.settings.session_ttl_seconds
     )
-    user = ctx.storage.get_session_user(token_hash, ctx.clock()) if token_hash else None
+    return ctx.storage.get_session_user(token_hash, ctx.clock()) if token_hash else None
+
+
+def _current_user(user: User | None = Depends(_optional_user)) -> User:
     if user is None:
         raise HTTPException(status_code=401, detail="not_authenticated")
     return user
@@ -344,7 +347,7 @@ def guest_login(request: Request, ctx: SteamContext = Depends(_ctx)) -> dict:
                                                settings.session_ttl_seconds)
     existing = ctx.storage.get_session_user(token_hash, ctx.clock()) if token_hash else None
     if existing is not None:
-        return me(existing, ctx)
+        return _me_body(existing, ctx)
 
     import uuid
 
@@ -352,7 +355,7 @@ def guest_login(request: Request, ctx: SteamContext = Depends(_ctx)) -> dict:
     user = ctx.storage.get_or_create_user(GUEST_PREFIX + uuid.uuid4().hex, now)
     cookie, token_hash = ctx.signer.new_session_cookie()
     ctx.storage.create_session(token_hash, user.id, now, now + timedelta(seconds=settings.session_ttl_seconds))
-    response = JSONResponse(me(user, ctx))
+    response = JSONResponse(_me_body(user, ctx))
     response.set_cookie(
         settings.session_cookie_name, cookie, max_age=settings.session_ttl_seconds, path="/",
         domain=settings.session_cookie_domain, secure=settings.session_cookie_secure, httponly=True,
@@ -373,8 +376,28 @@ def logout(request: Request, ctx: SteamContext = Depends(_ctx)) -> Response:
     return response
 
 
+# /me is per-session: never cache it anywhere, and key any cache that ignores no-store on the cookie.
+ME_CACHE_HEADERS = {"Cache-Control": "private, no-store", "Vary": "Cookie"}
+
+
 @router.get("/me")
-def me(user: User = Depends(_current_user), ctx: SteamContext = Depends(_ctx)) -> dict:
+def me(
+    response: Response, soft: bool = False,
+    user: User | None = Depends(_optional_user), ctx: SteamContext = Depends(_ctx),
+) -> dict:
+    """The signed-in account. Every answer carries ``account``: ``"steam"`` / ``"guest"`` when signed in,
+    ``null`` when signed out. Plain /me answers signed-out callers with 401; ``?soft=1`` answers 200
+    ``{"account": null}`` instead, so an anonymous visitor's browser doesn't log a failed request.
+    A signed-in caller gets the same body either way."""
+    response.headers.update(ME_CACHE_HEADERS)
+    if user is None:
+        if soft:
+            return {"account": None}
+        raise HTTPException(status_code=401, detail="not_authenticated", headers=ME_CACHE_HEADERS)
+    return _me_body(user, ctx)
+
+
+def _me_body(user: User, ctx: SteamContext) -> dict:
     guest = is_guest(user)
     return {
         "steam_id": None if guest else user.steam_id,
