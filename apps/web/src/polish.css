@@ -385,3 +385,19 @@ main .workspace,main .steam-section,main .model-info{margin-left:var(--page-x);m
 /* Example tag sits inside the Mirage stats row (top-right of the header grid): no strip of its own. */
 .example-anchor{position:relative}
 .example-anchor .example-tag{top:8px;right:8px}
+/* GD #67 */
+/* One action-button: Share and Stats share height, look and equal width at every size. */
+.action-button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:40px;height:40px;padding:0 14px;text-decoration:none;letter-spacing:.04em;width:100%}
+.home-tile-actions{align-items:end}
+.home-tile-actions .share-wrap{display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;width:100%}
+/* Example tag fully inside the first stats row (its top-right padding), not on the border. */
+.example-anchor>.report-header{margin-top:0}
+.example-anchor .example-tag{top:5px;right:5px;padding:2px 6px;line-height:14px}
+/* ⓘ pinned after the Why text at one x (set from the summary width), open or closed. */
+.why-row{display:block;position:relative}
+.why-row .why-round>summary{width:max-content;max-width:calc(100% - 44px)}
+.why-row .model-info-pop{position:absolute;top:6px;left:calc(var(--why-x,140px) + 10px);margin:0}
+.why-row .info-pop-below .tl-legend{left:0;right:auto;transform:translateX(var(--note-shift,0px));max-width:min(320px,calc(100vw - 24px))}
+/* Menu tooltip anchored to the button's right edge so it never clips at the viewport edge. */
+.nav-toggle>.icon-tip{left:auto;right:0;transform:none}
+.home-tile-actions .share-wrap>.action-button,.home-tile-actions>.action-button{width:100%;justify-self:stretch}

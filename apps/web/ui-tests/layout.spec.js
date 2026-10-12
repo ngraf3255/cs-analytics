@@ -38,3 +38,50 @@ for (const signedIn of [false, true]) {
     }
   });
 }
+
+// GD #67: pair/tag/ⓘ geometry at phone and desktop widths.
+for (const width of [500, 1280]) {
+  test(`share/stats pair, example tag, ⓘ pin at ${width}`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== '1280', 'runs its own viewports');
+    const box = async (loc) => { const b = await loc.boundingBox(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.x + b.width), b: Math.round(b.y + b.height) }; };
+    const out = {};
+    // Guest: Example tag fully inside the first stats row; ⓘ pinned; note under the icon.
+    await stubApi(page, { signedIn: false });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    const tag = await box(page.locator('.example-tag'));
+    const cell = await box(page.locator('.teaser-report .report-header > div').first());
+    const dl = await box(page.locator('.teaser-report .report-header'));
+    out.tag = tag; out.row = { top: cell.y, bottom: cell.b, right: dl.r };
+    expect(tag.y).toBeGreaterThan(cell.y);
+    expect(tag.b).toBeLessThanOrEqual(cell.b);
+    expect(tag.r).toBeLessThan(dl.r);
+    await page.getByRole('button', { name: /^Predict/ }).click();
+    const info = page.locator('.why-row .model-info-pop > summary');
+    await expect(info).toBeVisible();
+    await page.waitForTimeout(600); // readout entrance settles
+    const closed = await box(info);
+    await page.locator('.why-round > summary').click();
+    const opened = await box(info);
+    out.info = { closedX: closed.x, openX: opened.x, closedY: closed.y, openY: opened.y };
+    expect(opened.x).toBe(closed.x);
+    expect(opened.y).toBe(closed.y);
+    await info.click();
+    const note = await box(page.locator('.why-row .tl-legend'));
+    out.note = { x: note.x, r: note.r, iconX: opened.x };
+    expect(note.r).toBeLessThanOrEqual(width - 12);
+    if (opened.x + note.w <= width - 12) expect(note.x).toBe(opened.x);
+    // Signed in: Share and Stats one size, same bottoms.
+    await stubApi(page, { signedIn: true });
+    await page.goto('/');
+    await expect(page.locator('.match-item').first()).toBeVisible();
+    const share = await box(page.locator('.home-tile-actions .share-button'));
+    const stats = await box(page.locator('.home-tile-actions a', { hasText: 'Stats' }));
+    out.share = share; out.stats = stats;
+    expect(share.h).toBe(stats.h);
+    expect(share.w).toBe(stats.w);
+    expect(share.b).toBe(stats.b);
+    testInfo.annotations.push({ type: `${width}px`, description: JSON.stringify(out) });
+    console.log(width, JSON.stringify(out));
+  });
+}

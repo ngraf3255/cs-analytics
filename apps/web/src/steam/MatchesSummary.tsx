@@ -36,7 +36,7 @@ function YouHomeTiles({ you }: { you: YouAnalytics }) {
       </dl>
       <div className="report-actions home-tile-actions">
         <ShareButton card={() => profileCard(you)} label="Share" />
-        <a className="ghost-button" href={STATS_PATH}>Stats</a>
+        <a className="ghost-button action-button" href={STATS_PATH}>Stats</a>
       </div>
     </div>
   );
