@@ -35,7 +35,7 @@ describe("link match history (Leetify-style onboarding)", () => {
     const form = screen.getByRole("form", { name: "Link match history" });
     expect(within(form).getByRole("link", { name: /Valve’s match-history page/ })).toHaveAttribute(
       "href", "https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128");
-    expect(form).toHaveTextContent("Codes from Valve’s match-history page ↗.");
+    expect(form).toHaveTextContent("Codes from Valve’s match-history page .");
     expect(form).toHaveTextContent("Imports that match and newer. Expire ~30 days. Older/FACEIT: upload a demo.");
     expect(shareBox()).toHaveAccessibleDescription("Optional · latest match token there, or CS2 Watch → Your Matches.");
     expect(form).not.toHaveTextContent("most recent completed match token");

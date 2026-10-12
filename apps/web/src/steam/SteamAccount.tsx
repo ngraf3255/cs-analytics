@@ -1,3 +1,4 @@
+import { Icon } from "../Icon";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { steamApi, steamLoginUrl } from "./api";
 import { ApiError, messageFor } from "./errors";
@@ -39,11 +40,11 @@ export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onG
     return (
       <div className={`account-options ${guest ? "two" : ""}`}>
         {steam ? (
-          <div className="steam-card" data-ui-content>
+          <div className="steam-card connect-card" data-ui-content>
             <span className="section-kicker">STEAM</span>
             <h3>Connect Steam</h3>
-            <a className="steam-button" href={steamLoginUrl("/#matches")}>
-              Sign in through Steam ↗
+            <a className="steam-button steam-button-primary" href={steamLoginUrl("/#matches")}>
+              Sign in through Steam <Icon name="arrowUpRight" />
             </a>
           </div>
         ) : (
@@ -130,7 +131,7 @@ function GuestAccount({ steam, onSignedOut }: { steam: boolean; onSignedOut: () 
       <span className="section-kicker">GUEST SESSION</span>
       <h3>Uploading as a guest</h3>
       <div className="steam-actions">
-        {steam && <a className="steam-button" href={steamLoginUrl("/#matches")}>Sign in through Steam ↗</a>}
+        {steam && <a className="steam-button" href={steamLoginUrl("/#matches")}>Sign in through Steam <Icon name="arrowUpRight" /></a>}
         <button type="button" className="ghost-button" onClick={signOut} disabled={busy}>Sign out</button>
         <button type="button" className="danger-button" onClick={deleteAll} disabled={busy}>Delete my data</button>
       </div>
@@ -160,7 +161,7 @@ function SignedInSummary({ me }: { me: Me }) {
     <div className="steam-card account-summary" data-ui-content>
       <p>
         Signed in as{" "}
-        <a href={`https://steamcommunity.com/profiles/${me.steam_id}`} target="_blank" rel="noreferrer">{me.steam_id} ↗</a>
+        <a href={`https://steamcommunity.com/profiles/${me.steam_id}`} target="_blank" rel="noreferrer">{me.steam_id} <Icon name="arrowUpRight" /></a>
       </p>
       <a className="ghost-button account-link" href={ACCOUNT_PATH}>Account settings</a>
       {relink && (
@@ -243,7 +244,7 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
           <h3>
             SteamID{" "}
             <a href={`https://steamcommunity.com/profiles/${me.steam_id}`} target="_blank" rel="noreferrer">
-              {me.steam_id} ↗
+              {me.steam_id} <Icon name="arrowUpRight" />
             </a>
           </h3>
         </div>
@@ -471,7 +472,7 @@ function LinkForm({ onLinked, mode, focus = false, hint, describedBy }: LinkForm
       {mode === "link" && (
         <>
           <p className="steam-muted">
-            Codes from <a href={AUTH_CODE_URL} target="_blank" rel="noreferrer">Valve’s match-history page ↗</a>.
+            Codes from <a href={AUTH_CODE_URL} target="_blank" rel="noreferrer">Valve’s match-history page <Icon name="arrowUpRight" /></a>.
           </p>
           <p className="steam-muted">Imports that match and newer. Expire ~30 days. Older/FACEIT: upload a demo.</p>
         </>
@@ -517,7 +518,7 @@ function LinkForm({ onLinked, mode, focus = false, hint, describedBy }: LinkForm
         </label>
       )}
       <button className="submit-button" type="submit" disabled={busy || (needsConsent && !consent)}>
-        <span>{busy ? busyLabel : submitText}</span><span className="button-arrow">↗</span>
+        <span>{busy ? busyLabel : submitText}</span><span className="button-arrow"><Icon name="arrowUpRight" /></span>
       </button>
       {error && <div className="steam-error" role="alert">{error}</div>}
     </form>

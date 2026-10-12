@@ -27,7 +27,7 @@ describe("players scoreboard", () => {
     ])} />);
     const mine = screen.getByRole("table", { name: "Your team" });
     expect(within(mine).getAllByRole("row")).toHaveLength(3);
-    expect(within(mine).getByRole("link", { name: "You ↗" })).toHaveAttribute("href", "https://steamcommunity.com/profiles/76561198157151718");
+    expect(within(mine).getByRole("link", { name: "You" })).toHaveAttribute("href", "https://steamcommunity.com/profiles/76561198157151718");
     expect(within(mine).getByText("with 3")).toBeInTheDocument();
     const them = screen.getByRole("table", { name: "Opponents" });
     expect(within(them).getByText("with 1 · vs 1")).toBeInTheDocument();

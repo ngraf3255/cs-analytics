@@ -1,3 +1,4 @@
+import { Icon } from "../Icon";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { isJobActive, steamApi, type UploadProgress } from "./api";
 import { ApiError, messageFor } from "./errors";
@@ -352,7 +353,7 @@ export function Matches({ me, onMeChange, canSync = true, steamAvailable = true,
       <div className="sync-row">
         {canSync && (
           <button className={`submit-button sync-button ${syncBusy || me.sync.status === "running" ? "busy" : ""}`} type="button" onClick={sync} disabled={!linked || !!relink || awaitingShare || syncBusy || me.sync.status === "running"}>
-            <span>{syncLabel}</span><span className="button-arrow">↻</span>
+            <span>{syncLabel}</span><span className="button-arrow"><Icon name="refresh" /></span>
           </button>
         )}
         <label className={`ghost-button upload-button ${uploading ? "busy" : ""}`} aria-disabled={uploading}>

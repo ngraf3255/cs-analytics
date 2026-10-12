@@ -206,8 +206,8 @@ describe("matches teaser", () => {
     installFakeApi(steamRoutes({ status: 401, body: { detail: "not signed in" } }));
     render(<SteamSection />);
     await advance();
-    const teaser = screen.getByRole("figure", { name: "Sample match report" });
-    expect(teaser).toHaveTextContent("SAMPLE REPORT");
+    const teaser = screen.getByRole("figure", { name: "Example match report" });
+    expect(teaser).toHaveTextContent("Example");
     expect(teaser).not.toHaveTextContent(/what you get/i);
     expect(teaser.querySelector(".teaser-report")).toHaveAttribute("aria-hidden", "true");
     expect(screen.queryByRole("table")).toBeNull();
@@ -218,7 +218,7 @@ describe("matches teaser", () => {
     installFakeApi(steamRoutes({ status: 200, body: meFixture }));
     render(<SteamSection />);
     await advance();
-    expect(screen.queryByRole("figure", { name: "Sample match report" })).toBeNull();
+    expect(screen.queryByRole("figure", { name: "Example match report" })).toBeNull();
     expect(screen.getByRole("button", { name: /mirage/i })).toBeInTheDocument();
   });
 });

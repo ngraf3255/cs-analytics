@@ -348,3 +348,23 @@ details[open]>summary>.icon-tip{opacity:0!important;visibility:hidden!important}
 /* !important: a font shorthand elsewhere resets font-variant-numeric; numbers that change must not jitter. */
 [data-ui-number]{font-variant-numeric:tabular-nums!important}
 .map-digits[data-ui-number]{font-variant-numeric:slashed-zero tabular-nums!important}
+
+/* GD #65 */
+.why-row{display:flex;align-items:flex-start;gap:12px;border-top:1px solid #27313a;padding-top:10px;margin-top:6px}
+.why-row .why-round{flex:1 1 auto;min-width:0;border-top:0;padding-top:0;margin-top:0}
+.why-row .model-info-pop{flex:none;margin:0}
+.time-chips .chip{flex:1 1 0}
+.preset-chip span{font-size:11px;color:var(--label)}
+.hero h1{text-wrap:balance}
+@media(max-width:640px){.info-intro h2{font-size:32px}}
+.connect-card{gap:10px;padding-top:20px;padding-bottom:20px}
+.steam-button.steam-button-primary{background:var(--acid);color:#11160a;border-color:var(--acid);font-weight:700}
+@media(hover:hover){.steam-button.steam-button-primary:hover{background:#d8ff83;border-color:#d8ff83}}
+.example-tag{display:block;width:max-content;margin:10px 0 0 auto;padding:3px 8px;border:1px solid #6f8646;color:var(--acid);background:#0c1117;
+  font:500 11px/1.3 'DM Mono',monospace;letter-spacing:.06em}
+.icon{stroke-width:1.6}
+.button-arrow .icon,.winner-arrow .icon{display:block}
+.winner-arrow{display:inline-flex;align-items:flex-start}
+/* Optional glow: lime, low opacity, only in the decorative grid area (hidden on phones). */
+.hero-grid{background-image:radial-gradient(circle at 86% 28%,rgba(200,241,105,.55),transparent 42%),linear-gradient(#27343a 1px,transparent 1px),linear-gradient(90deg,#27343a 1px,transparent 1px);background-size:100% 100%,42px 42px,42px 42px}
+.why-row{position:relative}.why-row .model-info-pop{position:static}.why-row .info-pop-below .tl-legend{left:auto;right:0;max-width:100%}

@@ -17,11 +17,9 @@ const SIDE = { ct: "CT", t: "T" } as const;
 
 export function MatchesTeaser() {
   return (
-    <figure className="matches-teaser" aria-label="Sample match report">
-      <figcaption className="teaser-caption">
-        <span className="section-kicker">SAMPLE REPORT</span>
-      </figcaption>
+    <figure className="matches-teaser" aria-label="Example match report">
       <div className="match-report teaser-report" aria-hidden="true">
+        <span className="example-tag">Example</span>
         <dl className="report-header" data-ui-content>
           <div><dt>MAP</dt><dd>Mirage</dd></div>
           <div><dt>SCORE</dt><dd data-ui-number>13 – 9</dd></div>
