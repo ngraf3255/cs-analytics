@@ -141,3 +141,35 @@ for (const width of [500, 1280]) {
     console.log(width, JSON.stringify(out));
   });
 }
+
+// GD #69: Share and Stats share one hover; both show a keyboard focus ring.
+for (const width of [500, 1280]) {
+  test(`action-button hover + focus at ${width}`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== '1280', 'runs its own viewports');
+    await stubApi(page, { signedIn: true });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    await expect(page.locator('.match-item').first()).toBeVisible();
+    const btns = [page.locator('.home-tile-actions .share-button'), page.locator('.home-tile-actions a.action-button')];
+    const style = (l) => l.evaluate((e) => { const s = getComputedStyle(e); return { border: s.borderTopColor, bg: s.backgroundColor, outline: s.outlineStyle, ow: s.outlineWidth }; });
+    const out = [];
+    for (const b of btns) {
+      await page.mouse.move(0, 0); await page.waitForTimeout(200);
+      const rest = await style(b);
+      await b.hover(); await page.waitForTimeout(250);
+      const hover = await style(b);
+      expect(hover.border !== rest.border || hover.bg !== rest.bg).toBe(true);
+      out.push({ rest, hover });
+    }
+    expect(out[0].hover.border).toBe(out[1].hover.border);
+    expect(out[0].hover.bg).toBe(out[1].hover.bg);
+    await page.mouse.move(0, 0);
+    await btns[0].focus(); // establish position, then Tab from it to Stats (keyboard modality)
+    await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Tab');
+    const f0 = await style(btns[0]);
+    await page.keyboard.press('Tab');
+    const f1 = await style(btns[1]);
+    for (const f of [f0, f1]) { expect(f.outline).not.toBe('none'); expect(parseFloat(f.ow)).toBeGreaterThanOrEqual(2); }
+    console.log(width, JSON.stringify({ out, f0, f1 }));
+  });
+}
