@@ -1,0 +1,11 @@
+/* Self-hosted latin subsets (preloaded in index.html). font-display:optional = no late swap/reflow;
+   the metric-matched fallbacks below keep the first paint at the same size if the font misses. */
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:500;font-display:optional;src:url(/fonts/barlow-condensed-500.woff2) format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:optional;src:url(/fonts/barlow-condensed-700.woff2) format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:800;font-display:optional;src:url(/fonts/barlow-condensed-800.woff2) format('woff2')}
+@font-face{font-family:'DM Mono';font-style:normal;font-weight:400;font-display:optional;src:url(/fonts/dm-mono-400.woff2) format('woff2')}
+@font-face{font-family:'DM Mono';font-style:normal;font-weight:500;font-display:optional;src:url(/fonts/dm-mono-500.woff2) format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:100 1000;font-display:optional;src:url(/fonts/dm-sans-var.woff2) format('woff2')}
+@font-face{font-family:'Barlow Condensed Fallback';src:local('Arial'),local('ArialMT'),local('Helvetica'),local('Arimo'),local('Arimo Regular'),local('Liberation Sans'),local('DejaVu Sans'),local('Roboto');size-adjust:78.9%;ascent-override:126.7%;descent-override:25.3%;line-gap-override:0%}
+@font-face{font-family:'DM Sans Fallback';src:local('Arial'),local('ArialMT'),local('Helvetica'),local('Arimo'),local('Arimo Regular'),local('Liberation Sans'),local('DejaVu Sans'),local('Roboto');size-adjust:101.7%;ascent-override:97.5%;descent-override:30.5%;line-gap-override:0%}
+@font-face{font-family:'DM Mono Fallback';src:local('Courier New'),local('CourierNewPSMT'),local('Menlo'),local('Consolas'),local('Cousine'),local('Cousine Regular'),local('Liberation Mono'),local('DejaVu Sans Mono');size-adjust:100%;ascent-override:99.2%;descent-override:31%;line-gap-override:0%}
