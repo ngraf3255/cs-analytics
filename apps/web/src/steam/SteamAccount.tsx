@@ -1,4 +1,4 @@
-import { Icon } from "../Icon";
+import { Icon, IconText } from "../Icon";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { steamApi, steamLoginUrl } from "./api";
 import { ApiError, messageFor } from "./errors";
@@ -44,7 +44,7 @@ export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onG
             <span className="section-kicker">STEAM</span>
             <h3>Connect Steam</h3>
             <a className="steam-button steam-button-primary" href={steamLoginUrl("/#matches")}>
-              Sign in through Steam <Icon name="arrowUpRight" />
+              <IconText>Sign in through Steam</IconText>
             </a>
           </div>
         ) : (
@@ -131,7 +131,7 @@ function GuestAccount({ steam, onSignedOut }: { steam: boolean; onSignedOut: () 
       <span className="section-kicker">GUEST SESSION</span>
       <h3>Uploading as a guest</h3>
       <div className="steam-actions">
-        {steam && <a className="steam-button" href={steamLoginUrl("/#matches")}>Sign in through Steam <Icon name="arrowUpRight" /></a>}
+        {steam && <a className="steam-button" href={steamLoginUrl("/#matches")}><IconText>Sign in through Steam</IconText></a>}
         <button type="button" className="ghost-button" onClick={signOut} disabled={busy}>Sign out</button>
         <button type="button" className="danger-button" onClick={deleteAll} disabled={busy}>Delete my data</button>
       </div>
@@ -161,7 +161,7 @@ function SignedInSummary({ me }: { me: Me }) {
     <div className="steam-card account-summary" data-ui-content>
       <p>
         Signed in as{" "}
-        <a href={`https://steamcommunity.com/profiles/${me.steam_id}`} target="_blank" rel="noreferrer">{me.steam_id} <Icon name="arrowUpRight" /></a>
+        <a href={`https://steamcommunity.com/profiles/${me.steam_id}`} target="_blank" rel="noreferrer"><IconText>{me.steam_id}</IconText></a>
       </p>
       <a className="ghost-button account-link" href={ACCOUNT_PATH}>Account settings</a>
       {relink && (
@@ -244,7 +244,7 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
           <h3>
             SteamID{" "}
             <a href={`https://steamcommunity.com/profiles/${me.steam_id}`} target="_blank" rel="noreferrer">
-              {me.steam_id} <Icon name="arrowUpRight" />
+              <IconText>{me.steam_id}</IconText>
             </a>
           </h3>
         </div>
@@ -472,7 +472,7 @@ function LinkForm({ onLinked, mode, focus = false, hint, describedBy }: LinkForm
       {mode === "link" && (
         <>
           <p className="steam-muted">
-            Codes from <a href={AUTH_CODE_URL} target="_blank" rel="noreferrer">Valve’s match-history page <Icon name="arrowUpRight" /></a>.
+            Codes from <a href={AUTH_CODE_URL} target="_blank" rel="noreferrer"><IconText>Valve’s match-history page</IconText></a>.
           </p>
           <p className="steam-muted">Imports that match and newer. Expire ~30 days. Older/FACEIT: upload a demo.</p>
         </>

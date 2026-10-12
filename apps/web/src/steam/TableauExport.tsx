@@ -1,4 +1,4 @@
-import { Icon } from "../Icon";
+import { IconText } from "../Icon";
 import { useEffect, useId, useRef, useState } from "react";
 import { steamApi, type ExportTable } from "./api";
 import { ApiError } from "./errors";
@@ -92,7 +92,7 @@ export function TableauExport({ layout = "menu" }: Props) {
           </button>
         </div>
         <a className="export-guide-link" href={GUIDE_URL} target="_blank" rel="noreferrer">
-          Tableau help <Icon name="arrowUpRight" />
+          <IconText>Tableau help</IconText>
         </a>
         {statusEl}
       </div>
@@ -144,7 +144,7 @@ export function TableauExport({ layout = "menu" }: Props) {
             rel="noreferrer"
             onClick={() => setOpen(false)}
           >
-            Tableau help <Icon name="arrowUpRight" />
+            <IconText>Tableau help</IconText>
           </a>
         </div>
       )}

@@ -1,3 +1,4 @@
+import type React from "react";
 /** Small stroke icons (1em, currentColor). They replace text glyphs (⌄ ⓘ ✕ ↑ ▸ …), which can't be
  * contrast-checked and render differently per font. Always decorative: the control carries the name. */
 const PATHS = {
@@ -23,6 +24,11 @@ export function Icon({ name, className }: { name: IconName; className?: string }
       <path d={PATHS[name]} />
     </svg>
   );
+}
+
+/** Text + trailing icon with one shared gap (flex buttons drop a plain trailing space). */
+export function IconText({ children, icon = "arrowUpRight" }: { children: React.ReactNode; icon?: IconName }) {
+  return <span className="icon-text">{children}<Icon name={icon} /></span>;
 }
 
 /** A text tooltip for an icon-only control: give the control aria-describedby={id} and wrap both

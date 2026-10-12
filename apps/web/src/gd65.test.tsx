@@ -17,3 +17,13 @@ describe("GD #65 closers", () => {
     expect(button.querySelector("svg.icon")).not.toBeNull();
   });
 });
+
+import { IconText } from "./Icon";
+describe("GD #66", () => {
+  it("IconText applies one shared gap between text and icon", () => {
+    const { container } = render(<a className="steam-button" href="#x"><IconText>Sign in through Steam</IconText></a>);
+    const wrap = container.querySelector(".icon-text")!;
+    expect(wrap).toHaveTextContent("Sign in through Steam");
+    expect(wrap.lastElementChild?.matches("svg.icon")).toBe(true);
+  });
+});

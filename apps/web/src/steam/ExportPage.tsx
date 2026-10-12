@@ -1,4 +1,4 @@
-import { Icon } from "../Icon";
+import { IconText } from "../Icon";
 import { useEffect, useState } from "react";
 import { ACCOUNT_PATH, ACCOUNT_EXPORT_PATH } from "./routes";
 import { TableauExport } from "./TableauExport";
@@ -35,7 +35,7 @@ export function ExportPage() {
         <div className="steam-card" data-ui-content>
           <p>Sign in to download your rounds and matches as CSV.</p>
           {steam || upload ? (
-            <a className="steam-button" href={steamLoginUrl(ACCOUNT_EXPORT_PATH)}>Sign in through Steam <Icon name="arrowUpRight" /></a>
+            <a className="steam-button" href={steamLoginUrl(ACCOUNT_EXPORT_PATH)}><IconText>Sign in through Steam</IconText></a>
           ) : null}
         </div>
       ) : (

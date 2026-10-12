@@ -1,4 +1,4 @@
-import { Icon } from "../Icon";
+import { IconText } from "../Icon";
 import { useState } from "react";
 import { shareCard, type ShareCard } from "./shareCard";
 
@@ -17,7 +17,7 @@ export function ShareButton({ card, label = "Share image" }: { card: () => Share
   return (
     <span className="share-wrap">
       <button type="button" className="ghost-button share-button" onClick={() => void onClick()} disabled={state === "busy"}>
-        {state === "busy" ? "Making image…" : <>{label} <Icon name="arrowUpRight" /></>}
+        {state === "busy" ? "Making image…" : <IconText>{label}</IconText>}
       </button>
       <span className="share-status" aria-live="polite">
         {state === "done" ? "Image ready." : state === "error" ? "Couldn’t make the image in this browser." : ""}
