@@ -343,3 +343,47 @@ def test_me_soft_answers_200_with_no_account_when_signed_out(tmp_path):
     response = client.get("/me", params={"soft": "1"})
     assert response.status_code == 200
     assert response.json() == {"account": None}
+
+
+def _assert_me_cache_headers(response):
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["vary"] == "Cookie"
+
+
+def test_me_soft_signed_in_returns_own_data_same_as_plain(app_client):
+    client, _ = app_client
+    plain, soft = client.get("/me"), client.get("/me", params={"soft": "1"})
+    assert plain.status_code == soft.status_code == 200
+    assert soft.json() == plain.json()
+    assert soft.json()["steam_id"] == STEAM_ID and soft.json()["account"] == "steam"
+
+
+@pytest.mark.parametrize("cookie", ["invalid", "tampered", "expired"])
+def test_me_soft_bad_session_cookie_is_signed_out(app_client, cookie):
+    client, ctx = app_client
+    name = ctx.settings.session_cookie_name
+    if cookie == "invalid":
+        client.cookies.set(name, "not-a-session")
+    elif cookie == "tampered":
+        value = client.cookies.get(name)
+        client.cookies.set(name, value[:-2] + ("AA" if not value.endswith("AA") else "BB"))
+    else:
+        ctx.clock.advance(ctx.settings.session_ttl_seconds + 60)
+    response = client.get("/me", params={"soft": "1"})
+    assert response.status_code == 200
+    assert response.json() == {"account": None}
+    _assert_me_cache_headers(response)
+    assert client.get("/me").status_code == 401
+
+
+def test_me_cache_headers_on_every_variant(tmp_path):
+    client, ctx = make_client(tmp_path)
+    for params, status in (({}, 401), ({"soft": "1"}, 200)):
+        response = client.get("/me", params=params)
+        assert response.status_code == status
+        _assert_me_cache_headers(response)
+    login(client, ctx)
+    for params in ({}, {"soft": "1"}):
+        response = client.get("/me", params=params)
+        assert response.status_code == 200
+        _assert_me_cache_headers(response)
