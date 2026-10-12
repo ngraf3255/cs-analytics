@@ -16,7 +16,7 @@ export function ShareButton({ card, label = "Share image" }: { card: () => Share
   }
   return (
     <span className="share-wrap">
-      <button type="button" className="ghost-button share-button" onClick={() => void onClick()} disabled={state === "busy"}>
+      <button type="button" className="ghost-button action-button share-button" onClick={() => void onClick()} disabled={state === "busy"}>
         {state === "busy" ? "Making image…" : <IconText>{label}</IconText>}
       </button>
       <span className="share-status" aria-live="polite">

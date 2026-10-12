@@ -113,6 +113,7 @@ function PredictorWorkspace() {
   const [seconds, setSeconds] = useState(start.i.seconds);
   const [weapon, setWeapon] = useState(start.i.weapon);
   const [prediction, setPrediction] = useState<Prediction | null>(null);
+  const whyRowRef = useWhyRowPin();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activePreset, setActivePreset] = useState<string | null>(null);
@@ -321,7 +322,7 @@ function PredictorWorkspace() {
         ) : loading ? (
           <div className="readout-empty" role="status"><strong>…</strong></div>
         ) : null}
-        {prediction && <div className="why-row">
+        {prediction && <div className="why-row" ref={whyRowRef}>
           <WhyThisRound inputs={lastInputs} ct={prediction.probabilities.ct} weapons={options?.weapons ?? []} />
           <InfoPopover label="Model info">Logistic regression · pro data</InfoPopover>
         </div>}
@@ -354,6 +355,14 @@ export function InfoPopover({ label, children }: { label: string; children: Reac
   const onToggle = () => {
     if (!ref.current?.open) return;
     const note = noteRef.current;
+    // Left-aligned under the icon, shifted left only as far as needed to stay inside the viewport.
+    if (note) {
+      note.style.removeProperty("--note-shift");
+      const r = note.getBoundingClientRect();
+      const vw = document.documentElement.clientWidth;
+      const over = r.right - (vw - 12);
+      if (over > 0) note.style.setProperty("--note-shift", `${-Math.min(over, Math.max(0, r.left - 12))}px`);
+    }
     requestAnimationFrame(() => note?.scrollIntoView?.({ block: "nearest", behavior: "smooth" }));
   };
   return (
@@ -418,3 +427,18 @@ function TopBar({ page }: { page: AppPage }) {
 }
 
 export default App;
+
+/** Pins the ⓘ right after the "Why this call?" text, at the same x open or closed. */
+export function useWhyRowPin() {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const setRef = useCallback((el: HTMLDivElement | null) => {
+    ref.current = el;
+    if (!el) return;
+    const summary = el.querySelector<HTMLElement>(".why-round > summary");
+    if (!summary) return;
+    const apply = () => el.style.setProperty("--why-x", `${summary.offsetLeft + summary.offsetWidth}px`);
+    apply();
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(apply).observe(summary);
+  }, []);
+  return setRef;
+}
