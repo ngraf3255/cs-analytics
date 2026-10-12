@@ -32,7 +32,7 @@ export function GuestHero() {
   return (
     <section className="hero">
       <div className="hero-copy">
-        <h1>Every round<br />has a <em>turning point.</em></h1>
+        <h1>Every round<br />has a <em>turning{"\u00a0"}point.</em></h1>
       </div>
       <div className="hero-grid" aria-hidden="true" />
     </section>

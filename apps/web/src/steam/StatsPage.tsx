@@ -1,3 +1,4 @@
+import { Icon } from "../Icon";
 import { useEffect, useState } from "react";
 import { steamLoginUrl } from "./api";
 import { useMe, useSteamStatus } from "./hooks";
@@ -33,7 +34,7 @@ export function StatsPage() {
       ) : !me ? (
         <div className="steam-card" data-ui-content>
           <p>Sign in to see lobby compare, roles, and map tables.</p>
-          {(steam || upload) && <a className="steam-button" href={steamLoginUrl(STATS_PATH)}>Sign in through Steam ↗</a>}
+          {(steam || upload) && <a className="steam-button" href={steamLoginUrl(STATS_PATH)}>Sign in through Steam <Icon name="arrowUpRight" /></a>}
           <p className="steam-muted"><a href={ACCOUNT_PATH}>Account settings</a></p>
         </div>
       ) : (

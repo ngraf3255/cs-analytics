@@ -289,7 +289,7 @@ function PredictorWorkspace() {
           </label>
 
           <button className="submit-button" type="submit" disabled={!ready || loading}>
-            <span>Predict</span>{loading ? <span className="btn-spinner" role="progressbar" aria-label="Predicting" /> : <span className="button-arrow">↗</span>}
+            <span>Predict</span>{loading ? <span className="btn-spinner" role="progressbar" aria-label="Predicting" /> : <span className="button-arrow"><Icon name="arrowUpRight" /></span>}
           </button>
         </form>
       </div>
@@ -302,7 +302,7 @@ function PredictorWorkspace() {
         {prediction ? (
           <>
             <div className="result-main">
-              <div className={`winner-name ${prediction.predicted_winner}`}>{winnerLabel}<span className="winner-arrow">↗</span></div>
+              <div className={`winner-name ${prediction.predicted_winner}`}>{winnerLabel}<span className="winner-arrow"><Icon name="arrowUpRight" /></span></div>
               <div className="probability-summary">
                 <span className={`confidence-chip ${confidenceLabel(prediction.probabilities).tone}`}>{confidenceLabel(prediction.probabilities).label}</span>
               </div>
@@ -321,8 +321,8 @@ function PredictorWorkspace() {
         ) : loading ? (
           <div className="readout-empty" role="status"><strong>…</strong></div>
         ) : null}
-        {prediction && <WhyThisRound inputs={lastInputs} ct={prediction.probabilities.ct} weapons={options?.weapons ?? []} />}
-        {prediction && <div className="result-foot">
+        {prediction && <div className="why-row">
+          <WhyThisRound inputs={lastInputs} ct={prediction.probabilities.ct} weapons={options?.weapons ?? []} />
           <InfoPopover label="Model info">Logistic regression · pro data</InfoPopover>
         </div>}
         {error && <div className="error-message" role="alert">{error}</div>}

@@ -2,6 +2,7 @@
  * contrast-checked and render differently per font. Always decorative: the control carries the name. */
 const PATHS = {
   chevronDown: "M4 6l4 4 4-4",
+  arrowUpRight: "M4.5 11.5l7-7M6 4.5h5.5V10",
   chevronRight: "M6 4l4 4-4 4",
   info: "M8 7.2v4.3M8 4.6v.1",
   close: "M4.5 4.5l7 7M11.5 4.5l-7 7",
