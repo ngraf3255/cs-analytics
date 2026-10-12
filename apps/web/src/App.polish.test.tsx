@@ -162,7 +162,9 @@ describe("nav: Account stays reachable", () => {
     expect(header.querySelector(".account-avatar-slot")).toBeTruthy();
     expect(header.querySelector(".live-indicator")).toHaveClass("is-pending");  // laid out, not shown
     await advance();
-    expect(header.querySelector(".account-avatar-slot")).toBeNull();
+    // Guest: the slot stays reserved (invisible) so the nav can't jump when auth settles.
+    expect(header.querySelector(".account-avatar-slot")).toBeTruthy();
+    expect(header.querySelector("a.account-avatar")).toBeNull();
     expect(header.querySelector(".live-indicator")).not.toHaveClass("is-pending");
   });
 

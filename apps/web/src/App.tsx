@@ -410,7 +410,8 @@ function TopBar({ page }: { page: AppPage }) {
           href={ACCOUNT_PATH} aria-current={page === "account" || page === "export" ? "page" : undefined}>Account</a>
       </nav>
       {page === "home" && <div className={`live-indicator ${authPending ? "is-pending" : ""}`.trim()} aria-hidden={authPending || undefined}><span /> <b className="live-text">MODEL ONLINE</b></div>}
-      {authPending && <span className="account-avatar account-avatar-slot" aria-hidden="true" />}
+      {/* The avatar slot is always reserved (pending or guest) so the nav never jumps when auth settles. */}
+      {!steamUser && <span className="account-avatar account-avatar-slot" aria-hidden="true" />}
       {steamUser && (
         <a className="account-avatar" href={ACCOUNT_PATH} title={steamUser.steam_id ?? "Account"}
           aria-label={`Account settings ${(steamUser.steam_id ?? "?").slice(-2)}`}>
