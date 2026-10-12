@@ -1,4 +1,4 @@
-import { Icon } from "../Icon";
+import { IconText } from "../Icon";
 import { kdText } from "./format";
 import type { MatchPlayer, MatchReport } from "./types";
 import "./scoreboard.css";
@@ -48,7 +48,7 @@ export function Scoreboard({ report }: { report: MatchReport }) {
               <tr key={p.steam_id} className={p.team === "you" ? "scoreboard-you" : ""}>
                 <td>
                   <a href={`https://steamcommunity.com/profiles/${p.steam_id}`} target="_blank" rel="noreferrer" title={p.steam_id}>
-                    {p.team === "you" ? "You" : short(p.steam_id)} <Icon name="arrowUpRight" />
+                    <IconText>{p.team === "you" ? "You" : short(p.steam_id)}</IconText>
                   </a>
                 </td>
                 <td>{p.kills}</td>

@@ -316,7 +316,9 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .workspace .result-panel{min-height:0}
 
 /* No layout shift when a scrollbar appears. */
-html{scrollbar-gutter:stable}
+/* Always-on scrollbar track instead of scrollbar-gutter: no reflow when content grows, and no
+   phantom gutter where scrollbars overlay (phones, headless) that cut the hero divider short. */
+html{overflow-y:scroll}
 .info-pop-below .tl-legend{scroll-margin-bottom:24px}
 .map-digits{font-family:'DM Mono',monospace;font-weight:500;font-size:1em;font-variant-numeric:slashed-zero tabular-nums;letter-spacing:0}
 /* Room under the open ⓘ note so it never sits on the panel edge. */
@@ -360,7 +362,7 @@ details[open]>summary>.icon-tip{opacity:0!important;visibility:hidden!important}
 .connect-card{gap:10px;padding-top:20px;padding-bottom:20px}
 .steam-button.steam-button-primary{background:var(--acid);color:#11160a;border-color:var(--acid);font-weight:700}
 @media(hover:hover){.steam-button.steam-button-primary:hover{background:#d8ff83;border-color:#d8ff83}}
-.example-tag{display:block;width:max-content;margin:10px 0 0 auto;padding:3px 8px;border:1px solid #6f8646;color:var(--acid);background:#0c1117;
+.example-tag{position:absolute;top:8px;right:8px;z-index:1;width:max-content;margin:0;padding:3px 8px;border:1px solid #6f8646;color:var(--acid);background:#0c1117;
   font:500 11px/1.3 'DM Mono',monospace;letter-spacing:.06em}
 .icon{stroke-width:1.6}
 .button-arrow .icon,.winner-arrow .icon{display:block}
@@ -368,3 +370,18 @@ details[open]>summary>.icon-tip{opacity:0!important;visibility:hidden!important}
 /* Optional glow: lime, low opacity, only in the decorative grid area (hidden on phones). */
 .hero-grid{background-image:radial-gradient(circle at 86% 28%,rgba(200,241,105,.55),transparent 42%),linear-gradient(#27343a 1px,transparent 1px),linear-gradient(90deg,#27343a 1px,transparent 1px);background-size:100% 100%,42px 42px,42px 42px}
 .why-row{position:relative}.why-row .model-info-pop{position:static}.why-row .info-pop-below .tl-legend{left:auto;right:0;max-width:100%}
+
+/* GD #66 */
+/* One horizontal page gutter for every section: hero content, predictor card, matches, model info. */
+:root{--page-x:clamp(22px,10vw,160px)}
+@media(max-width:900px){:root{--page-x:5vw}}
+@media(max-width:640px){:root{--page-x:22px}}
+main .workspace,main .steam-section,main .model-info{margin-left:var(--page-x);margin-right:var(--page-x)}
+.icon-text{display:inline-flex;align-items:center;gap:.45em}
+.icon-text .icon{flex:none}
+.home-tile-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.home-tile-actions>*{width:100%;justify-content:center;text-align:center}
+.why-row .why-round{flex:0 1 auto}
+/* Example tag sits inside the Mirage stats row (top-right of the header grid): no strip of its own. */
+.example-anchor{position:relative}
+.example-anchor .example-tag{top:8px;right:8px}

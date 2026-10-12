@@ -19,6 +19,7 @@ export function MatchesTeaser() {
   return (
     <figure className="matches-teaser" aria-label="Example match report">
       <div className="match-report teaser-report" aria-hidden="true">
+        <div className="example-anchor">
         <span className="example-tag">Example</span>
         <dl className="report-header" data-ui-content>
           <div><dt>MAP</dt><dd>Mirage</dd></div>
@@ -26,6 +27,7 @@ export function MatchesTeaser() {
           <div><dt>MODEL HIT RATE</dt><dd data-ui-number>16 / 21</dd></div>
           <div><dt>YOUR OPENERS</dt><dd data-ui-number>5</dd></div>
         </dl>
+        </div>
         <table className="round-table">
           <thead>
             <tr><th>Round</th><th>Opening kill</th><th>Actual winner</th><th>Model estimate</th></tr>

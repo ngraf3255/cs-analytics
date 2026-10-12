@@ -1,4 +1,4 @@
-import { Icon } from "../Icon";
+import { IconText } from "../Icon";
 import { useEffect, useState } from "react";
 import { steamLoginUrl } from "./api";
 import { useMe, useSteamStatus } from "./hooks";
@@ -46,7 +46,7 @@ export function AccountPage() {
           ) : steam ? (
             <div className="steam-card" data-ui-content>
               <p>Sign in to manage your account.</p>
-              <a className="steam-button" href={steamLoginUrl(ACCOUNT_PATH)}>Sign in through Steam <Icon name="arrowUpRight" /></a>
+              <a className="steam-button" href={steamLoginUrl(ACCOUNT_PATH)}><IconText>Sign in through Steam</IconText></a>
             </div>
           ) : (
             <div className="steam-card" data-ui-content role="status"><p>Steam sign-in is coming soon.</p></div>
