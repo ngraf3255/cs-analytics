@@ -92,20 +92,20 @@ describe("match list UX", () => {
 
     expect(screen.getByText("3 MATCHES")).toBeInTheDocument();
     // Personal match: W chip + your-side score + K-D metric
-    const won = screen.getByRole("button", { name: /Won · mirage · score 13–11 · K-D 29–17/i });
+    const won = screen.getByRole("button", { name: /Won · mirage 13–11 · 29–17 \(score · K-D\)/i });
     expect(within(won).getByText("W")).toBeInTheDocument();
     expect(within(won).getByText("13–11")).toBeInTheDocument();
-    expect(within(won).getByText("· 29–17")).toBeInTheDocument();
+    expect(within(won).getByText("29–17")).toBeInTheDocument();
     expect(within(won).queryByText("CT–T")).not.toBeInTheDocument();
-    expect(within(won).getByLabelText("Uploaded")).toHaveTextContent("↑");
+    expect(won.querySelector('[data-flag="Uploaded"]')!.querySelector("svg.icon")).not.toBeNull();
 
     // Matches without personal bits: CT–T score fallback + rounds metric, no W/L chip
-    const ancient = screen.getByRole("button", { name: /ancient · 6–2 · 8r/i });
+    const ancient = screen.getByRole("button", { name: /ancient 6–2 · 8r/i });
     expect(within(ancient).queryByText("W")).not.toBeInTheDocument();
     expect(within(ancient).getByText("6–2")).toBeInTheDocument();
-    expect(within(ancient).getByText("· 8r")).toBeInTheDocument();
+    expect(within(ancient).getByText("8r")).toBeInTheDocument();
 
-    const synced = screen.getByRole("button", { name: /mirage · 2–8 · 10r/i });
+    const synced = screen.getByRole("button", { name: /mirage 2–8 · 10r/i });
     expect(within(synced).getByText("2–8")).toBeInTheDocument();
 
     fireEvent.click(won);
@@ -141,7 +141,7 @@ describe("match list UX", () => {
     await advance();
 
     const row = screen.getByRole("button", { name: /dust2/i });
-    expect(within(row).getByLabelText("Not imported")).toHaveTextContent("⊘");
+    expect(row.querySelector('[data-flag="Not imported"]')!.querySelector("svg.icon")).not.toBeNull();
     expect(within(row).queryByText("NOT IMPORTED")).not.toBeInTheDocument();
     expect(within(row).getByText("—")).toBeInTheDocument();
     expect(row).not.toHaveTextContent(/Valve/i);
@@ -174,14 +174,14 @@ describe("match list UX", () => {
     await advance();
 
     const row = screen.getByRole("button", { name: /rush/i });
-    const tag = within(row).getByLabelText("Degraded");
-    expect(tag).toHaveTextContent("⚠");
+    const tag = row.querySelector('[data-flag="Degraded"]')!;
+    expect(tag.querySelector("svg.icon")).not.toBeNull();
     expect(tag).toHaveAttribute(
       "title",
       "PacketEntities skips — positions thin; Rush may omit round_end (recovered from officially-ended).",
     );
     expect(within(row).queryByText("DEGRADED")).not.toBeInTheDocument();
-    expect(within(row).queryByLabelText("Not imported")).not.toBeInTheDocument();
+    expect(row.querySelector('[data-flag=\"Not imported\"]')).not.toBeInTheDocument();
   });
 
   it("re-opening a report uses the copy loaded this list load (no refetch)", async () => {
@@ -278,9 +278,9 @@ describe("match list UX", () => {
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
 
-    const row = screen.getByRole("button", { name: /Lost · rush 001 · score 0–1 · K-D 0–1/i });
+    const row = screen.getByRole("button", { name: /Lost · rush 001 0–1 · 0–1 \(score · K-D\)/i });
     expect(within(row).getByText("L")).toBeInTheDocument();
-    expect(within(row).getByText("0–1")).toBeInTheDocument();
+    expect(within(row).getAllByText("0–1")).toHaveLength(2);  // score 0–1 · K-D 0–1
     // Bold primary is the first strong; K-D is in small — ensure we did not show 0–2.
     expect(within(row).queryByText("0–2")).not.toBeInTheDocument();
     expect(screen.getByText("Today")).toBeInTheDocument();

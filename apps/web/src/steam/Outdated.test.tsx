@@ -48,10 +48,10 @@ describe("matches parsed by an older version: re-upload to update", () => {
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
     const items = screen.getAllByRole("listitem");
-    const tagged = items.filter((item) => within(item).queryByLabelText("Outdated"));
+    const tagged = items.filter((item) => item.querySelector('[data-flag=\"Outdated\"]'));
     expect(tagged).toHaveLength(1);
     expect(tagged[0]).toHaveTextContent("Ancient");
-    expect(within(tagged[0]).getByLabelText("Outdated")).toHaveAttribute(
+    expect(tagged[0].querySelector('[data-flag="Outdated"]')).toHaveAttribute(
       "title", "Parsed by an older version (warmup or knife rounds may still be counted). Upload this demo again to update it.");
 
     fireEvent.click(screen.getByRole("button", { name: /Ancient/ }));
@@ -64,7 +64,7 @@ describe("matches parsed by an older version: re-upload to update", () => {
     installFakeApi(routes());
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    fireEvent.click(screen.getByRole("button", { name: /Won · mirage · score 13–11 · K-D 29–17/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Won · mirage 13–11 · 29–17 \(score · K-D\)/i }));
     await advance();
     expect(screen.queryByText(/Upload this demo again to update it/)).not.toBeInTheDocument();
   });
@@ -87,7 +87,7 @@ describe("matches parsed by an older version: re-upload to update", () => {
     }));
     render(<Matches me={me} onMeChange={async () => undefined} />);
     await advance();
-    expect(screen.queryByLabelText("Outdated")).not.toBeInTheDocument();
+    expect(document.querySelector('[data-flag=\"Outdated\"]')).not.toBeInTheDocument();
     expect(screen.queryByText(/to re-upload/)).not.toBeInTheDocument();
   });
 

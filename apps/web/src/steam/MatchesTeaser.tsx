@@ -22,11 +22,11 @@ export function MatchesTeaser() {
         <span className="section-kicker">SAMPLE REPORT</span>
       </figcaption>
       <div className="match-report teaser-report" aria-hidden="true">
-        <dl className="report-header">
+        <dl className="report-header" data-ui-content>
           <div><dt>MAP</dt><dd>Mirage</dd></div>
-          <div><dt>SCORE</dt><dd>13 – 9</dd></div>
-          <div><dt>MODEL HIT RATE</dt><dd>16 / 21</dd></div>
-          <div><dt>YOUR OPENERS</dt><dd>5</dd></div>
+          <div><dt>SCORE</dt><dd data-ui-number>13 – 9</dd></div>
+          <div><dt>MODEL HIT RATE</dt><dd data-ui-number>16 / 21</dd></div>
+          <div><dt>YOUR OPENERS</dt><dd data-ui-number>5</dd></div>
         </dl>
         <table className="round-table">
           <thead>

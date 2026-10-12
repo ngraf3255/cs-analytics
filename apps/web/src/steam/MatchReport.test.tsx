@@ -31,9 +31,9 @@ describe("match list and per-round report (real API response shapes)", () => {
     expect(screen.queryByText("Signed in as", { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByRole("form", { name: "Link match history" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Matches" })).toBeInTheDocument();
-    const item = screen.getByRole("button", { name: /mirage · 2–8 · 10r/i });
+    const item = screen.getByRole("button", { name: /mirage 2–8 · 10r/i });
     expect(item).toHaveTextContent("· 10r");
-    expect(within(item).getByLabelText("Uploaded")).toHaveTextContent("↑");
+    expect(item.querySelector('[data-flag="Uploaded"]')!.querySelector("svg.icon")).not.toBeNull();
     expect(api.count(`GET /matches/${MATCH.id}`)).toBe(0);
 
     fireEvent.click(item);
@@ -74,7 +74,7 @@ describe("match list and per-round report (real API response shapes)", () => {
     }));
     render(<SteamSection />);
     await advance();
-    const item = screen.getByRole("button", { name: /mirage · 10r/i });
+    const item = screen.getByRole("button", { name: /mirage — \(10r\)/i });
     expect(within(item).getByText("—")).toBeInTheDocument();
     fireEvent.click(item);
     await advance();
@@ -88,7 +88,7 @@ describe("match list and per-round report (real API response shapes)", () => {
     render(<SteamSection />);
     await advance();
     const item = screen.getByRole("button", { name: /Unknown map/ });
-    expect(within(item).getByLabelText("Not imported")).toHaveTextContent("⊘");
+    expect(item.querySelector('[data-flag="Not imported"]')!.querySelector("svg.icon")).not.toBeNull();
     expect(item).not.toHaveTextContent(/Valve/);
     expect(item).not.toHaveTextContent("NOT IMPORTED");
     fireEvent.click(item);

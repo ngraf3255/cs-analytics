@@ -30,7 +30,7 @@ export function AccountPage() {
           <span /><span /><span />
         </div>
       ) : !enabled ? (
-        <div className="steam-card" role="status">
+        <div className="steam-card" data-ui-content role="status">
           <p>{reachable ? "Accounts aren’t switched on yet." : "Can’t reach the match service. Refresh in a minute."}</p>
         </div>
       ) : (
@@ -43,12 +43,12 @@ export function AccountPage() {
             <SteamAccount me={me} steam={steam} guest={guest && upload} onChange={refresh}
               onSignedOut={() => { setMe(null); goHomeTop(); }} />
           ) : steam ? (
-            <div className="steam-card">
+            <div className="steam-card" data-ui-content>
               <p>Sign in to manage your account.</p>
               <a className="steam-button" href={steamLoginUrl(ACCOUNT_PATH)}>Sign in through Steam ↗</a>
             </div>
           ) : (
-            <div className="steam-card" role="status"><p>Steam sign-in is coming soon.</p></div>
+            <div className="steam-card" data-ui-content role="status"><p>Steam sign-in is coming soon.</p></div>
           )}
         </>
       )}

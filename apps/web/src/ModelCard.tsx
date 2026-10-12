@@ -95,7 +95,7 @@ export function WhyThisRound({ inputs, ct, weapons }: { inputs: RoundInputs; ct:
 /** About the model: what it sees, which maps it covers, how sure it is and where it stops. */
 export function ModelCard({ maps }: { maps: string[] }) {
   return (
-    <div className="model-card" aria-label="Model card">
+    <div className="model-card" role="group" aria-label="Model card" data-ui-content>
       <dl className="model-card-grid">
         <div><dt>INPUTS</dt><dd>Map · side with the opening kill · its time · its weapon</dd></div>
         <div><dt>TRAINED ON</dt><dd>Professional CS2 rounds (OpenCS2 data)</dd></div>

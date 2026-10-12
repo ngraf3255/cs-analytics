@@ -41,3 +41,32 @@ jobs:
         run: pnpm --filter csgooners-web test
       - name: tsc + vite build
         run: pnpm build
+
+  ui-lint:
+    name: lintapple UI rules (Playwright, 500 + 1280)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22  # lintapple needs Node 22+
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: vite build
+        run: pnpm --filter csgooners-web exec vite build
+      - name: Install Chromium
+        run: pnpm --filter csgooners-web exec playwright install --with-deps --only-shell chromium
+      - name: lintapple (expectUI on every page state)
+        run: pnpm --filter csgooners-web test:ui
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lintapple-findings
+          path: apps/web/test-results/ui
+          retention-days: 14

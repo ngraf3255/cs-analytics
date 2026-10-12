@@ -1,3 +1,4 @@
+import { Icon, Tip } from "../Icon";
 import { useState } from "react";
 import { ACCOUNT_PATH } from "./routes";
 
@@ -43,8 +44,8 @@ export function LinkHistoryTip() {
       <strong>Link match history</strong>
       {" "}
       <a href={ACCOUNT_PATH}>Account settings</a>
-      <button type="button" className="tip-dismiss" aria-label="Dismiss tip"
-        onClick={() => { try { window.localStorage.setItem(LINK_TIP_KEY, "1"); } catch { /* private mode */ } setHidden(true); }}>✕</button>
+      <button type="button" className="tip-dismiss" aria-label="Dismiss tip" aria-describedby="link-tip-dismiss"
+        onClick={() => { try { window.localStorage.setItem(LINK_TIP_KEY, "1"); } catch { /* private mode */ } setHidden(true); }}><Icon name="close" /><Tip id="link-tip-dismiss">Dismiss</Tip></button>
     </aside>
   );
 }

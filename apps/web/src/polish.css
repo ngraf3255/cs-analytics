@@ -6,7 +6,7 @@
 /* 3 · Tiny monospace labels: at 7–8px with #59656e–#74808a they were ~3–4.8:1 on the panels.
    Floor them at 9px and >=6.3:1 (--label-dim) / ~8:1 (--label). */
 .result-foot,.result-foot i,.form-note,.unit,.number-unit,.result-status,.probability-heading,
-.probability-summary span,.accuracy>span,.accuracy-caption,.hero-stamp i,footer,footer>span:last-child{font-size:9px!important}
+.probability-summary span,.accuracy>span,.accuracy-caption,.hero-stamp i,footer,footer>span:last-child{font-size:10px!important}
 .result-foot,.probability-heading span:last-child,.result-status,.form-note,.unit,.number-unit,
 .step-count,.eyebrow-index,.accuracy-caption,footer,.footer-brand~span:last-child i{color:var(--label-dim)!important}
 .probability-heading,.probability-summary span,.result-label,.accuracy>span,.hero-stamp span,.hero-stamp i,
@@ -34,7 +34,11 @@
 /* …and the same at mid-width for the readout: "COUNTER-TERRORISTS" broke onto two lines.
    Size the winner to the readout column so it always fits on one. */
 .result-main{container-type:inline-size}
-.winner-name{white-space:nowrap;font-size:clamp(24px,10.8cqi,47px)}
+/* Type scale steps (24/32/40/48) instead of a fluid clamp: "Counter-Terrorists" needs ~10.8cqi. */
+.winner-name{white-space:nowrap;font-size:24px}
+@container (min-width:300px){.winner-name{font-size:32px}}
+@container (min-width:375px){.winner-name{font-size:40px}}
+@container (min-width:450px){.winner-name{font-size:48px}}
 
 /* 7 · Predict is the primary action; Steam sign-in links are secondary (outlined, not filled). */
 a.steam-button{background:transparent;color:var(--acid);border:1px solid #6f8646;font-weight:500;padding:12px 16px;transition:border-color .2s,background .2s}
@@ -44,8 +48,8 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 /* 2 · Signed-out matches: a labelled sample report under the sign-in card. */
 .matches-teaser{margin:0;display:grid;gap:10px;min-width:0;position:relative}
 .teaser-caption{display:grid;gap:4px;font-size:12px;line-height:1.6;color:#9aa4ab}
-.teaser-report{border-top:1px solid #27313a;position:relative;pointer-events:none;user-select:none;max-height:330px;overflow:hidden}
-.teaser-report:after{content:'';position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(transparent,#0a0f14)}
+/* No clip + fade overlay: the 5-row sample shows in full (as on phones), and nothing paints over its text. */
+.teaser-report{border-top:1px solid #27313a;position:relative;pointer-events:none;user-select:none}
 .teaser-report .round-table{min-width:520px}
 
 /* 4 · Narrow screens: the nav no longer drops "My matches" / "Account"; it folds into a menu
@@ -74,10 +78,10 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
   .hero{display:block;padding-top:64px}
   .hero-stamp{position:absolute;top:14px;right:20px;width:58px;height:64px;margin:0}
   .hero-stamp strong{font-size:30px;margin:3px 0}
-  .hero-stamp span{font-size:7px}
+  .hero-stamp span{font-size:10px}
   .hero-stamp i{display:none}
   .hero .eyebrow{padding-right:76px;white-space:nowrap}
-  .hero h1{font-size:clamp(46px,14.5vw,61px)}
+  .hero h1{font-size:48px}@media(min-width:420px){.hero h1{font-size:64px}}
 
   .readout-empty{margin-top:22px;padding:22px 18px}
 }
@@ -125,7 +129,7 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .profile-id a{text-decoration:underline;text-underline-offset:3px}
 .profile-facts{grid-column:1/-1;margin:6px 0 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#1b232a;border:1px solid #27313a}
 .profile-facts>div{background:#0c1117;padding:10px 12px;display:grid;gap:3px;min-width:0}
-.profile-facts dt{font:9px 'DM Mono',monospace;letter-spacing:.1em;color:var(--label)}
+.profile-facts dt{font:10px 'DM Mono',monospace;letter-spacing:.1em;color:var(--label)}
 .profile-facts dd{margin:0;font:700 16px 'Barlow Condensed',sans-serif;text-transform:uppercase;color:#e8ecee;overflow-wrap:anywhere}
 .profile-facts dd.ok{color:#a9d46a}.profile-facts dd.warn{color:#ffb3a1}
 .profile-nav{display:flex;flex-wrap:wrap;gap:8px}
@@ -186,7 +190,7 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .tl-dot.you{border-radius:0;background:var(--acid)}
 .opening-duels .summary-tiles{margin:0}
 .detail-note{margin:0;font-size:11px}
-@media(max-width:640px){.tl-round{width:24px;height:30px;font-size:9px}.tl-round.side-swap{margin-left:8px}}
+@media(max-width:640px){.tl-round{width:24px;height:30px;font-size:10px}.tl-round.side-swap{margin-left:8px}}
 
 /* Design must-fix: sample report rounds table at ~500px. (#37's version of this block never
    applied: the reduced-motion @media above was missing its closing brace, so every rule after
@@ -215,7 +219,7 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 .first-run-step{display:grid;grid-template-columns:24px minmax(0,1fr);gap:12px;padding:12px 14px;border-top:1px solid #1b232a}
 .first-run-step:first-child{border-top:0}
 .first-run-step strong{font:700 15px/1.2 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.03em;color:#e8ecee}
-.first-run-step strong small{font:9px 'DM Mono',monospace;letter-spacing:.1em;color:var(--label-dim);text-transform:uppercase}
+.first-run-step strong small{font:10px 'DM Mono',monospace;letter-spacing:.1em;color:var(--label-dim);text-transform:uppercase}
 .first-run-step p{margin:4px 0 0;font-size:12px;line-height:1.55;color:#9aa4ab}
 .first-run-step a{text-decoration:underline;text-underline-offset:2px;color:var(--acid)}
 .first-run-mark{width:22px;height:22px;border:1px solid #3a454f;border-radius:50%;display:grid;place-items:center;font-size:12px;color:#090d12}
@@ -314,7 +318,7 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 /* No layout shift when a scrollbar appears. */
 html{scrollbar-gutter:stable}
 .info-pop-below .tl-legend{scroll-margin-bottom:24px}
-.map-digits{font-family:'DM Mono',monospace;font-weight:500;font-size:.82em;font-variant-numeric:slashed-zero tabular-nums;letter-spacing:0}
+.map-digits{font-family:'DM Mono',monospace;font-weight:500;font-size:1em;font-variant-numeric:slashed-zero tabular-nums;letter-spacing:0}
 /* Room under the open ⓘ note so it never sits on the panel edge. */
 .result-panel:has(.model-info-pop[open]){padding-bottom:72px}
 /* Loading placeholder ≈ result height so the panel doesn't jump when the answer lands. */
@@ -329,3 +333,18 @@ html{scrollbar-gutter:stable}
 .not-found{min-height:50vh;display:grid;place-items:center;padding:40px 22px}
 .not-found p{margin:0;font:13px 'DM Mono',monospace;letter-spacing:.04em;color:#9aa4ab}
 .not-found a{color:var(--acid)}
+
+/* lintapple: icons, icon tooltips, numeric columns */
+.icon{display:inline-block;vertical-align:-.125em;flex:none}
+.chevron .icon{display:block}
+.icon-tip{position:absolute;left:50%;top:calc(100% + 6px);transform:translateX(-50%);z-index:30;padding:4px 8px;
+  background:#0c1117;border:1px solid #2d3740;color:#e8ecee;font:500 11px/1.3 'DM Mono',monospace;letter-spacing:.04em;
+  text-transform:none;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s}
+summary:has(> .icon-tip),.tip-dismiss,.nav-toggle{position:relative}
+@media(hover:hover){summary:hover>.icon-tip,.tip-dismiss:hover>.icon-tip,.nav-toggle:hover>.icon-tip{opacity:1;visibility:visible}}
+summary:focus-visible>.icon-tip,.tip-dismiss:focus-visible>.icon-tip,.nav-toggle:focus-visible>.icon-tip{opacity:1;visibility:visible}
+details[open]>summary>.icon-tip{opacity:0!important;visibility:hidden!important}
+.round-table td:first-child,.round-table th:first-child{text-align:right;font-variant-numeric:tabular-nums}
+/* !important: a font shorthand elsewhere resets font-variant-numeric; numbers that change must not jitter. */
+[data-ui-number]{font-variant-numeric:tabular-nums!important}
+.map-digits[data-ui-number]{font-variant-numeric:slashed-zero tabular-nums!important}

@@ -1,7 +1,8 @@
 import type React from "react";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { COMMON_WEAPONS, PRESETS, localOptions, rememberOptions, TIME_CHIPS, type Preset, type RoundInputs, initialInputs, remember, validSeconds } from "./roundForm";
 import "./roundForm.css";
+import { Icon, Tip } from "./Icon";
 import { AccountPage } from "./steam/AccountPage";
 import { ExportPage } from "./steam/ExportPage";
 import { StatsPage } from "./steam/StatsPage";
@@ -97,7 +98,7 @@ function AboutPage() {
         <h2>One opening duel.<br /><em>A lot of signal.</em></h2>
       </div>
       <p>Trained on pro CS2 rounds. Historical estimate — not a guarantee.</p>
-      <div className="accuracy"><span>HELD-OUT ACCURACY</span><strong>71.8<small>%</small></strong></div>
+      <div className="accuracy"><span>HELD-OUT ACCURACY</span><strong data-ui-number>71.8<small>%</small></strong></div>
       <ModelCard maps={maps} />
     </section>
   );
@@ -219,7 +220,7 @@ function PredictorWorkspace() {
   const tPercent = prediction ? prediction.probabilities.t * 100 : 50;
 
   return (
-    <section id="predictor" className="workspace" aria-label="Round winner predictor">
+    <section id="predictor" className="workspace" aria-label="Round winner predictor" data-ui-container>
       <div className="form-panel">
         <div className="panel-heading">
           <div><h2>Round</h2></div>
@@ -228,7 +229,7 @@ function PredictorWorkspace() {
           {presets.length > 0 && (
             <div className="field preset-field" role="group" aria-label="Quick presets">
               <span className="field-label">PRESETS</span>
-              <div className="preset-row">
+              <div className="preset-row" data-ui-actions>
                 {presets.map((preset) => (
                   <button type="button" key={preset.id} className={`chip preset-chip ${activePreset === preset.id ? "selected" : ""}`}
                     aria-pressed={activePreset === preset.id} onClick={() => applyPreset(preset)} disabled={!ready}>
@@ -244,7 +245,7 @@ function PredictorWorkspace() {
             <span className="select-wrap">
               <select value={mapName} onChange={(event) => setMapName(event.target.value)} disabled={!ready} required aria-label="Map">
                 {options?.maps.map((map) => <option value={map} key={map}>{mapLabel(map)}</option>)}
-              </select><span className="chevron">⌄</span>
+              </select><span className="chevron"><Icon name="chevronDown" /></span>
             </span>
           </label>
 
@@ -264,7 +265,7 @@ function PredictorWorkspace() {
             <span className="field-label">Time</span>
             <span className="number-wrap"><input type="number" inputMode="decimal" min="0" max="120" step="0.1" value={seconds} onChange={(event) => edit(setSeconds)(event.target.value)} required aria-label="Opening kill time in seconds" /><span className="number-unit">SEC</span></span>
           </label>
-          <div className="time-chips" role="group" aria-label="Common opening kill times">
+          <div className="time-chips" role="group" aria-label="Common opening kill times" data-ui-actions>
             {TIME_CHIPS.map((value) => (
               <button type="button" key={value} className={`chip ${Number(seconds) === value ? "selected" : ""}`}
                 aria-pressed={Number(seconds) === value} onClick={() => edit(setSeconds)(String(value))}>{value}s</button>
@@ -283,7 +284,7 @@ function PredictorWorkspace() {
                 <optgroup label={weaponGroups.common.length ? "All weapons" : "Weapons"}>
                   {weaponGroups.rest.map((item) => <option value={item} key={item}>{weaponName(item)}</option>)}
                 </optgroup>
-              </select><span className="chevron">⌄</span>
+              </select><span className="chevron"><Icon name="chevronDown" /></span>
             </span>
           </label>
 
@@ -293,7 +294,7 @@ function PredictorWorkspace() {
         </form>
       </div>
 
-      <div ref={resultRef} className={`result-panel ${prediction || loading ? "" : "result-panel-idle"}`.trim()} aria-live="polite">
+      <div ref={resultRef} className={`result-panel ${prediction || loading ? "" : "result-panel-idle"}`.trim()} aria-live="polite" data-ui-content>
         <div className="result-topline">
           <span className="section-kicker">READOUT</span>
           <span className={`result-status ${prediction ? "has-result" : ""}`} aria-hidden="true"><i /></span>
@@ -308,11 +309,11 @@ function PredictorWorkspace() {
             </div>
             <div className="probability-card">
               <div className="prob-row">
-                <div className="prob-label"><span className="side-symbol ct-symbol">C</span><span>CT</span><strong>{`${ctPercent.toFixed(1)}%`}</strong></div>
+                <div className="prob-label"><span className="side-symbol ct-symbol">C</span><span>CT</span><strong data-ui-number>{`${ctPercent.toFixed(1)}%`}</strong></div>
                 <div className="prob-track"><span className="prob-fill ct-fill" style={{ width: `${ctPercent}%` }} /></div>
               </div>
               <div className="prob-row">
-                <div className="prob-label"><span className="side-symbol t-symbol">T</span><span>T</span><strong>{`${tPercent.toFixed(1)}%`}</strong></div>
+                <div className="prob-label"><span className="side-symbol t-symbol">T</span><span>T</span><strong data-ui-number>{`${tPercent.toFixed(1)}%`}</strong></div>
                 <div className="prob-track"><span className="prob-fill t-fill" style={{ width: `${tPercent}%` }} /></div>
               </div>
             </div>
@@ -334,6 +335,7 @@ function PredictorWorkspace() {
 export function InfoPopover({ label, children }: { label: string; children: React.ReactNode }) {
   const ref = useRef<HTMLDetailsElement>(null);
   const noteRef = useRef<HTMLDivElement>(null);
+  const tipId = useId();
   // Always-on document listeners that read the live `open` attribute (no state race), capture phase so
   // Escape / pointerdown on any element (inputs included) close it wherever focus is.
   useEffect(() => {
@@ -356,7 +358,9 @@ export function InfoPopover({ label, children }: { label: string; children: Reac
   };
   return (
     <details ref={ref} className="tl-legend-info model-info-pop info-pop-below" onToggle={onToggle}>
-      <summary role="button" aria-label={label}>ⓘ</summary>
+      <summary role="button" aria-label={label} aria-describedby={tipId}>
+        <Icon name="info" /><Tip id={tipId}>{label}</Tip>
+      </summary>
       <div ref={noteRef} className="tl-legend" role="note">{children}</div>
     </details>
   );
@@ -396,17 +400,18 @@ function TopBar({ page }: { page: AppPage }) {
         <a className={page === "account" || page === "export" ? "nav-active" : undefined}
           href={ACCOUNT_PATH} aria-current={page === "account" || page === "export" ? "page" : undefined}>Account</a>
       </nav>
-      {page === "home" && <div className={`live-indicator ${authPending ? "is-pending" : ""}`.trim()} aria-hidden={authPending || undefined}><span /> MODEL ONLINE</div>}
+      {page === "home" && <div className={`live-indicator ${authPending ? "is-pending" : ""}`.trim()} aria-hidden={authPending || undefined}><span /> <b className="live-text">MODEL ONLINE</b></div>}
       {authPending && <span className="account-avatar account-avatar-slot" aria-hidden="true" />}
       {steamUser && (
-        <a className="account-avatar" href={ACCOUNT_PATH} aria-label="Account settings"
-          title={steamUser.steam_id ?? "Account"}>
+        <a className="account-avatar" href={ACCOUNT_PATH} title={steamUser.steam_id ?? "Account"}
+          aria-label={`Account settings ${(steamUser.steam_id ?? "?").slice(-2)}`}>
           {(steamUser.steam_id ?? "?").slice(-2)}
         </a>
       )}
       <button type="button" className="nav-toggle" aria-controls="main-nav" aria-expanded={menuOpen}
-        aria-label={menuOpen ? "Close menu" : "Open menu"} onClick={() => setMenuOpen((open) => !open)}>
+        aria-label={menuOpen ? "Close menu" : "Open menu"} aria-describedby="nav-toggle-tip" onClick={() => setMenuOpen((open) => !open)}>
         <span aria-hidden="true" /><span aria-hidden="true" /><span aria-hidden="true" />
+        <Tip id="nav-toggle-tip">{menuOpen ? "Close menu" : "Menu"}</Tip>
       </button>
     </header>
   );

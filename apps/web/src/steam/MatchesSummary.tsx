@@ -20,18 +20,18 @@ function YouHomeTiles({ you }: { you: YouAnalytics }) {
   const duels = you.opening_duels;
   return (
     <div className="you-section you-home">
-      <dl className="report-header summary-tiles you-tiles" aria-label="Your stats">
+      <dl className="report-header summary-tiles you-tiles" data-ui-content aria-label="Your stats">
         <div>
-          <dt>WON</dt><dd>{pct(you.win_rate)}</dd>
+          <dt>WON</dt><dd data-ui-number>{pct(you.win_rate)}</dd>
         </div>
         <div>
-          <dt>CT / T</dt><dd>{pct(you.sides.ct.win_rate)} / {pct(you.sides.t.win_rate)}</dd>
+          <dt>CT / T</dt><dd data-ui-number>{pct(you.sides.ct.win_rate)} / {pct(you.sides.t.win_rate)}</dd>
         </div>
         <div>
-          <dt>K/D</dt><dd>{kdText(you.kd)}</dd>
+          <dt>K/D</dt><dd data-ui-number>{kdText(you.kd)}</dd>
         </div>
         <div>
-          <dt>OPENINGS</dt><dd>{pct(duels.win_rate)}</dd>
+          <dt>OPENINGS</dt><dd data-ui-number>{pct(duels.win_rate)}</dd>
         </div>
       </dl>
       <div className="report-actions home-tile-actions">
@@ -82,21 +82,21 @@ function AllPlayersSection({ summary }: { summary: MatchesAnalytics }) {
   return (
     <>
       {summary.you && <span className="section-kicker all-players-kicker">ALL PLAYERS</span>}
-      <dl className="report-header summary-tiles" aria-label="Previous matches summary">
+      <dl className="report-header summary-tiles" data-ui-content aria-label="Previous matches summary">
         <div>
-          <dt>MATCHES</dt><dd>{totals.imported_matches}</dd>
+          <dt>MATCHES</dt><dd data-ui-number>{totals.imported_matches}</dd>
         </div>
         <div>
-          <dt>HIT RATE</dt><dd>{pct(prediction.hit_rate)}</dd>
+          <dt>HIT RATE</dt><dd data-ui-number>{pct(prediction.hit_rate)}</dd>
         </div>
         <div>
-          <dt>BRIER</dt><dd>{prediction.brier_score == null ? "—" : prediction.brier_score.toFixed(3)}</dd>
+          <dt>BRIER</dt><dd data-ui-number>{prediction.brier_score == null ? "—" : prediction.brier_score.toFixed(3)}</dd>
         </div>
         <div>
-          <dt>CT / T</dt><dd>{pct(sides.ct_win_rate)} / {pct(sides.t_win_rate)}</dd>
+          <dt>CT / T</dt><dd data-ui-number>{pct(sides.ct_win_rate)} / {pct(sides.t_win_rate)}</dd>
         </div>
         <div>
-          <dt>OPENINGS</dt><dd>{pct(opening.conversion_rate)}</dd>
+          <dt>OPENINGS</dt><dd data-ui-number>{pct(opening.conversion_rate)}</dd>
         </div>
       </dl>
       {totals.outdated_matches ? (

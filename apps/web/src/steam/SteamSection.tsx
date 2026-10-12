@@ -66,7 +66,7 @@ export function SteamSection() {
 
 function ComingSoon({ reachable }: { reachable: boolean }) {
   return (
-    <div className="steam-card empty-state" role="status">
+    <div className="steam-card empty-state" data-ui-content role="status">
       <span className="section-kicker">{reachable ? "COMING SOON" : "MATCH SERVICE OFFLINE"}</span>
       <h3>{reachable ? "Match reports are on the way" : "Can’t reach the match service"}</h3>
       <p>

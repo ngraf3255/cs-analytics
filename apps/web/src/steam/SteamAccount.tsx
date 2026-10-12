@@ -39,7 +39,7 @@ export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onG
     return (
       <div className={`account-options ${guest ? "two" : ""}`}>
         {steam ? (
-          <div className="steam-card">
+          <div className="steam-card" data-ui-content>
             <span className="section-kicker">STEAM</span>
             <h3>Connect Steam</h3>
             <a className="steam-button" href={steamLoginUrl("/#matches")}>
@@ -47,7 +47,7 @@ export function SteamAccount({ me, steam = true, guest = false, onSignedOut, onG
             </a>
           </div>
         ) : (
-          <div className="steam-card soft-disabled" aria-label="Connect Steam (coming soon)">
+          <div className="steam-card soft-disabled" data-ui-content aria-label="Connect Steam (coming soon)">
             <span className="section-kicker">STEAM SYNC · COMING SOON</span>
             <h3>Connect Steam</h3>
             <button type="button" className="steam-button" disabled aria-disabled="true">Sign in through Steam · soon</button>
@@ -82,7 +82,7 @@ function GuestStart({ onGuest }: { onGuest: (me: Me, file?: File) => void }) {
   }
 
   return (
-    <div className="steam-card">
+    <div className="steam-card" data-ui-content>
       <span className="section-kicker">NO STEAM NEEDED</span>
       <h3>Upload a demo</h3>
       <div className="steam-actions">
@@ -126,7 +126,7 @@ function GuestAccount({ steam, onSignedOut }: { steam: boolean; onSignedOut: () 
   };
 
   return (
-    <div className="steam-card">
+    <div className="steam-card" data-ui-content>
       <span className="section-kicker">GUEST SESSION</span>
       <h3>Uploading as a guest</h3>
       <div className="steam-actions">
@@ -157,7 +157,7 @@ function SignedInSummary({ me }: { me: Me }) {
   const access = me.match_access;
   const relink = access.linked ? access.needs_relink ?? null : null;
   return (
-    <div className="steam-card account-summary">
+    <div className="steam-card account-summary" data-ui-content>
       <p>
         Signed in as{" "}
         <a href={`https://steamcommunity.com/profiles/${me.steam_id}`} target="_blank" rel="noreferrer">{me.steam_id} ↗</a>
@@ -236,7 +236,7 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
 
   return (
     <div className="account-settings profile-layout">
-      <header className="steam-card profile-header" aria-label="Profile">
+      <header className="steam-card profile-header" data-ui-content aria-label="Profile">
         <span className="profile-avatar" aria-hidden="true">{(me.steam_id ?? "").slice(-2) || "CS"}</span>
         <div className="profile-id">
           <span className="section-kicker">STEAM ACCOUNT</span>
@@ -262,7 +262,7 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
         <a href="#your-data">Delete</a>
       </nav>
 
-      <section id="match-history" className="steam-card profile-section" aria-labelledby="match-history-title">
+      <section id="match-history" className="steam-card profile-section" data-ui-content aria-labelledby="match-history-title">
         <span className="section-kicker">MATCH HISTORY</span>
         <h3 id="match-history-title" className="profile-section-title">Steam match history</h3>
         {notice && <div className="steam-notice" role="status">{notice}</div>}
@@ -297,7 +297,7 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
         )}
       </section>
 
-      <section id="session" className="steam-card profile-section" aria-labelledby="session-title">
+      <section id="session" className="steam-card profile-section" data-ui-content aria-labelledby="session-title">
         <span className="section-kicker">SESSION</span>
         <h3 id="session-title" className="profile-section-title">Signed in on this browser</h3>
         <div className="steam-actions">
@@ -305,7 +305,7 @@ export function AccountSettings({ me, onChange, onSignedOut }: { me: Me; onChang
         </div>
       </section>
 
-      <section id="your-data" className="steam-card profile-section danger-zone" aria-labelledby="your-data-title">
+      <section id="your-data" className="steam-card profile-section danger-zone" data-ui-content aria-labelledby="your-data-title">
         <span className="section-kicker">YOUR DATA</span>
         <h3 id="your-data-title" className="profile-section-title">Delete account</h3>
         <p className="steam-muted">Removes your account, stored codes and every imported match. This can’t be undone.</p>

@@ -1,3 +1,4 @@
+import { Icon } from "../Icon";
 import type { ReactNode } from "react";
 import type { MatchResult, MatchSummary } from "./types";
 import { mapDigits } from "./MapName";
@@ -82,12 +83,16 @@ function MatchRow({
     : result === "tied" ? "T"
     : null;
   const map = mapLabel(match.map_name);
-  const ariaMetric = you && metric ? `K-D ${metric}` : metric;
+  // The name contains the visible text as-is ("Mirage 2–8 · 10r"), so voice control can say what it sees.
+  const visible = primary ? `${map} ${primary}${metric ? ` · ${metric}` : ""}` : `${map} —${metric ? ` (${metric})` : ""}`;
   const aria = [
     chip ? (result === "won" ? "Won" : result === "lost" ? "Lost" : "Tied") : null,
-    map,
-    primary ? (you ? `score ${primary}` : primary) : null,
-    ariaMetric,
+    visible + (you && primary && metric ? " (score · K-D)" : ""),
+    // Row flags are icons (aria-hidden); say them once in the name instead.
+    match.source === "upload" ? "uploaded" : null,
+    match.outdated ? "outdated" : null,
+    match.degraded ? "degraded" : null,
+    !imported ? "not imported" : null,
   ].filter(Boolean).join(" · ");
 
   return (
@@ -106,35 +111,35 @@ function MatchRow({
       <span className="match-map">
         <strong>{mapDigits(map)}</strong>
         {match.source === "upload" && (
-          <span className="match-glyph" title="Uploaded" aria-label="Uploaded">↑</span>
+          <span className="match-glyph" title="Uploaded" data-flag="Uploaded" aria-hidden="true"><Icon name="arrowUp" /></span>
         )}
         {match.outdated && (
-          <span className="match-glyph warn" title={outdatedText(match) ?? "Outdated"} aria-label="Outdated">↻</span>
+          <span className="match-glyph warn" title={outdatedText(match) ?? "Outdated"} data-flag="Outdated" aria-hidden="true"><Icon name="refresh" /></span>
         )}
         {match.degraded && (
           <span
             className="match-glyph warn"
             title={match.degraded.detail ?? "PacketEntities skips — positions thin; Rush may omit round_end (recovered from officially-ended)."}
-            aria-label="Degraded"
+            data-flag="Degraded" aria-hidden="true"
           >
-            ⚠
+            <Icon name="warn" />
           </span>
         )}
         {!imported && (
-          <span className="match-glyph stub" title={STUB_NOTE[match.status_reason ?? ""] ?? STUB_DEFAULT} aria-label="Not imported">⊘</span>
+          <span className="match-glyph stub" title={STUB_NOTE[match.status_reason ?? ""] ?? STUB_DEFAULT} data-flag="Not imported" aria-hidden="true"><Icon name="ban" /></span>
         )}
-      </span>
+      </span>{" "}
       <span className="match-score" title={imported && !you ? score?.detail : undefined}>
         {primary ? (
           <>
-            <strong>{primary}</strong>
-            {metric && <small>· {metric}</small>}
+            <strong data-ui-number>{primary}</strong>{" "}
+            {metric && <small>· <span data-ui-number>{metric}</span></small>}
           </>
         ) : (
           <span className="steam-muted" aria-label="No score">—</span>
         )}
       </span>
-      <span className="match-chevron" aria-hidden="true">{selected ? "▾" : "▸"}</span>
+      <span className="match-chevron" aria-hidden="true"><Icon name={selected ? "chevronDown" : "chevronRight"} /></span>
     </button>
   );
 }
