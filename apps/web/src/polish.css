@@ -58,12 +58,12 @@ a.steam-button:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
 @media(max-width:900px){
   .nav-toggle{display:inline-grid;align-content:center;gap:4px;width:40px;height:40px;padding:0 10px;margin-left:12px;
     background:transparent;border:1px solid #2d3740;cursor:pointer}
-  .nav-toggle span{display:block;height:1px;background:#e8ecee;transition:transform .2s,opacity .2s}
+  .nav-toggle span:not(.icon-tip){display:block;height:1px;background:#e8ecee;transition:transform .2s,opacity .2s}
   .nav-toggle:focus-visible{outline:1px solid var(--acid);outline-offset:2px}
   .menu-open .nav-toggle{border-color:#6f8646}
-  .menu-open .nav-toggle span:nth-child(1){transform:translateY(5px) rotate(45deg)}
-  .menu-open .nav-toggle span:nth-child(2){opacity:0}
-  .menu-open .nav-toggle span:nth-child(3){transform:translateY(-5px) rotate(-45deg)}
+  .menu-open .nav-toggle span:not(.icon-tip):nth-child(1){transform:translateY(5px) rotate(45deg)}
+  .menu-open .nav-toggle span:not(.icon-tip):nth-child(2){opacity:0}
+  .menu-open .nav-toggle span:not(.icon-tip):nth-child(3){transform:translateY(-5px) rotate(-45deg)}
   .live-indicator{margin-left:auto}
   .topbar nav.main-nav{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;
     background:#0c1117;border-bottom:1px solid #202830;box-shadow:0 18px 40px #0008;font-size:13px}
@@ -401,3 +401,10 @@ main .workspace,main .steam-section,main .model-info{margin-left:var(--page-x);m
 /* Menu tooltip anchored to the button's right edge so it never clips at the viewport edge. */
 .nav-toggle>.icon-tip{left:auto;right:0;transform:none}
 .home-tile-actions .share-wrap>.action-button,.home-tile-actions>.action-button{width:100%;justify-self:stretch}
+/* GD #68 */
+/* Shared tooltip box: never inherit a host's bar/size styles (the menu's hamburger spans did). */
+.icon-tip.icon-tip{display:block;width:max-content;height:auto;min-height:0;max-width:min(240px,calc(100vw - 24px));padding:4px 8px;line-height:1.3;background:#0c1117;transition:opacity .12s}
+.action-button,.action-button:hover,.action-button:focus,.action-button:active{text-decoration:none}
+.action-button:focus-visible{outline:2px solid var(--acid);outline-offset:2px}
+/* ⓘ centred on the "Why this call?" line (32px summary at the row's 10px padding). */
+.why-row .model-info-pop{top:26px;transform:translateY(-50%)}
