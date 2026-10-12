@@ -85,3 +85,59 @@ for (const width of [500, 1280]) {
     console.log(width, JSON.stringify(out));
   });
 }
+
+// GD #68: tooltip boxes contain their text and stay on screen; action buttons undecorated; ⓘ centred.
+for (const width of [500, 1280]) {
+  test(`tooltips, action-button decoration, ⓘ centre at ${width}`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== '1280', 'runs its own viewports');
+    const out = { tips: [] };
+    const checkTip = async (host, name) => {
+      await host.hover(); await host.focus();
+      const tip = host.locator('.icon-tip');
+      await expect(tip).toBeVisible();
+      await page.waitForTimeout(200);
+      const m = await tip.evaluate((el) => {
+        const r = el.getBoundingClientRect(); const range = document.createRange(); range.selectNodeContents(el);
+        const t = range.getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, h: r.height, textTop: t.top, textBottom: t.bottom, textH: t.height, vw: document.documentElement.clientWidth };
+      });
+      out.tips.push({ name, h: Math.round(m.h), textH: Math.round(m.textH), left: Math.round(m.left), right: Math.round(m.right) });
+      expect(m.h, `${name} box height`).toBeGreaterThanOrEqual(m.textH);
+      expect(m.textTop).toBeGreaterThanOrEqual(m.top - 0.5);
+      expect(m.textBottom).toBeLessThanOrEqual(m.bottom + 0.5);
+      expect(m.left).toBeGreaterThanOrEqual(0);
+      expect(m.right).toBeLessThanOrEqual(m.vw);
+    };
+    await stubApi(page, { signedIn: false });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    const toggle = page.locator('.nav-toggle');
+    if (await toggle.isVisible()) { await toggle.click(); await checkTip(toggle, 'menu'); await toggle.click(); }
+    await page.getByRole('button', { name: /^Predict/ }).click();
+    const info = page.locator('.why-row .model-info-pop > summary');
+    await expect(info).toBeVisible();
+    await page.waitForTimeout(600);
+    const centres = await page.evaluate(() => {
+      const c = (el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+      const s = document.querySelector('.why-round > summary'); const range = document.createRange(); range.selectNodeContents(s);
+      return { why: c(s), whyText: range.getBoundingClientRect().top + range.getBoundingClientRect().height / 2, info: c(document.querySelector('.why-row .model-info-pop > summary')) };
+    });
+    out.centres = centres;
+    expect(Math.abs(centres.info - centres.whyText)).toBeLessThanOrEqual(1);
+    await checkTip(info, 'model info');
+    await stubApi(page, { signedIn: true });
+    await page.goto('/');
+    await expect(page.locator('.match-item').first()).toBeVisible();
+    const tipDismiss = page.locator('.tip-dismiss').first();
+    if (await tipDismiss.isVisible()) await checkTip(tipDismiss, 'dismiss');
+    const deco = await page.locator('.action-button').evaluateAll((els) => els.map((e) => getComputedStyle(e).textDecorationLine));
+    await page.locator('.home-tile-actions a.action-button').hover();
+    deco.push(await page.locator('.home-tile-actions a.action-button').evaluate((e) => getComputedStyle(e).textDecorationLine));
+    await page.locator('.home-tile-actions a.action-button').focus();
+    const focus = await page.locator('.home-tile-actions a.action-button').evaluate((e) => ({ d: getComputedStyle(e).textDecorationLine, o: getComputedStyle(e).outlineStyle }));
+    deco.push(focus.d); out.deco = deco; out.focusOutline = focus.o;
+    for (const d of deco) expect(d).toBe('none');
+    expect(focus.o).not.toBe('none');
+    console.log(width, JSON.stringify(out));
+  });
+}
